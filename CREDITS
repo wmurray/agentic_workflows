@@ -1,0 +1,35 @@
+# Credits
+
+This toolkit builds on work from the following sources.
+
+---
+
+## Matt Pocock — mattpocock/skills
+
+MIT License, Copyright (c) 2026 Matt Pocock
+https://github.com/mattpocock/skills
+
+**Adapted:** `skills/grill-with-docs/` — the design-challenge/grilling workflow,
+including the CONTEXT.md and ADR formatting conventions in `CONTEXT-FORMAT.md`
+and `ADR-FORMAT.md`.
+
+---
+
+## Dann Berg — dannb.org
+
+https://dannb.org/blog/2022/obsidian-daily-note-template/
+
+No stated license — attributed with thanks.
+
+**Adapted:** `commands/daily.md` — section names and daily note structure (`🌜 Yesterday, I`, `🚀 One+ thing I plan to accomplish today is...`). The Obsidian/Templater mechanics were replaced with Claude workflow logic.
+
+---
+
+## Damian Galarza — dgalarza/claude-code-workflows
+
+MIT License, Copyright (c) 2025 Damian Galarza
+https://github.com/dgalarza/claude-code-workflows
+
+**Included verbatim:** `skills/tdd-workflow/` — the red-green-refactor TDD skill.
+**Adapted:** `agents/rails-feature-developer.md`, `agents/rails-code-reviewer.md`,
+`agents/rails_backend_expert.md` — from the Rails Toolkit bundle.

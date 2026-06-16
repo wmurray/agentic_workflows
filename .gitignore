@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Claude Code runtime state
+lib/pr-followups.json
+skills/sprint-retro/__pycache__/
+*.pyc
+commands/.write-test
+
+# Personal config (never commit)
+settings.json
+settings.local.json
+settings.json.bak
+remote-settings.json
+policy-limits.json
+mcp-needs-auth-cache.json
+
+# Plugin data (user-specific install paths)
+plugins/
+
+# Session state
+session-env/
+projects/
+rules/
