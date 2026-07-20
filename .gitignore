@@ -11,6 +11,7 @@ skills/sprint-retro/__pycache__/
 commands/.write-test
 
 # Personal config (never commit)
+lib/mission-control/profiles/local.env
 settings.json
 settings.local.json
 settings.json.bak

@@ -20,5 +20,15 @@ if [ -z "${MC_ADAPTERS:-}" ]; then
   unset _mc_d _mc_t
 fi
 
+# Load the active profile (config vars) if present. MC_PROFILE selects the file;
+# default = profiles/local.env (the local, gitignored profile), a sibling of the adapters
+# dir. Absent (e.g. a fresh clone) → skipped, and engine scripts fall back to their own
+# generic defaults. Profile lines use `export VAR="${VAR:-…}"`, so an explicit env value
+# still wins and the vars reach adapter subprocesses.
+_mc_profiles="$(dirname "$MC_ADAPTERS")/profiles"
+MC_PROFILE="${MC_PROFILE:-$_mc_profiles/local.env}"
+[ -f "$MC_PROFILE" ] && . "$MC_PROFILE"
+unset _mc_profiles
+
 tracker() { "$MC_ADAPTERS/tracker/${MC_TRACKER:-jira}.sh" "$@"; }
 host()    { "$MC_ADAPTERS/host/${MC_HOST:-github}.sh"     "$@"; }
