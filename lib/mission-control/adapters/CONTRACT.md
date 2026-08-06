@@ -52,10 +52,11 @@ column; mc-poll uses all three.
 converting it, it will call `fields_of` on the returned subset for that label (one
 extra, cheap call in a rarely-run detector — keeps the op orthogonal).
 
-**`active_cycle`** is the rollover trigger. Proposed archive refactor: the sidecar
-marker stores `id⇥name` (not just id), so archive never needs a historical
-cycle-id→name lookup — it stamps `archivedAtSprint` from the marker's name and only
-needs the *current* cycle here. One-time: backfill the existing marker with its name.
+**`active_cycle`** is the rollover trigger. The archive sidecar marker stores `id⇥name`
+(not just id), so archive never needs a historical cycle-id→name lookup — it stamps
+`archivedAtSprint` from the *marker's* name and only needs the *current* cycle here.
+*(Done — mc-archive converted; the live marker was backfilled with its name at cutover.
+A legacy id-only marker is read as id-with-no-name and upgraded on the next commit.)*
 
 ### Optional capabilities (consequence A — reserve the seam now)
 `cycles` and `vetting` are **optional**. Both v1 adapters (Jira, Linear) report both,
@@ -148,9 +149,9 @@ fold is a "call shape the implementation actually needs," not a feature cut.
   one extra cheap call in a rarely-run detector.
 
 - **`active_cycle` + marker-format change.** To avoid a historical cycle-id→name lookup
-  op, the mc-archive sidecar marker will store `id⇥name` (not just `id`); archive stamps
+  op, the mc-archive sidecar marker stores `id⇥name` (not just `id`); archive stamps
   `archivedAtSprint` from the marker's name and only needs the *current* cycle from the
-  adapter. One-time: backfill the existing marker with its name when mc-archive converts.
+  adapter. The live marker was backfilled with its name when mc-archive converted.
 
 - **Optional-capability seam (consequence A).** `cycles` and `vetting` are optional from
   day one — v1 adapters (Jira, Linear) report both, but callers gate on `capabilities`, so
