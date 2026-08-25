@@ -116,12 +116,28 @@ status_rank() {
   IFS="$oIFS"; echo -1
 }
 
+# _repo_of <pr-url> — the owner/repo (or group/project) a PR URL belongs to.
+# HOST-AGNOSTIC, replacing the old github.com-shaped grep: strip scheme+host, fold
+# GitLab's `/-/` infix away, then drop the PR segment and everything after it. Handles
+# /pull/N, /pulls/N, /merge_requests/N and /pull-requests/N.
+#
+# It deliberately does NOT consult the board's `repo` field: that field holds a BARE
+# repo name with no owner, so using it as the host lookup key silently turns every
+# joined PR into a miss. The URL is the only place the full slug lives.
+_repo_of() {
+  local url="${1:-}"
+  # Emits a TRAILING NEWLINE: one caller consumes this in a pipeline, where a
+  # newline-less result would concatenate one repo onto the next; the other uses $(…),
+  # which strips it. One form serves both.
+  printf '%s\n' "$url" \
+    | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+/##' \
+    | sed -E 's#/-/#/#' \
+    | sed -E 's#/(pull|pulls|merge_requests|pull-requests)/[0-9]+.*$##'
+}
+
 # --- ONE host call per repo (active PRs only) ---
-# NOTE (deferred to the 2nd-host pass): deriving repo/number by parsing the stored PR
-# URL is a host-URL-shape assumption. It stays leak-clean (github.com is not org
-# nomenclature) and byte-stable; the right generic seam (a host op, or repo+num in
-# state) becomes clear once a second host exists to design against.
-repos=$(printf '%s' "$active" | cut -f3 | grep -oE 'github\.com/[^/]+/[^/]+' | sed 's#.*github.com/##' | sort -u)
+repos=$(printf '%s' "$active" | cut -f3 | grep -v -e '^$' -e '^-$' \
+          | while IFS= read -r _pr; do _repo_of "$_pr"; done | grep -v '^$' | sort -u)
 gh_tmp=$(mktemp); echo '{}' > "$gh_tmp"
 for repo in $repos; do
   data=$(host list_prs "$repo" all)
@@ -130,14 +146,14 @@ for repo in $repos; do
 done
 
 # --- active table ---
-printf '%-9s %-16s %-15s %-22s %-18s %-6s %-16s %-8s %-10s %s\n' TICKET LANE JIRA_STATUS ASSIGNEE PR DRAFT REVIEW CI MERGED FLAGS
+printf '%-9s %-16s %-15s %-22s %-18s %-6s %-16s %-8s %-10s %s\n' TICKET LANE STATUS ASSIGNEE PR DRAFT REVIEW CI MERGED FLAGS
 while IFS=$'\t' read -r t lane pr blk wk pd; do
   [ -z "$t" ] && continue
-  jstatus=$(jfield "$t" 2); [ -z "$jstatus" ] && jstatus="?(jira-miss)"
+  jstatus=$(jfield "$t" 2); [ -z "$jstatus" ] && jstatus="?(tracker-miss)"
   jassign=$(jfield "$t" 3); [ -z "$jassign" ] && jassign="-"
   prcol="-"; draft="-"; review="-"; ci="-"; merged="-"
   if [ -n "$pr" ] && [ "$pr" != "-" ]; then
-    repo=$(echo "$pr" | grep -oE 'github\.com/[^/]+/[^/]+' | sed 's#.*github.com/##')
+    repo=$(_repo_of "$pr")
     num=$(echo "$pr" | grep -oE '[0-9]+$')
     prcol="$(echo "$repo" | sed 's#.*/##')#$num"
     row=$(jq -c -r --arg r "$repo" --arg n "$num" '.[$r][$n] // empty' "$gh_tmp")
@@ -171,14 +187,14 @@ while IFS=$'\t' read -r t lane pr blk wk pd; do
           elif ($frzchecks | any(IN($bad[]))) then "frozen"
           else "green" end')
     else
-      prcol="$prcol(gh-miss)"
+      prcol="$prcol(host-miss)"
     fi
   fi
   flags=""
   [ "$blk" = "1" ] && flags="${flags}⛔blocked "
   lr=$(lane_rank "$lane"); jr=$(status_rank "$jstatus")
   if [ "$lr" -ge 0 ] && [ "$jr" -ge 0 ] && [ $((lr - jr)) -ge 2 ]; then
-    flags="${flags}⚠REGRESSED(jira<lane) "
+    flags="${flags}⚠REGRESSED(status<lane) "
     regressed_ids="$regressed_ids $t($jstatus vs $lane)"
   fi
   [ "$wk" != "-" ] && [ "$pd" != "1" ] && flags="${flags}●${wk} "
@@ -190,7 +206,7 @@ done <<< "$active"
 # --- regressions: loud, standing flag (a kickback the board hasn't caught up to) ---
 # These need a human to reconcile the lane (surface, do NOT auto-move backward). Shows
 # every tick, so it can't go stale the way a one-time `question` note did.
-[ -n "$regressed_ids" ] && printf '\n⚠ REGRESSED — Jira moved backward vs board lane (≥2 stages; likely a QA/post-merge kickback — reconcile the lane):%s\n' "$regressed_ids"
+[ -n "$regressed_ids" ] && printf '\n⚠ REGRESSED — tracker moved backward vs board lane (≥2 stages; likely a QA/post-merge kickback — reconcile the lane):%s\n' "$regressed_ids"
 
 # --- background queue: PLANNABLE now (loop acts), listed not just counted ---
 bq=$(echo $bgqueue | wc -w | tr -d ' ')

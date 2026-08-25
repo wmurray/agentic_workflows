@@ -1,0 +1,23 @@
+# key⇥status⇥assignee⇥cycle⇥vetted⇥summary
+# cycle: in|out (membership of the active cycle) · vetted: yes|no (estimate present)
+# assignee "me" is what list_ready returns; anything else stands in for a teammate.
+#
+# --- ready, in cycle, NOT on the board → mc-inbound SPRINT tier ---
+ENG-101	Ready for Dev	me	in	yes	Add rate limiting to the export endpoint
+# --- ready, out of cycle, vetted → mc-inbound BACKGROUND tier ---
+ENG-102	Ready for Dev	me	out	yes	Backfill missing audit rows
+# --- ready, out of cycle, UNVETTED → excluded from the background tier ---
+ENG-103	Ready for Dev	me	out	no	Investigate slow dashboard query
+# --- ready but someone else's → excluded from both tiers ---
+ENG-104	Ready for Dev	teammate	in	yes	Rotate the staging certificates
+#
+# --- on the scratch board: in flight ---
+ENG-201	In Progress	me	in	yes	Extract the notification mailer
+ENG-202	In Review	me	in	yes	Paginate the members index
+ENG-203	QA	me	in	yes	Fix timezone drift on scheduled reports
+# --- on the board at cycle=background but NOW in the active cycle → mc-promote hit ---
+ENG-204	In Progress	me	in	yes	Split the billing webhook handler
+# --- on the board, shipped → mc-archive terminal-done sweep ---
+ENG-205	Done	me	in	yes	Cache the plan comparison table
+# --- on the board, status went BACKWARDS vs its lane → mc-poll regression ---
+ENG-206	To Do	me	in	yes	Retry failed exports

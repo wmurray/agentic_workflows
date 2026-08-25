@@ -1,0 +1,61 @@
+{
+  "example-org/app": [
+    {
+      "number": 201, "title": "Extract the notification mailer",
+      "headRefName": "eng-201-notification-mailer", "isDraft": true,
+      "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/201",
+      "state": "OPEN", "reviewDecision": "", "mergeable": "MERGEABLE", "mergedAt": null,
+      "statusCheckRollup": [
+        {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS"}
+      ],
+      "reviewRequests": []
+    },
+    {
+      "number": 202, "title": "Paginate the members index",
+      "headRefName": "eng-202-paginate-members", "isDraft": false,
+      "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/202",
+      "state": "OPEN", "reviewDecision": "CHANGES_REQUESTED", "mergeable": "MERGEABLE", "mergedAt": null,
+      "statusCheckRollup": [
+        {"name": "test", "status": "COMPLETED", "conclusion": "FAILURE"}
+      ],
+      "reviewRequests": [{"login": "teammate"}]
+    },
+    {
+      "number": 203, "title": "Fix timezone drift on scheduled reports",
+      "headRefName": "eng-203-timezone-drift", "isDraft": false,
+      "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/203",
+      "state": "OPEN", "reviewDecision": "APPROVED", "mergeable": "MERGEABLE", "mergedAt": null,
+      "statusCheckRollup": [
+        {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "release-freeze-guard", "status": "COMPLETED", "conclusion": "FAILURE"}
+      ],
+      "reviewRequests": []
+    },
+    {
+      "number": 205, "title": "Cache the plan comparison table",
+      "headRefName": "eng-205-cache-plan-table", "isDraft": false,
+      "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/205",
+      "state": "MERGED", "reviewDecision": "APPROVED", "mergeable": "UNKNOWN",
+      "mergedAt": "2026-08-20T14:03:11Z",
+      "statusCheckRollup": [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+      "reviewRequests": []
+    },
+    {
+      "number": 301, "title": "Bump the CSV parser",
+      "headRefName": "chore-bump-csv-parser", "isDraft": false,
+      "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/301",
+      "state": "OPEN", "reviewDecision": "", "mergeable": "MERGEABLE", "mergedAt": null,
+      "statusCheckRollup": [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+      "reviewRequests": []
+    },
+    {
+      "number": 302, "title": "Tidy the seed data",
+      "headRefName": "eng-999-tidy-seeds", "isDraft": false,
+      "author": {"login": "teammate"}, "url": "https://example.invalid/example-org/app/pull/302",
+      "state": "OPEN", "reviewDecision": "", "mergeable": "MERGEABLE", "mergedAt": null,
+      "statusCheckRollup": [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+      "reviewRequests": [{"login": "me"}]
+    }
+  ]
+}

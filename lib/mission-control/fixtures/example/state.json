@@ -1,0 +1,125 @@
+{
+  "concurrency": 3,
+  "updated": "2026-08-25T09:00:00Z",
+  "last_tick": "2026-08-25T09:00:00Z",
+  "last_tick_epoch": 1787649600,
+  "health": {
+    "tracker": "ok",
+    "host": "ok",
+    "detail": "all ok"
+  },
+  "reconcile": {
+    "drift": [],
+    "standing": [
+      "board unchanged",
+      "inbox empty"
+    ]
+  },
+  "tickets": [
+    {
+      "ticket": "ENG-201",
+      "lane": "implement",
+      "cycle": "sprint",
+      "worker": "coder-eng201",
+      "phase_done": false,
+      "pr": "https://example.invalid/example-org/app/pull/201",
+      "repo": "app",
+      "branch": "eng-201-notification-mailer",
+      "blocked": false,
+      "ci": "pending",
+      "source": "fixture",
+      "desc": "Extract the notification mailer",
+      "updated": "2026-08-25T08:50:00Z"
+    },
+    {
+      "ticket": "ENG-202",
+      "lane": "in-review",
+      "cycle": "sprint",
+      "worker": null,
+      "phase_done": true,
+      "pr": "https://example.invalid/example-org/app/pull/202",
+      "repo": "app",
+      "branch": "eng-202-paginate-members",
+      "blocked": false,
+      "ci": "fail",
+      "ci_detail": "test",
+      "source": "fixture",
+      "desc": "Paginate the members index",
+      "updated": "2026-08-25T08:40:00Z"
+    },
+    {
+      "ticket": "ENG-203",
+      "lane": "ready-to-merge",
+      "cycle": "sprint",
+      "worker": null,
+      "phase_done": true,
+      "pr": "https://example.invalid/example-org/app/pull/203",
+      "branch": "eng-203-timezone-drift",
+      "blocked": false,
+      "ci": "frozen",
+      "source": "fixture",
+      "desc": "Fix timezone drift on scheduled reports",
+      "updated": "2026-08-25T08:45:00Z"
+    },
+    {
+      "ticket": "ENG-204",
+      "lane": "implement",
+      "cycle": "background",
+      "worker": null,
+      "phase_done": true,
+      "pr": null,
+      "repo": "app",
+      "branch": null,
+      "blocked": false,
+      "source": "fixture",
+      "desc": "Split the billing webhook handler",
+      "updated": "2026-08-24T17:00:00Z"
+    },
+    {
+      "ticket": "ENG-205",
+      "lane": "done",
+      "cycle": "sprint",
+      "worker": null,
+      "phase_done": true,
+      "pr": "https://example.invalid/example-org/app/pull/205",
+      "repo": "app",
+      "branch": "eng-205-cache-plan-table",
+      "blocked": false,
+      "ci": "ok",
+      "merged_at": "2026-08-20T14:03:11Z",
+      "source": "fixture",
+      "desc": "Cache the plan comparison table",
+      "updated": "2026-08-20T14:05:00Z"
+    },
+    {
+      "ticket": "ENG-206",
+      "lane": "in-review",
+      "cycle": "sprint",
+      "worker": null,
+      "phase_done": true,
+      "pr": null,
+      "repo": "app",
+      "branch": null,
+      "blocked": true,
+      "blocked_on": "product",
+      "question": "Waiting on a decision about retry limits",
+      "source": "fixture",
+      "desc": "Retry failed exports",
+      "updated": "2026-08-22T11:00:00Z"
+    },
+    {
+      "ticket": "ENG-207",
+      "lane": "refined",
+      "cycle": "backlog",
+      "worker": null,
+      "phase_done": false,
+      "pr": null,
+      "repo": "app",
+      "branch": null,
+      "blocked": false,
+      "source": "fixture",
+      "desc": "Parked raw backlog item",
+      "updated": "2026-08-18T10:00:00Z"
+    }
+  ]
+}

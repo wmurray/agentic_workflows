@@ -157,3 +157,45 @@ fold is a "call shape the implementation actually needs," not a feature cut.
   day one — v1 adapters (Jira, Linear) report both, but callers gate on `capabilities`, so
   a cycle-less fast-follow adapter (`github-projects`, `trello`) drops in with no contract
   change. See the per-op degrade rules above.
+
+---
+
+## The fixture adapters
+
+`tracker/fixture.sh` and `host/fixture.sh` answer every op from flat files instead of a
+provider (data shapes are documented at the top of each). They exist for two reasons.
+
+**They are the honesty test.** A second *real* provider is the ideal proof that the
+boundary is sufficient, but it needs an account, credentials, and a cycle model to map
+onto. The fixture adapter buys most of that proof for nothing: if an engine script needs
+anything the contract does not offer, it fails against fixtures. Writing Linear against a
+contract already proven sufficient beats discovering the leak mid-integration.
+
+**They are the safe harness.** `profiles/fixture.env` redirects every write target
+(`MC_STATE`, `MC_ARCHIVE`, `MC_LOCK`, `MC_CYCLE_MARKER`, the inbox and the sidecar flags)
+into the fixture dir, so the write scripts can be driven end-to-end without a single call
+reaching the real tracker, host, or board. `test/smoke.sh` stamps the live runtime files
+before the run and re-checks them after, so a script that escapes turns the run red.
+
+They also **simulate the cycle-less provider** that consequence A reserves the seam for:
+drop `cycles` from the fixture's capabilities file and the degrade branches in mc-archive,
+mc-inbound and mc-promote all execute — years before that adapter is written. `smoke.sh`
+runs that pass on every invocation.
+
+### What the fixture host settled
+
+The `list_prs` consumers derived `repo`/`number` by parsing the stored PR URL with a
+`github.com`-shaped grep. That was left as a known assumption "until a second host exists
+to design against" — the fixture host is that second host, and it broke the parse
+immediately. `mc-poll` now derives the slug host-agnostically (strip scheme+host, fold
+GitLab's `/-/`, drop the `/pull|pulls|merge_requests|pull-requests/N` segment).
+
+Two things fell out of doing it, both worth keeping in mind for the next host:
+
+- **The board's `repo` field is a BARE repo name, no owner.** It looks like the obvious
+  generic seam and it is not: preferring it over the URL turns every joined PR into a
+  miss. Verified against the live board, where it is also only populated on some rows.
+  The URL is the only place the full slug lives.
+- **A fixture that is more generous than reality proves nothing.** The first fixture board
+  carried a full `owner/repo` slug, which hid the bug above. It now carries a bare name,
+  matching the live board.
