@@ -16,6 +16,19 @@ lib/mission-control/   The mission-control engine — board detectors, single-wr
             adapters/CONTRACT.md; read those before changing anything in it.
 ```
 
+The engine is mid-migration from a machine-local setup into this repo. The design record
+and remaining build sequence live OUTSIDE the repo, in a maintainer-local file that cannot
+be committed here (it names internal values):
+
+```
+~/.claude/mission-control/EXTRACTION-SPEC.md    boundary map, adapter rationale, STATUS
+```
+
+Read it before continuing that migration — the repo alone does not explain the sequencing.
+If it is absent (a fresh clone on a new machine), the committed
+`lib/mission-control/adapters/CONTRACT.md` is the authoritative contract and the migration
+history is in the git log.
+
 ## Writing skills
 
 Every `SKILL.md` needs frontmatter:
