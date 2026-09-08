@@ -148,8 +148,8 @@ render() {
   # heartbeat-staleness check. Floats ABOVE everything: a blind or dead loop is the
   # most urgent thing to see. All fields optional — absent = healthy (defensive).
   #  • .health.{tracker,host}: "ok"|"auth"|"unreachable" (written by the loop from
-  #    mc-health.sh). Legacy provider-named keys are still read as a fallback — the
-  #    health-schema rename is owned by the vocab/doctrine pass, not this renderer.
+  #    mc-health.sh, which emits the "host" key). The provider-named legacy keys are still
+  #    read as a fallback so a board written by a pre-rename loop keeps rendering.
   #  • heartbeat: `.loop-heartbeat` sidecar (loop stamps unix secs every tick, lock-free);
   #    falls back to .last_tick_epoch in state for older loops
   local htr hhost hdetail

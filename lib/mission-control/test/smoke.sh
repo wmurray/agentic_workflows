@@ -130,6 +130,8 @@ says "mc-poll joins PRs to the host"      no  'host-miss'                "$_MC_L
 says "mc-poll reads tracker status"       no  'tracker-miss'             "$_MC_LIB/mc-poll.sh"
 says "mc-poll flags the regression"      yes  'REGRESSED'                "$_MC_LIB/mc-poll.sh"
 says "mc-poll names no provider"          no  '(?i)jira|github|gh-'      "$_MC_LIB/mc-poll.sh"
+says "mc-health emits the host key" yes  '"host":'                  "$_MC_LIB/mc-health.sh"
+says "mc-health names no provider"    no  '(?i)github|"github"'        "$_MC_LIB/mc-health.sh"
 says "mc-inbound finds the sprint tier"  yes  'sprint.*ENG-101|ENG-101' "$_MC_LIB/mc-inbound.sh"
 says "mc-inbound finds the bg tier"      yes  'ENG-102'                  "$_MC_LIB/mc-inbound.sh"
 says "mc-inbound skips the unvetted"      no  'ENG-103'                  "$_MC_LIB/mc-inbound.sh"

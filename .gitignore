@@ -12,6 +12,9 @@ commands/.write-test
 
 # Personal config (never commit)
 lib/mission-control/profiles/local.env
+# defensive: the driver overlay belongs in the runtime dir, never here
+lib/mission-control/profiles/local.loop-driver.md
+lib/mission-control/profiles/*.local.md
 settings.json
 settings.local.json
 settings.json.bak

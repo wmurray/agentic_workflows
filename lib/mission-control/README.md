@@ -14,6 +14,7 @@ so the repo and the running loop cannot diverge; git is the durable backup.
 ```
 mc-*.sh              the engine — detectors, the lock, the inbox drain
 dash.sh              the renderer (a pure function of state.json)
+loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
 adapters/
   CONTRACT.md        the two adapter contracts, and the decisions behind them
   dispatch.sh        sourced by every script: routes `tracker …` / `host …`
@@ -21,6 +22,7 @@ adapters/
   host/              github.sh · fixture.sh
 profiles/
   example.env        starter template — copy to local.env and fill in
+  example.loop-driver.md  starter profile OVERLAY for the driver doctrine
   fixture.env        points the engine at the file-backed adapters (committed)
   local.env          your real values (GITIGNORED)
 fixtures/example/    a board + tracker + host dataset the whole engine can run against
@@ -67,3 +69,27 @@ MC_PROFILE=profiles/fixture.env ./mc-poll.sh
 3. Symlink the scripts into your runtime directory, and keep the runtime data out of git.
 
 `local.env` is gitignored. This repo is public: no org value belongs in a committed file.
+
+## Doctrine: engine + overlay, read at runtime
+
+The autonomous driver reads prose, not config, so it splits the same way the scripts do:
+
+```
+loop-driver.engine.md                 the engine half — public, org-free (this repo)
+~/.claude/mission-control/
+  loop-driver.md      -> symlink to loop-driver.engine.md
+  profile.loop-driver.md              the org half — never committed
+```
+
+The driver reads the **overlay first, then the engine**, every tick. There is no build
+step: the overlay wins wherever the two name a status, repo, ticket-key shape, wrapper
+command, or policy window, exactly as `local.env` wins over `example.env` at runtime.
+
+The engine half names *roles* ("the status-sync wrapper", "the ticket-detail command") and
+uses placeholder keys (`ABC-1234`); the overlay binds each role to a real command. A
+missing overlay is a hard stop, not a degrade — a driver guessing its own status vocabulary
+is how a wrong outward write happens.
+
+Start from `profiles/example.loop-driver.md`, and put your copy in the **runtime** dir
+rather than here. It is the one config file with no reason to live in the repo at all: the
+driver reads it by absolute path, so there is no gitignore rule to get wrong.

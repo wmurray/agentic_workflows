@@ -18,9 +18,9 @@
 # The load-bearing distinction: AUTH (401 → a human must refresh the token) vs
 # UNREACHABLE (network / timeout → transient, retry). Conflating them cries wolf.
 #
-# Output: {"github":"ok|auth|unreachable","checked_at":"<iso>","detail":"..."}
-#   (the "github" key is retained for the current loop/dash consumers; genericizing the
-#    health schema to a provider-neutral "host" key is deferred to the vocab/doctrine pass.)
+# Output: {"host":"ok|auth|unreachable","checked_at":"<iso>","detail":"..."}
+#   (Renamed from the provider-named "github" key by the vocab/doctrine pass. The dash
+#    still reads .health.github as a fallback, so an in-flight board keeps rendering.)
 # Exit: 0 ok · 10 host AUTH (human action needed) · 11 host UNREACHABLE (transient)
 set -uo pipefail
 
@@ -54,18 +54,18 @@ _bounded() {
 detail=""
 _bounded 12 host whoami
 if [ "$B_TIMEOUT" -eq 1 ]; then
-  github=unreachable; detail="host: unreachable (probe timed out)"
+  hstate=unreachable; detail="host: unreachable (probe timed out)"
 elif [ "$B_RC" -eq 0 ]; then
-  github=ok;          detail="all ok"
+  hstate=ok;          detail="all ok"
 elif printf '%s' "$B_OUT" | grep -qiE '401|Bad credentials|authentication|auth login|requires authentication'; then
-  github=auth;        detail="host: auth (401/bad credentials)"
+  hstate=auth;        detail="host: auth (401/bad credentials)"
 else
-  github=unreachable; detail="host: unreachable ($(printf '%s' "$B_OUT" | head -1))"
+  hstate=unreachable; detail="host: unreachable ($(printf '%s' "$B_OUT" | head -1))"
 fi
 
-printf '{"github":"%s","checked_at":"%s","detail":"%s"}\n' "$github" "$now_iso" "$detail"
+printf '{"host":"%s","checked_at":"%s","detail":"%s"}\n' "$hstate" "$now_iso" "$detail"
 
-case "$github" in
+case "$hstate" in
   auth)        exit 10 ;;
   unreachable) exit 11 ;;
   *)           exit 0  ;;
