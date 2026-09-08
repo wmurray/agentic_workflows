@@ -32,8 +32,16 @@
 #   tracker capabilities
 set -uo pipefail
 
-_here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIX="${MC_FIXTURES:-$_here/fixtures/example}/tracker"
+# Default data dir. NB the TWO levels up: this file sits in adapters/tracker/, so one `..`
+# only reaches adapters/ — which is how the default silently pointed at a non-existent
+# adapters/fixtures/example and made every op return empty (reading as "nothing ready"
+# rather than "misconfigured").
+_here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+FIXROOT="${MC_FIXTURES:-$_here/fixtures/example}"
+FIX="$FIXROOT/tracker"
+# A missing data dir is a CONFIG error, not a degrade. The contract's "degrade, don't
+# fail" rule covers unsupported OPS; it must not paper over fixtures that aren't there.
+[ -d "$FIXROOT" ] || { echo "fixture(tracker): no fixture data dir at $FIXROOT (set MC_FIXTURES)" >&2; exit 2; }
 # Whose tickets `list_ready` returns — the fixture stand-in for `currentUser()`.
 ME="${MC_FIXTURE_ME:-me}"
 

@@ -11,6 +11,9 @@ agents/     Agent definitions — loaded from ~/.claude/agents/ as subagent_type
 skills/     Slash command definitions — one directory per skill, each with SKILL.md
 commands/   Daily/weekly/review workflow commands
 lib/        Shell helpers (workspace-context.sh, review-radar.sh, pr-bump.sh)
+lib/mission-control/   The mission-control engine — board detectors, single-writer lock,
+            dash renderer, and the tracker/PR-host adapter layer. Has its own README and
+            adapters/CONTRACT.md; read those before changing anything in it.
 ```
 
 ## Writing skills

@@ -105,6 +105,16 @@ run "host list_prs mine"          0 host list_prs example-org/app open mine
 run "host review_threads"         0 host review_threads example-org/app 202
 run "host whoami"                 0 host whoami
 
+# The fixture adapters' DEFAULT data dir, with MC_FIXTURES unset. Worth pinning: the
+# default is dead code in every normal run (the profile always sets MC_FIXTURES), so a
+# wrong path here rots unnoticed — and it did, resolving one level too high and returning
+# empty, which reads as "nothing ready" rather than "misconfigured".
+run "tracker default data dir"     0 env -u MC_FIXTURES "$_MC_LIB/adapters/tracker/fixture.sh" list_ready "Ready for Dev" in
+run "host default data dir"        0 env -u MC_FIXTURES "$_MC_LIB/adapters/host/fixture.sh" whoami
+says "tracker default finds rows" yes 'ENG-101' env -u MC_FIXTURES "$_MC_LIB/adapters/tracker/fixture.sh" list_ready "Ready for Dev" in
+# A missing data dir must be LOUD (exit 2), not an empty degrade.
+run "missing data dir errors"      2 env MC_FIXTURES=/nonexistent/mc-fixtures "$_MC_LIB/adapters/tracker/fixture.sh" list_ready "Ready for Dev" in
+
 # --- 4. the read-only detectors ------------------------------------------------------
 run "mc-health"                0,10,11 "$_MC_LIB/mc-health.sh"
 run "mc-poll"                    0,1   "$_MC_LIB/mc-poll.sh"
