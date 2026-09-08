@@ -100,6 +100,19 @@ Slash commands for recurring personal workflows. All write to an Obsidian (or co
 | `review-radar.sh`       | GraphQL query that finds PRs waiting on review, with working-day wait times. Used by `/review-radar`.                                      |
 | `pr-bump.sh`            | Records a PR nudge (stamps a comment + updates a local JSON log).                                                                          |
 
+### `lib/mission-control/`
+
+The mission-control engine: read-only board detectors, a single-writer lock, and a
+terminal dashboard, all driven off one `state.json`. Every tracker and PR-host call goes
+through an adapter, so no engine script names a provider — swapping Jira for another
+tracker means writing five ops, not editing the engine. Ships a Jira and a GitHub adapter
+plus file-backed **fixture** adapters, so `test/smoke.sh` runs the whole engine with no
+network, no credentials, and no live board.
+
+See [`lib/mission-control/README.md`](lib/mission-control/README.md) for the layout and
+setup, and [`adapters/CONTRACT.md`](lib/mission-control/adapters/CONTRACT.md) for the two
+adapter contracts.
+
 ---
 
 ## Setup
