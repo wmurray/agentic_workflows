@@ -32,3 +32,21 @@ unset _mc_profiles
 
 tracker() { "$MC_ADAPTERS/tracker/${MC_TRACKER:-jira}.sh" "$@"; }
 host()    { "$MC_ADAPTERS/host/${MC_HOST:-github}.sh"     "$@"; }
+
+# runner: where a WORKER runs (in-process subagent vs. a visible herdr pane). Unlike
+# tracker/host, the impl is chosen per call by (role, cycle) — see runner_for — so the
+# dispatcher takes the impl name first: `runner herdr spawn …`, `runner inprocess status …`.
+# A handle's first field after the name says which impl minted it (herdr handles carry a
+# tab id; inprocess handles carry the literal "inprocess"), so `runner_of <handle>` routes
+# status/wait/harvest/teardown without the caller remembering.
+runner()     { "$MC_ADAPTERS/runner/${1}.sh" "${@:2}"; }
+runner_for() { # runner_for <role> <cycle> → impl name from MC_RUNNER_<ROLE>[_<CYCLE>]
+  local role cycle v1 v2
+  role="$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"
+  cycle="$(printf '%s' "${2:-sprint}" | tr '[:lower:]-' '[:upper:]_')"
+  v1="MC_RUNNER_${role}_${cycle}"; v2="MC_RUNNER_${role}"
+  printf '%s\n' "${!v1:-${!v2:-inprocess}}"
+}
+runner_of()  { # runner_of <handle> → impl name that minted it
+  case "$(printf '%s' "$1" | cut -d'|' -f2)" in inprocess) echo inprocess ;; *) echo herdr ;; esac
+}

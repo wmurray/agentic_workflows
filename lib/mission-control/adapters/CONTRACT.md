@@ -117,6 +117,69 @@ classification — the adapter only supplies the probe.
 
 ---
 
+## Runner adapter — `runner <impl> <op> …`
+
+Where a **worker** (planner, coder, reviewer, investigator) runs. The other two seams
+answer "which provider"; this one answers "which process hosts the model that does the
+phase". Unlike tracker/host the impl is chosen **per call** by `(role, cycle)`, so the
+dispatcher takes the impl name first:
+
+```sh
+runner()     { "$MC_ADAPTERS/runner/${1}.sh" "${@:2}"; }
+runner_for() { …; }   # <role> <cycle> → impl from MC_RUNNER_<ROLE>_<CYCLE>, then MC_RUNNER_<ROLE>, else inprocess
+runner_of()  { …; }   # <handle> → the impl that minted it (for status/wait/harvest/teardown)
+```
+
+| Op | Args | Output | Notes |
+|---|---|---|---|
+| `spawn` | `<role> <ticket> <cwd> <brief-file> <result-file> [--reuse <handle>] [--model <m>]` | handle (opaque) | starts or re-prompts the worker. `cwd` MUST be the ticket's worktree, never the checkout it was cut from |
+| `status` | `<handle>` | `running` `idle` `done` `blocked` `gone` | replaces the teammate-list check on board refresh |
+| `wait` | `<handle> [timeout-ms]` | exit 0 when settled (not running); 2 on timeout | the loop runs this in the background |
+| `harvest` | `<handle>` | the worker's JSON result on stdout; empty if absent | reads `<result-file>` |
+| `teardown` | `<handle>` | — | releases the worker (closes the pane / drops the marker) |
+| `capabilities` | — | space-separated list | `reuse` (same session takes another prompt) · `visible` (operator can watch/intervene) · `answer` (supports the `answer` op) |
+| `answer` *(optional)* | `<handle> <key>…` | — | presses keys at a settled prompt; gated on `answer` in `capabilities` |
+| `peek` *(optional)* | `<handle> [lines]` | last lines of the worker's terminal | diagnostics only, never parsed for intent |
+
+**Result file is the canonical return for every runner.** Worker templates end with
+"write your final JSON to `{RESULT_PATH}`"; `harvest` is a file read. This also replaces
+the reaped-worker recovery (grepping subagent transcripts) with a plain `cat`.
+
+**Handle shape** is impl-private, but the second `|`-field is reserved: the literal
+`inprocess` for the in-process impl, a pane/tab id otherwise. `runner_of` keys on it.
+
+**`wait` must debounce.** Interactive hosts report transient idle/done between a main
+agent's subagent turns. An impl accepts a settled state only after it survives a settle
+window (`MC_HERDR_SETTLE_S`, default 20 s). A present, non-empty result file short-circuits.
+
+**In-process is asymmetric by design.** `inprocess.sh spawn` cannot launch anything: the
+orchestrating model makes the Agent call. The script names the worker, clears the result
+path, drops a spawn marker and prints the handle; the driver doctrine then says "make the
+Agent call with this name and brief". `status` is honest via marker+result, not process
+liveness. Documented so nobody expects the script to spawn.
+
+**Who answers prompts.** `answer` exists so the orchestrator can press through a prompt
+whose correct answer is already settled (profile, plan, or an operator decision). The
+adapter never decides that; it only presses. Destructive-git, secrets, and outward-facing
+prompts (post/push/merge) are escalated, not answered — see DESIGN.md.
+
+### Profile config
+| Var | Meaning | Consumer |
+|---|---|---|
+| `MC_RUNNER_<ROLE>[_<CYCLE>]` | impl per role, optionally per cycle (`PLANNER_SPRINT`, `PLANNER_BACKGROUND`, `CODER`, `REVIEWER`, `INVESTIGATOR`) | `runner_for` |
+| `MC_HERDR_WS_SPRINT` / `MC_HERDR_WS_BACKGROUND` | herdr workspace id per cycle | herdr.sh spawn |
+| `MC_HERDR_SETTLE_S` | debounce window for `wait` (default 20) | herdr.sh wait |
+| `MC_MODEL_<ROLE>` | model flag per role (e.g. `opus`) | herdr.sh spawn |
+| `MC_RUNNER_IDLE_TTL` / `MC_RUNNER_HOLD_TTL` | orphan-sweep thresholds (step 6, not yet consumed) | mc-orphans |
+
+### Board field (additive)
+```json
+"runner": { "impl": "herdr", "handle": "coder-abc-1234|ws1:t3|ws1:p7|/path/result.json", "result": "/path/result.json" }
+```
+Rows without it behave as today.
+
+---
+
 ## Decisions & deviations from the boundary-map
 
 The boundary-map enumerated **6 tracker ops** (`list_ready`, `status_of`, `assignee_of`,
