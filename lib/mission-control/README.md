@@ -22,7 +22,7 @@ adapters/
   host/              github.sh · fixture.sh
 profiles/
   example.env        starter template — copy to local.env and fill in
-  example.loop-driver.md  starter profile OVERLAY for the driver doctrine
+  example.profile.md  starter profile OVERLAY for both doctrine docs
   fixture.env        points the engine at the file-backed adapters (committed)
   local.env          your real values (GITIGNORED)
 fixtures/example/    a board + tracker + host dataset the whole engine can run against
@@ -72,24 +72,39 @@ MC_PROFILE=profiles/fixture.env ./mc-poll.sh
 
 ## Doctrine: engine + overlay, read at runtime
 
-The autonomous driver reads prose, not config, so it splits the same way the scripts do:
+Two agents read prose rather than config — the autonomous `/loop` driver and the manual
+`/mission-control` orchestrator. Both split the same way the scripts do:
 
 ```
-loop-driver.engine.md                 the engine half — public, org-free (this repo)
+lib/mission-control/loop-driver.engine.md   the loop's doctrine   — public, org-free
+skills/mission-control/SKILL.md             the manual playbook   — public, org-free
 ~/.claude/mission-control/
-  loop-driver.md      -> symlink to loop-driver.engine.md
-  profile.loop-driver.md              the org half — never committed
+  loop-driver.md          -> symlink to loop-driver.engine.md
+  profile.md                                the org half — never committed
+  profile.loop-driver.md  -> symlink to profile.md
+~/.claude/skills/mission-control/
+  SKILL.md                -> symlink to skills/mission-control/SKILL.md
 ```
 
-The driver reads the **overlay first, then the engine**, every tick. There is no build
-step: the overlay wins wherever the two name a status, repo, ticket-key shape, wrapper
-command, or policy window, exactly as `local.env` wins over `example.env` at runtime.
+**One overlay serves both.** They need the same org facts — statuses, repos, wrapper
+commands, vault paths — so two overlay files would drift, which is exactly what the
+one-copy-of-the-code model exists to prevent. The SKILL's extra needs (tracker field ids,
+CI recipes, the surfaces map) are additional sections in the same file.
 
-The engine half names *roles* ("the status-sync wrapper", "the ticket-detail command") and
-uses placeholder keys (`ABC-1234`); the overlay binds each role to a real command. A
-missing overlay is a hard stop, not a degrade — a driver guessing its own status vocabulary
-is how a wrong outward write happens.
+Each engine doc reads the **overlay first, then itself**. There is no build step: the
+overlay wins wherever the two name a status, repo, ticket-key shape, wrapper command, or
+policy window, exactly as `local.env` wins over `example.env` at runtime.
 
-Start from `profiles/example.loop-driver.md`, and put your copy in the **runtime** dir
-rather than here. It is the one config file with no reason to live in the repo at all: the
-driver reads it by absolute path, so there is no gitignore rule to get wrong.
+The engine halves name *roles* ("the status-sync wrapper", "the ticket-detail command") and
+use placeholder keys (`ABC-1234`); the overlay binds each role to a real command. A missing
+overlay is a hard stop, not a degrade — an agent guessing its own status vocabulary is how a
+wrong outward write happens.
+
+Start from `profiles/example.profile.md`, and put your copy in the **runtime** dir rather
+than here. It is the one config file with no reason to live in the repo at all: both docs
+read it by absolute path, so there is no gitignore rule to get wrong.
+
+**Not yet published:** `skills/mission-control/templates/` (the five worker-phase briefs
+the SKILL spawns) still live only in the runtime dir — they carry org values and are the
+edit target of in-flight runner-adapter work, so they are genericized in a later pass. The
+committed SKILL is complete doctrine but not yet a self-contained installable skill.
