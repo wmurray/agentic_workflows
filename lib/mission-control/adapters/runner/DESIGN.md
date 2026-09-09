@@ -213,7 +213,7 @@ files before catching itself. Every brief states the worktree path and says not 
 3. `runner/CONTRACT` section appended to `adapters/CONTRACT.md`; `dispatch.sh` gains `runner()`, `runner_for()`, `runner_of()`. (done 2026-09-09)
 4. `runner/inprocess.sh` + `runner/herdr.sh`; templates gain `{RESULT_PATH}`. (done 2026-09-09; herdr impl verified live: spawn→wait→harvest→teardown in 15 s on a trivial brief. Templates live in the skills tree, not this repo — footer appended there.)
 5. `profiles/example.env` gains the `MC_RUNNER_*` block; `local.env` filled in. (done 2026-09-09)
-6. `loop-driver.engine.md` edits (two places). `mc-poll` / `mc-orphans` read `runner`. Runner assertions added to `test/smoke.sh`. **Held until the extraction worker's pending engine-doc edits (`detail_of`, health-key rename) land** — same checkout, same branch.
+6. `loop-driver.engine.md` edits (two places). `mc-poll` / `mc-orphans` read `runner`. Runner assertions added to `test/smoke.sh`. (done 2026-09-09; smoke 70/70; adds `list` op, `MC_RUNNER_DIR`, and a "Runner seam" doctrine block that also carries the settled-prompt rule.) Built on branch `runner-adapter` in a separate worktree (`../agentic_workflows-wt-runner`) so the live loop (which reads the engine doc through a symlink into the main checkout) and the extraction worker's pending engine-doc edits are untouched until merge.
 7. One sprint ticket end to end under the loop with `CODER_SPAWN_LIVE` armed. Then unpause
    the loop for real.
 
@@ -228,6 +228,8 @@ reins *is* `hold`; `approve` releases. The interactive session shrinks rather th
 ## Console capability: answering settled prompts (added 2026-09-09)
 
 herdr sessions block on permission prompts (the runtime's ask-only destructive-git hook, plan approval, etc.). `herdr agent send-keys <name> <key>` answers them. Rule agreed with Will: the orchestrator answers a prompt itself when the right answer is already settled (by profile, plan, or prior decision) and logs what it pressed; it escalates prompts that are undecided, destructive git, secrets, or outward-facing (post/push/merge). Subagents inside the pane may retry the same action, so expect to answer twice and follow up with an `agent prompt` explaining the correct action. Do not weaken the hooks themselves; the adapter owns who answers, not what is asked.
+
+Settled-by-doctrine list (grows as decisions land): the lossless "revert two clean files → run spec → restore HEAD" red-proof pattern (verify the paths have no uncommitted changes first); a heredoc that merely mentions a git command; a scratch-worktree setup inside the worker's own scratchpad; the Gate 2 "push and open a DRAFT PR" offer (draft only: no reviewers, not ready). Never settled: mark ready, request reviewers, merge, anything touching secrets, or a restore whose target has uncommitted changes.
 
 ## Gotcha (f): cwd drift into the main checkout (2026-09-09)
 

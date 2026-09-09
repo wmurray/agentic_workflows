@@ -12,6 +12,7 @@
 #   wait <handle> [timeout-ms] → exit 0 once the result file exists; 2 on timeout
 #   harvest <handle>           → result-file JSON on stdout (empty if absent)
 #   teardown <handle>          → removes the marker (the subagent exits on its own)
+#   list                       → nothing (not enumerable from a script)
 #   capabilities               → "" (no reuse: each spawn is a fresh subagent; not visible)
 #
 # Handle = "<worker-name>|inprocess|<marker-file>|<result-file>".
@@ -25,9 +26,12 @@ set -euo pipefail
 op="${1:-}"; shift || true
 die() { echo "runner/inprocess: $*" >&2; exit 1; }
 
+# Paths in a handle may be relative; they resolve against MC_RUNNER_DIR (the profile's
+# result-file dir) so a board copied to another machine or a fixture dir still reads.
+_abs()     { case "$1" in /*|"") printf '%s' "$1" ;; *) printf '%s/%s' "${MC_RUNNER_DIR:-$PWD}" "$1" ;; esac; }
 h_name()   { printf '%s' "$1" | cut -d'|' -f1; }
-h_marker() { printf '%s' "$1" | cut -d'|' -f3; }
-h_result() { printf '%s' "$1" | cut -d'|' -f4; }
+h_marker() { _abs "$(printf '%s' "$1" | cut -d'|' -f3)"; }
+h_result() { _abs "$(printf '%s' "$1" | cut -d'|' -f4)"; }
 
 op_spawn() {
   local role="${1:?role}" ticket="${2:?ticket}" cwd="${3:?cwd}" brief="${4:?brief-file}" result="${5:?result-file}"
@@ -80,6 +84,7 @@ case "$op" in
   wait)         op_wait "$@" ;;
   harvest)      op_harvest "$@" ;;
   teardown)     op_teardown "$@" ;;
+  list)         : ;;   # in-process workers are not enumerable from a script; the driver's teammate list is
   capabilities) echo "" ;;
   *) die "unknown op: $op" ;;
 esac

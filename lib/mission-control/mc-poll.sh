@@ -43,7 +43,7 @@ STATUS_RANK="${MC_STATUS_RANK:-Backlog=0;To Do=1;In Progress=2;In Review=3;QA=4;
 FREEZE_RE="${MC_FREEZE_CHECK_PATTERN:-}"
 [ -f "$STATE" ] || { echo "no state at $STATE" >&2; exit 1; }
 
-# --- board rows: ticket\tlane\tpr\tblocked(0/1)\tworker\tphase_done(0/1) ---
+# --- board rows: ticket\tlane\tpr\tblocked(0/1)\tworker\tphase_done(0/1)\tcycle\trunner.impl\trunner.handle ---
 # Sentinel "-" for empty pr/worker: IFS=$'\t' read collapses consecutive tabs
 # (tab is whitespace), so empty middle fields would shift the columns.
 rows=$(jq -r '.tickets[]
@@ -51,11 +51,13 @@ rows=$(jq -r '.tickets[]
       (if .blocked==true then "1" else "0" end),
       (.worker // "-"),
       (if .phase_done==true then "1" else "0" end),
-      (.cycle // "-") ]
+      (.cycle // "-"),
+      (.runner.impl // "-"),
+      (.runner.handle // "-") ]
   | @tsv' "$STATE")
 
 active=""; parked=""; bgqueue=""; done_ids=""; regressed_ids=""
-while IFS=$'\t' read -r t lane pr blk wk pd cyc; do
+while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle; do
   [ -z "$t" ] && continue
   if [ "$lane" = "done" ]; then
     done_ids="$done_ids $t"
@@ -73,7 +75,7 @@ while IFS=$'\t' read -r t lane pr blk wk pd cyc; do
       parked="$parked $t"
     fi
   else
-    active="$active$t	$lane	$pr	$blk	$wk	$pd"$'\n'
+    active="$active$t	$lane	$pr	$blk	$wk	$pd	$rimpl	$rhandle"$'\n'
   fi
 done <<< "$rows"
 
@@ -147,7 +149,7 @@ done
 
 # --- active table ---
 printf '%-9s %-16s %-15s %-22s %-18s %-6s %-16s %-8s %-10s %s\n' TICKET LANE STATUS ASSIGNEE PR DRAFT REVIEW CI MERGED FLAGS
-while IFS=$'\t' read -r t lane pr blk wk pd; do
+while IFS=$'\t' read -r t lane pr blk wk pd rimpl rhandle; do
   [ -z "$t" ] && continue
   jstatus=$(jfield "$t" 2); [ -z "$jstatus" ] && jstatus="?(tracker-miss)"
   jassign=$(jfield "$t" 3); [ -z "$jassign" ] && jassign="-"
@@ -197,7 +199,20 @@ while IFS=$'\t' read -r t lane pr blk wk pd; do
     flags="${flags}⚠REGRESSED(status<lane) "
     regressed_ids="$regressed_ids $t($jstatus vs $lane)"
   fi
-  [ "$wk" != "-" ] && [ "$pd" != "1" ] && flags="${flags}●${wk} "
+  # A worker with a `runner` on the row gets its LIVE status from the runner adapter
+  # (`●coder@herdr:running`); the driver reads that instead of trusting the board's
+  # worker marker. `gone` is loud: the session is missing while the board says running.
+  # Rows without a runner render as before (`●coder`) — the in-process path the driver
+  # confirms against its own teammate list.
+  if [ "$wk" != "-" ] && [ "$pd" != "1" ]; then
+    if [ "$rimpl" != "-" ] && [ "$rhandle" != "-" ]; then
+      rst=$(runner "$rimpl" status "$rhandle" 2>/dev/null); [ -z "$rst" ] && rst="?"
+      flags="${flags}●${wk}@${rimpl}:${rst} "
+      [ "$rst" = "gone" ] && flags="${flags}⚠RUNNER-GONE "
+    else
+      flags="${flags}●${wk} "
+    fi
+  fi
   [ "$wk" != "-" ] && [ "$pd" = "1" ] && flags="${flags}${wk}✓ "
   [ -z "$flags" ] && flags="-"
   printf '%-9s %-16s %-15s %-22s %-18s %-6s %-16s %-8s %-10s %s\n' "$t" "$lane" "$jstatus" "$jassign" "$prcol" "$draft" "$review" "$ci" "$merged" "$flags"

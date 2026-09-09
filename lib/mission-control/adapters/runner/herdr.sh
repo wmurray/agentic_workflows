@@ -7,6 +7,7 @@
 #   wait <handle> [timeout-ms] → exit 0 when settled (not running); 2 on timeout
 #   harvest <handle>           → result-file JSON on stdout (empty if absent)
 #   teardown <handle>          → closes the tab
+#   list                       → "<name>\t<status>\t<tab_id>" per agent in the configured workspaces
 #   capabilities               → "reuse visible answer"
 #
 # Handle = "<agent-name>|<tab_id>|<pane_id>|<result-file>". Opaque to callers.
@@ -214,8 +215,26 @@ op_peek() {
   herdr agent read "$(h_name "$h")" --source visible 2>/dev/null | tail -n "$n" || true
 }
 
+# list: every agent this impl can see in the configured workspaces, "<name>\t<status>\t<tab_id>"
+# per line. mc-orphans subtracts the board's runner handles from this to find sessions
+# nothing is tracking. Read-only.
+op_list() {
+  local wss out
+  wss="$(printf '%s\n' ${MC_HERDR_WORKSPACE:-} ${MC_HERDR_WS_SPRINT:-} ${MC_HERDR_WS_BACKGROUND:-} | awk 'NF && !seen[$0]++' | paste -sd, -)"
+  [ -n "$wss" ] || return 0
+  out="$(hj agent list)"
+  python3 -c 'import json,sys
+wss=set(sys.argv[1].split(","))
+try:
+    for a in json.load(sys.stdin)["result"]["agents"]:
+        if a.get("workspace_id") in wss and a.get("name"):
+            print("\t".join([a["name"], a.get("agent_status","unknown"), a.get("tab_id","")]))
+except Exception: pass' "$wss" <<<"$out"
+}
+
 case "$op" in
   spawn)        op_spawn "$@" ;;
+  list)         op_list "$@" ;;
   status)       op_status "$@" ;;
   wait)         op_wait "$@" ;;
   harvest)      op_harvest "$@" ;;

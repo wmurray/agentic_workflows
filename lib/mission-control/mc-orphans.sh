@@ -67,3 +67,32 @@ if [ "$n" -eq 0 ]; then
 else
   printf 'orphan PRs (%s) — open, untracked, no ticket key — pull onto the board or merge on the host:\n%s\n' "$n" "$all"
 fi
+
+# --- orphan RUNNER sessions ---------------------------------------------------------
+# A worker session (see adapters/CONTRACT.md "Runner adapter") that no board row's
+# `runner.handle` points at, in any runner impl the profile routes a role to. Observed
+# 2026-09-08: an author session sitting at `done` in a workspace with nothing closing it.
+# Report only — teardown is the loop's (under its internal-write grant), never this script's.
+# Impls that cannot enumerate (in-process) print nothing from `list` and are skipped.
+impls=$(printf '%s\n' "${MC_RUNNER_PLANNER:-}" "${MC_RUNNER_PLANNER_SPRINT:-}" "${MC_RUNNER_PLANNER_BACKGROUND:-}" \
+                       "${MC_RUNNER_CODER:-}" "${MC_RUNNER_REVIEWER:-}" "${MC_RUNNER_INVESTIGATOR:-}" \
+        | awk 'NF && $0!="inprocess" && !seen[$0]++')
+if [ -n "$impls" ]; then
+  handles=$(jq -r '.tickets[] | select(.runner != null) | .runner.handle // empty | split("|")[0]' "$STATE" 2>/dev/null || true)
+  orph=""
+  for impl in $impls; do
+    [ -x "$MC_ADAPTERS/runner/$impl.sh" ] || continue
+    while IFS=$'\t' read -r name st tab; do
+      [ -z "$name" ] && continue
+      printf '%s\n' "$handles" | grep -qxF "$name" && continue
+      orph="$orph  $impl  $name  $st  $tab"$'\n'
+    done < <(runner "$impl" list 2>/dev/null)
+  done
+  orph="${orph%$'\n'}"
+  m=0; [ -n "$orph" ] && m=$(printf '%s\n' "$orph" | grep -c .)
+  if [ "$m" -eq 0 ]; then
+    echo "orphan runner sessions: none (every visible worker session is on the board)"
+  else
+    printf 'orphan runner sessions (%s) — impl · name · status · tab — no board row points at them; tear down or adopt:\n%s\n' "$m" "$orph"
+  fi
+fi

@@ -140,6 +140,7 @@ runner_of()  { …; }   # <handle> → the impl that minted it (for status/wait/
 | `capabilities` | — | space-separated list | `reuse` (same session takes another prompt) · `visible` (operator can watch/intervene) · `answer` (supports the `answer` op) |
 | `answer` *(optional)* | `<handle> <key>…` | — | presses keys at a settled prompt; gated on `answer` in `capabilities` |
 | `peek` *(optional)* | `<handle> [lines]` | last lines of the worker's terminal | diagnostics only, never parsed for intent |
+| `list` *(optional)* | — | `<name>\t<status>\t<location>` per worker session the impl can see | mc-orphans subtracts the board's handles to find untracked sessions; an impl that cannot enumerate prints nothing |
 
 **Result file is the canonical return for every runner.** Worker templates end with
 "write your final JSON to `{RESULT_PATH}`"; `harvest` is a file read. This also replaces
@@ -170,13 +171,14 @@ prompts (post/push/merge) are escalated, not answered — see DESIGN.md.
 | `MC_HERDR_WS_SPRINT` / `MC_HERDR_WS_BACKGROUND` | herdr workspace id per cycle | herdr.sh spawn |
 | `MC_HERDR_SETTLE_S` | debounce window for `wait` (default 20) | herdr.sh wait |
 | `MC_MODEL_<ROLE>` | model flag per role (e.g. `opus`) | herdr.sh spawn |
-| `MC_RUNNER_IDLE_TTL` / `MC_RUNNER_HOLD_TTL` | orphan-sweep thresholds (step 6, not yet consumed) | mc-orphans |
+| `MC_RUNNER_DIR` | where result files and in-process spawn markers live; relative handle paths resolve here | inprocess.sh, the driver |
+| `MC_RUNNER_IDLE_TTL` / `MC_RUNNER_HOLD_TTL` | orphan-sweep thresholds (reserved; the sweep today reports every untracked session) | mc-orphans |
 
 ### Board field (additive)
 ```json
 "runner": { "impl": "herdr", "handle": "coder-abc-1234|ws1:t3|ws1:p7|/path/result.json", "result": "/path/result.json" }
 ```
-Rows without it behave as today.
+Rows without it behave as today. `mc-poll` renders a runner-bearing worker as `●<role>@<impl>:<status>` (plus `⚠RUNNER-GONE` when the session is missing); `mc-orphans` lists sessions no row points at.
 
 ---
 

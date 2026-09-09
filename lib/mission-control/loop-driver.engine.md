@@ -284,7 +284,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      Write BOTH keys every reconcile pass (an empty array, not a missing key). Never put a held/quiet
      item in `drift`, and never bloat `standing` into a table echo — both are the 2026-07-01 fixes.
    - **WORKER-LIVENESS — check this FIRST, before lane drift (fixes the 2026-07-10 stall).** For every
-     ticket with `worker != null and phase_done == false`, confirm that worker against **`TaskList`** —
+     ticket with `worker != null and phase_done == false`, confirm that worker — against the `●role@impl:status`
+     column mc-poll prints when the row carries `runner` (see "Runner seam", Prep-write 4), else against **`TaskList`** —
      never trust the `state.json` `worker:` marker alone (it's exactly what goes stale when a finish
      signal is missed, and re-reporting "worker still running (bg)" off it is the bug). Running → leave
      it. **Idle/completed while the board still says running → it FINISHED and you missed the
@@ -537,7 +538,10 @@ Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you
    `type`** (`bug` \| `feature` \| `chore`, classified from the issue-type header in that detail — see the
    SKILL's `type` field; a Task/Story that reports a malfunction with a repro is a `bug`, a "Bug" that's
    really an enhancement is a `feature`). **`type` decides whether the investigator runs.**
-   - **Sprint tier — spawn the first pre-plan-review worker** as a background worker; record it on the row:
+   - **Sprint tier — spawn the first pre-plan-review worker** as a background worker; record it on the row.
+     **Where it runs is the runner seam's call** — `runner_for <role> <cycle>` (see "Runner seam" under
+     Prep-write 4); an `inprocess` answer is the Agent call described here, a `herdr` answer is
+     `runner herdr spawn …` with the same template as the brief. Either way, record `runner` on the row:
      - **`type:"bug"` with no `evidence` yet → spawn the `bug-investigator`** (agent type
        `bug-investigator`, template `$MC_SKILL_DIR/templates/bug-investigator.md` —
        absolute), NOT the planner. It reproduces + root-causes and returns a note path. Safe prep
@@ -677,17 +681,63 @@ Tighter than the overall 2–3 cap on purpose; a planner/reviewer may still use 
 4. Remove the `approve ABC-N` line from the inbox via the pinned wrapper:
    `mc-inbox-drain.sh "approve ABC-N"` (allow-listed — never an improvised in-place edit; see Prep-write 3
    step 4 for why a raw shell mutation trips the auto-mode bypass classifier).
-5. Coder slot free → spawn the **coder** (`run_in_background: true`) per the SKILL coder template for the
-   ticket's repo (the overlay's **repo → coder-template map** names the template and
-   worktree helper for each repo — see Worktree lifecycle), set `worker: "coder"`. No slot → leave lane
-   `implement` with no worker; Trigger B picks it up later.
+5. Coder slot free → spawn the **coder** per the SKILL coder template for the ticket's repo (the
+   overlay's **repo → coder-template map** names the template and worktree helper for each repo — see
+   Worktree lifecycle), set `worker: "coder"`. **Mechanism = the runner seam** (`runner_for coder <cycle>`,
+   below): `inprocess` → the Agent call with `run_in_background: true`; `herdr` → `runner herdr spawn`,
+   passing `--reuse <handle>` when the row already carries the planner's author session (one author
+   session per ticket: planner → coder → address rounds). Record `runner` on the row either way. No
+   slot → leave lane `implement` with no worker; Trigger B picks it up later.
 6. `mc-lock.sh release loop` BEFORE the multi-minute coder runs (NEVER hold the lock across a worker).
 
 **Trigger B — `implement` lane, no worker (`●` absent), ARMED, coder slot free:** spawn the coder as
 in A5. This catches an approved-but-uncoded ticket, or one that waited on the ≤1-coder cap.
 
+**Runner seam — WHERE a worker runs (planner / investigator / coder / reviewer).** Every spawn above
+goes through `adapters/dispatch.sh`'s third dispatcher (contract: `adapters/CONTRACT.md` "Runner adapter"):
+
+1. **Select:** `impl=$(runner_for <role> <cycle>)` — from the profile's `MC_RUNNER_<ROLE>[_<CYCLE>]`;
+   unset → `inprocess`, which is exactly the behavior documented in this file. Reviewers are ALWAYS
+   fresh (never `--reuse`), whatever impl they run on.
+2. **Spawn:** write the filled template to a brief file; pick a result path under `MC_RUNNER_DIR`
+   (`<key-lower>-<role>[-rN].json`); then
+   - `inprocess` → `handle=$(runner inprocess spawn <role> <KEY> <worktree> <brief> <result>)` prints
+     the worker name to use, and **you make the Agent call yourself** (the script cannot). Name the
+     teammate exactly that handle's first field.
+   - `herdr` → `handle=$(runner herdr spawn <role> <KEY> <worktree> <brief> <result> [--reuse <prev>])`
+     starts (or re-prompts) a visible pane. **`<worktree>` is the ticket's worktree, never the checkout
+     it was cut from** — a pane started at the repo root did its work in the main checkout (2026-09-09).
+     Env files are NOT copied in by anyone but the operator; if the brief needs one, flag it.
+   - Lock-wrapped either way: acquire → set `worker`, `runner:{impl,handle,result}` → release BEFORE
+     the worker runs.
+3. **Detect + harvest (replaces the teammate-list / `idle_notification` path for runner-bearing rows):**
+   arm `runner <impl> wait <handle>` in the background (it debounces: interactive hosts flash idle
+   between a worker's own subagent turns); when it returns, `runner <impl> harvest <handle>` is the
+   worker's structured JSON — the **result file is the canonical return**; a pane read is diagnostics
+   only (ghost-text prompt suggestions appear in pane reads; never infer intent from them). Empty
+   harvest + `status` = `gone` → died-mid-run handling below, attributed neutrally. `mc-poll` renders a
+   runner-bearing worker as `●<role>@<impl>:<status>` and adds `⚠RUNNER-GONE` when the session is
+   missing — read that column in step 2's worker-liveness pass instead of `TaskList` for those rows.
+   Rows WITHOUT `runner` keep the `TaskList`/`idle_notification`/disk-fallback path exactly as written.
+4. **Blocked = a prompt is up.** `status` = `blocked` means the worker is waiting on a permission or
+   approval dialog. If the correct answer is already SETTLED (by this doctrine, the approved plan, or
+   an operator decision — e.g. the lossless "revert two clean files → run spec → restore HEAD" red-proof
+   pattern, a heredoc that merely mentions a git verb, the Gate 2 "push and open a DRAFT PR" offer),
+   answer it: `runner <impl> answer <handle> <key…>` and log what you pressed. If it is NOT settled
+   (mark ready, request reviewers, merge, anything touching secrets, a restore whose target has
+   uncommitted changes), leave it blocked and surface it as a `question`. Answering is the
+   orchestrator's judgment; the adapter only presses. Expect a subagent inside the pane to retry the
+   same action once — answer again, then `runner <impl> spawn --reuse` a one-line explanation so it
+   stops.
+5. **Teardown:** `runner <impl> teardown <handle>` when the row reaches Gate 2 with a draft PR and a
+   review `pass`, on abandon, and on died-mid-run once the result is recovered or given up on. The
+   worktree stays for Gate 2 inspection; only the session goes. `mc-orphans` lists sessions no row
+   points at — tear those down under the internal-write grant, never silently.
+
 **⚠ Worker completion DETECTION — how you know a background worker finished (coder / reviewer /
-planner / bug-investigator). This fixes the 2026-07-10 stall; read it before the routing rules.**
+planner / bug-investigator). This fixes the 2026-07-10 stall; read it before the routing rules.
+(For a row that carries `runner`, the Runner seam above is the detection path; what follows is the
+in-process path.)**
 A background worker is a NAMED teammate. **Always spawn it with a name that embeds the ticket +
 phase** (e.g. `coder-abc2011`, `reviewer-abc2009-r2`) so an `idle_notification` `from` / a `TaskList`
 entry maps unambiguously back to a board ticket (the board `worker` field is only a role label —

@@ -29,7 +29,12 @@
       "ci": "pending",
       "source": "fixture",
       "desc": "Extract the notification mailer",
-      "updated": "2026-08-25T08:50:00Z"
+      "updated": "2026-08-25T08:50:00Z",
+      "runner": {
+        "impl": "inprocess",
+        "handle": "coder-eng-201|inprocess|coder-eng-201.spawned|coder-eng-201.json",
+        "result": "coder-eng-201.json"
+      }
     },
     {
       "ticket": "ENG-202",

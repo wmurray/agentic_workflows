@@ -105,6 +105,28 @@ run "host list_prs mine"          0 host list_prs example-org/app open mine
 run "host review_threads"         0 host review_threads example-org/app 202
 run "host whoami"                 0 host whoami
 
+# Runner seam: selection resolves from the profile; the in-process impl round-trips a
+# spawn → status → result → harvest → teardown against the temp dir; the herdr impl is
+# only asked what it can answer without a pane (capabilities, a gone handle).
+run  "runner_for resolves"           0 bash -c '. "$0"; [ "$(runner_for coder sprint)" = inprocess ]' "$_MC_LIB/adapters/dispatch.sh"
+run  "runner_for per-cycle override" 0 bash -c '. "$0"; MC_RUNNER_PLANNER_SPRINT=herdr MC_RUNNER_PLANNER=inprocess; [ "$(runner_for planner sprint)" = herdr ] && [ "$(runner_for planner background)" = inprocess ]' "$_MC_LIB/adapters/dispatch.sh"
+run  "runner_of routes handles"      0 bash -c '. "$0"; [ "$(runner_of "x|inprocess|m|r")" = inprocess ] && [ "$(runner_of "x|ws1:t2|ws1:p2|r")" = herdr ]' "$_MC_LIB/adapters/dispatch.sh"
+run  "runner inprocess capabilities" 0 runner inprocess capabilities
+printf 'smoke brief\n' > "$WORK/runner/brief.md"
+RH="$(runner inprocess spawn coder ENG-901 "$WORK" "$WORK/runner/brief.md" "$WORK/runner/eng-901.json")"
+says "inprocess spawn mints a handle"  yes '^coder-eng-901\|inprocess\|' printf '%s' "$RH"
+says "inprocess status running"        yes '^running$' runner inprocess status "$RH"
+run  "inprocess wait times out (2)"    2 runner inprocess wait "$RH" 1000
+printf '{"verdict":"pass"}' > "$WORK/runner/eng-901.json"
+says "inprocess status done"           yes '^done$'    runner inprocess status "$RH"
+run  "inprocess wait returns"          0 runner inprocess wait "$RH"
+says "inprocess harvest returns JSON"  yes 'verdict'   runner inprocess harvest "$RH"
+run  "inprocess teardown"              0 runner inprocess teardown "$RH"
+says "inprocess list is empty"         no  '.'         runner inprocess list
+run  "runner herdr capabilities"       0 "$_MC_LIB/adapters/runner/herdr.sh" capabilities
+says "herdr status gone for unknown"   yes '^gone$'    "$_MC_LIB/adapters/runner/herdr.sh" status 'nosuch|x|y|'
+run  "herdr spawn refuses w/o workspace" 1 env -u MC_HERDR_WS_SPRINT -u MC_HERDR_WORKSPACE "$_MC_LIB/adapters/runner/herdr.sh" spawn coder ENG-902 "$WORK" "$WORK/runner/brief.md" "$WORK/runner/x.json"
+
 # The fixture adapters' DEFAULT data dir, with MC_FIXTURES unset. Worth pinning: the
 # default is dead code in every normal run (the profile always sets MC_FIXTURES), so a
 # wrong path here rots unnoticed — and it did, resolving one level too high and returning
@@ -130,6 +152,8 @@ says "mc-poll joins PRs to the host"      no  'host-miss'                "$_MC_L
 says "mc-poll reads tracker status"       no  'tracker-miss'             "$_MC_LIB/mc-poll.sh"
 says "mc-poll flags the regression"      yes  'REGRESSED'                "$_MC_LIB/mc-poll.sh"
 says "mc-poll names no provider"          no  '(?i)jira|github|gh-'      "$_MC_LIB/mc-poll.sh"
+says "mc-poll shows runner live status"  yes  '●coder[^ ]*@inprocess:running'  "$_MC_LIB/mc-poll.sh"
+says "mc-orphans sweeps runner sessions" yes  'orphan runner sessions'    env MC_RUNNER_CODER=herdr MC_HERDR_WS_SPRINT= "$_MC_LIB/mc-orphans.sh"
 says "mc-health emits the host key" yes  '"host":'                  "$_MC_LIB/mc-health.sh"
 says "mc-health names no provider"    no  '(?i)github|"github"'        "$_MC_LIB/mc-health.sh"
 says "mc-inbound finds the sprint tier"  yes  'sprint.*ENG-101|ENG-101' "$_MC_LIB/mc-inbound.sh"
