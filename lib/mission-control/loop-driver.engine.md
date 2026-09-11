@@ -110,8 +110,9 @@ The FIVE internal writes you hold today:
    is the operator's explicit Gate-2 decision, so draining it is carrying out a human choice, not making
    one. Preconditions, all checked from the poller row: the ticket is on the board with a `pr`, and the
    PR is open and still a draft. If any fails, read-but-leave the line and FLAG (`⛔ ready <KEY>: <why>`).
-   Otherwise, lock-wrapped: run the overlay's **request-review wrapper** `<owner/repo> <pr#>`
-   (add `--outside-sprint` when the row's `cycle` is not `"sprint"`); on exit 0 set the lane to
+   Otherwise, lock-wrapped: run the overlay's **request-review wrapper** `<owner/repo> <pr#>` **BARE**
+   (alone in the Bash call: no `2>&1`, no `;`, no `&&`, no echo of `$?`; a compound misses the allow-prefix and
+   the classifier denies it; add `--outside-sprint` when the row's `cycle` is not `"sprint"`); on exit 0 set the lane to
    `in-review`, run the status-sync wrapper `<KEY> in-review` (tracker → Code Review), and remove the
    `ready` line. CI state is NOT a precondition: the operator has seen the PR; if CI is red, do it and
    say so in the tick line. Reviewer team comes from the overlay's default; the loop never picks one.
