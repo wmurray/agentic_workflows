@@ -323,7 +323,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - **`CLEAN`** → clear to advance to `ready-to-merge`.
      `ready-to-merge` but poller shows `re-review`/`ci=fail` → demote to `in-review` (stale);
      `ready-to-merge` but poller shows `re-review`/`ci=fail` → demote to `in-review` (stale);
-     write the polled `ci`/`ci_detail` so the dash renders without polling; refresh the `reconcile`
+     write the polled `ci`/`ci_detail` so the dash renders without polling (`ci_detail` = the failing
+     check's short name ONLY, e.g. `feature flag manifest`; no prose, no colons: the dash prints its first
+     18 characters after a `✗:`); refresh the `reconcile`
      field. Honor the catch-rules below + in step 3 when interpreting (they're your guardrails —
      a misread that advances a lane is the one way this bites, and it's board-only/reversible).
    - **BOARD-INTERNAL — cycle promotion (`background` → `sprint`):** **only if** the board has any
