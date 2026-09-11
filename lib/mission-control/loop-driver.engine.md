@@ -101,9 +101,20 @@ The FIVE internal writes you hold today:
    whose entire effect is a `state.json` annotation: `hold ABC-N: <reason>` (sets `blocked: true` +
    `question`), `note ABC-N: <text>` (sets `question`/`result`, no lane change), and `unblock ABC-N` (sets
    `blocked: false`, clears `blocked_on` + the block `question`, no lane change). Every OTHER inbox
-   verb (`approve`/`ready`/`merge`/`qa`/`plan`/`changes`) triggers an OUTWARD action or an agent spawn
-   — you still **read-but-leave** those in the queue and propose. This is the only case where you may
-   write the inbox file, and only to remove a `note`/`hold`/`unblock` line you just applied.
+   verb (`approve`/`merge`/`qa`/`plan`/`changes`) triggers an OUTWARD action or an agent spawn
+   — you still **read-but-leave** those in the queue and propose. `ready` is the exception: see
+   **Inbox verb `ready`** below. Otherwise this is the only case where you may write the inbox file,
+   and only to remove a `note`/`hold`/`unblock` line you just applied.
+
+5b. **Inbox verb `ready` → Gate 2 executed on the operator's word (2026-09-11 rung).** `mc ready <KEY>`
+   is the operator's explicit Gate-2 decision, so draining it is carrying out a human choice, not making
+   one. Preconditions, all checked from the poller row: the ticket is on the board with a `pr`, and the
+   PR is open and still a draft. If any fails, read-but-leave the line and FLAG (`⛔ ready <KEY>: <why>`).
+   Otherwise, lock-wrapped: run the overlay's **request-review wrapper** `<owner/repo> <pr#>`
+   (add `--outside-sprint` when the row's `cycle` is not `"sprint"`); on exit 0 set the lane to
+   `in-review`, run the status-sync wrapper `<KEY> in-review` (tracker → Code Review), and remove the
+   `ready` line. CI state is NOT a precondition: the operator has seen the PR; if CI is red, do it and
+   say so in the tick line. Reviewer team comes from the overlay's default; the loop never picks one.
 
 Plus the earned OUTWARD writes:
 6. **tracker status SYNC → mirror the board lane** (2026-07-01 rung) — when a ticket's tracker status lags its
@@ -141,9 +152,9 @@ coder-spawn, if a write would touch tracker fields / other host writes / merge, 
   *(The `reconcile`-field ban from Step 2 is now LIFTED — writing it is a board-internal reconcile
   write, lock-wrapped, so it no longer races the manual session.)*
   **Inbox exception (the one narrow write):** you MAY drain — apply then remove — a `note`/`hold`/`unblock`
-  line (board-only annotations). You may NOT touch any other inbox verb (`approve`/`ready`/`merge`/
-  `qa`/`plan`/`changes`): read-but-leave those, and propose. Writing the inbox for anything but a
-  `note`/`hold`/`unblock` drain is a breach.
+  line (board-only annotations), and a `ready` line once its Gate-2 action has run (step 5b). You may
+  NOT touch any other inbox verb (`approve`/`merge`/`qa`/`plan`/`changes`): read-but-leave those, and
+  propose. Writing the inbox for anything but a `note`/`hold`/`unblock`/`ready` drain is a breach.
 - **Report, don't write — for everything outside your five internal writes.** Outward proposals
   and flags go to YOUR pane as terse lines, never into a file. **Never narrate a lane change as if YOU
   made it** *unless you actually made it via one of your internal writes (ingest / triage / reconcile).*
@@ -796,8 +807,10 @@ against `TaskList`; that marker is exactly what goes stale when a finish signal 
   re-acquire on completion to write results). On a coder/worktree failure, `mc-orphans.sh` + the
   per-step-commit contract bound the mess — flag it, never silently clean up.
 
-**Gate 2 and beyond stay UNCHANGED and human:** draft PR parks; the operator pulls difit / `mc ready`; merge is
-`mc merge` only. The loop readies nothing, requests no review, merges nothing.
+**Gate 2 stays a human decision; its execution is granted.** The draft PR parks until the operator reads it
+and queues `mc ready`; the loop then runs the request-review wrapper (draft → ready, default reviewer team,
+tracker → Code Review) per step 5b. It never readies a PR on its own judgment. Merge is `mc merge` only and
+stays FLAG-only.
 
 **The wall (memorize):** you may write **`state.json` (lanes / `ci` / `reconcile`) and internal
 plan/triage docs** — via the two prep segments (**`refined` → `plan-review`** ingest; **`in-review`
@@ -810,8 +823,9 @@ SYNC** (the **status-sync wrapper** `<KEY> <lane>`, mirroring a board lane onto 
 excludes `qa`/`product-review`/`done`; a **colleague**-held ticket → FLAG, never reassign) — and, **ONLY
 while `CODER_SPAWN_LIVE` is armed**, the **coder-spawn** path (Prep-write 4: drain `approve` → coder →
 bounded review → draft PR, parking at Gate 2, plus draining the `approve` line). That is the whole
-grant. The instant a write would touch the **OUTWARD** world beyond those — `gh pr ready`/request-review/
-comment/resolve, a tracker **field** write, reassigning a **colleague**-held ticket, a `qa`/`done`
+grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
+then lane `in-review` + status-sync). The instant a write would touch the **OUTWARD** world beyond those —
+an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write, reassigning a **colleague**-held ticket, a `qa`/`done`
 transition, a **merge**, or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
 STOP. That's a contract breach; flag it instead.
 
@@ -911,7 +925,7 @@ first**: build shipped OFF; the operator arms it (`mc coder on`) and watches one
 cycle before trusting it unattended; `mc coder off` reverts to propose-only next tick. It's bounded by a
 Gate-1-approved plan (the operator's decision), the mandatory review, the ≤1-coder cap, and Gate 2 (nothing
 readies/merges without the operator). **Still FLAG-only after this rung** (ungranted): the tracker **field** writes,
-all `gh` outward (ready/review/comment/resolve/merge), `qa`/`done` transitions, pushing an approved
+all `gh` outward except the queued-`ready` drain (comment/resolve/merge), `qa`/`done` transitions, pushing an approved
 review fix, and >1 concurrent coder. **Next: soak assignee-fix + the supervised coder-spawn arm clean,
 then consider widening the coder cap to 2 and draining more outward verbs.** Shared prerequisites (all BUILT):
 - **Single-writer lock — BUILT + NOW IN USE (`$MC_HOME/mc-lock.sh`).** Both prep
