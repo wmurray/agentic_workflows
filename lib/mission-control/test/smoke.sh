@@ -127,8 +127,14 @@ says "inprocess harvest returns JSON"  yes 'verdict'   runner inprocess harvest 
 run  "inprocess teardown"              0 runner inprocess teardown "$RH"
 says "inprocess list is empty"         no  '.'         runner inprocess list
 run  "runner herdr capabilities"       0 "$_MC_LIB/adapters/runner/herdr.sh" capabilities
-says "herdr status gone for unknown"   yes '^gone$'    "$_MC_LIB/adapters/runner/herdr.sh" status 'nosuch|x|y|'
-run  "herdr spawn refuses w/o workspace" 1 env -u MC_HERDR_WS_SPRINT -u MC_HERDR_WORKSPACE "$_MC_LIB/adapters/runner/herdr.sh" spawn coder ENG-902 "$WORK" "$WORK/runner/brief.md" "$WORK/runner/x.json"
+# herdr is an OPTIONAL runner: the engine defaults every role to inprocess and only this
+# adapter needs the CLI. Its live-ish ops are exercised only where the CLI exists.
+if command -v herdr >/dev/null 2>&1; then
+  says "herdr status gone for unknown"   yes '^gone$'    "$_MC_LIB/adapters/runner/herdr.sh" status 'nosuch|x|y|'
+  run  "herdr spawn refuses w/o workspace" 1 env -u MC_HERDR_WS_SPRINT -u MC_HERDR_WORKSPACE "$_MC_LIB/adapters/runner/herdr.sh" spawn coder ENG-902 "$WORK" "$WORK/runner/brief.md" "$WORK/runner/x.json"
+else
+  dim "  SKIP  herdr CLI not installed — status/spawn assertions skipped (capabilities still checked)"
+fi
 
 # The fixture adapters' DEFAULT data dir, with MC_FIXTURES unset. Worth pinning: the
 # default is dead code in every normal run (the profile always sets MC_FIXTURES), so a

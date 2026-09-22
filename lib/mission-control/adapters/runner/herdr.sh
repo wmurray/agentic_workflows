@@ -24,6 +24,9 @@ op="${1:-}"; shift || true
 
 die() { echo "runner/herdr: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
+# `capabilities` is static metadata the engine reads to decide whether to use this impl at
+# all, so it must answer on a machine without the CLI. Every other op shells out.
+[ "$op" = capabilities ] && { echo "reuse visible answer"; exit 0; }
 need herdr; need python3
 
 # --- handle helpers -------------------------------------------------------------------
