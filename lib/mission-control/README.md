@@ -17,6 +17,9 @@ dash.sh              the renderer (a pure function of state.json)
 loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
 adapters/
   CONTRACT.md        the two adapter contracts, and the decisions behind them
+  mc                 the operator's shell function: inbox verbs (approve/ready/merge…), pause,
+                     the coder arm switch, the loop guard, dash/health shortcuts. Source it from
+                     your shell rc; every doc's `mc …` refers to it.
   dispatch.sh        sourced by every script: routes `tracker …` / `host …`
   tracker/           jira.sh · fixture.sh
   host/              github.sh · fixture.sh
@@ -61,6 +64,10 @@ MC_PROFILE=profiles/fixture.env ./mc-poll.sh
 ```
 
 ## Setting it up for your own org
+
+Source `lib/mission-control/mc` from your shell rc (or symlink it into a functions dir your
+rc already loads). It reads `MC_INBOX`, `MC_PAUSE_FILE`, `MC_CODER_FILE`, `MC_GUARD_SCRIPT` and
+friends, all defaulting to `~/.claude/mission-control/`.
 
 1. `cp profiles/example.env profiles/local.env` and fill it in. Every value is
    `${VAR:-default}`, so an explicit environment variable always wins.
