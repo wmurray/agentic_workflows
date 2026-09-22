@@ -10,7 +10,7 @@
 #   mc merge ABC-1234             # authorize the merge -> orchestrator runs gh pr merge
 #                                #   (only after APPROVED + CI green + mergeable) + post-merge flow
 #   mc qa ABC-1234                # alpha smoke passed -> hand to QA (writes Testing notes,
-#                                #   moves the tracker to QA Review, lane -> qa)
+#                                #   moves the tracker to its QA status, lane -> qa)
 #   mc changes ABC-1234: <note>    # send back with a note
 #   mc plan ABC-1234               # pull a refined backlog ticket into planning
 #   mc hold ABC-1234: <reason>      # park (blocked) until cleared
@@ -180,7 +180,7 @@ CONTROL VERBS (queued → orchestrator acts)
     ready   ABC-X            Gate 2: mark the draft PR ready for review
     merge   ABC-X            authorize the merge → orchestrator runs merge.sh (APPROVED+green+
                             mergeable checks) + post-merge flow
-    qa      ABC-X            alpha smoke passed → hand to QA (Testing notes + the tracker QA Review)
+    qa      ABC-X            alpha smoke passed → hand to QA (testing notes + the tracker QA status)
     changes ABC-X: <note>    work an OPEN PR's review comments → kickback + triage flow
     plan    ABC-X            pull a refined backlog ticket into planning → spawn planner
 
