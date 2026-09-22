@@ -64,6 +64,10 @@ compound) so the permission allow-prefix matches.
 | done-transition wrapper | `~/.claude/lib/pipeline/done-transition.sh` — **manual only, never the loop's** |
 | ticket-detail command | `<your tracker CLI> issue view <KEY> --plain` |
 
+Every wrapper marked **manual only** should call `$MC_HOME/mc-guard.sh check <name>` as its
+first statement, so it refuses (exit 4) while the loop holds the writer lock. `mc guard
+off|on|status` toggles that for testing.
+
 > The engine reads ticket detail through `tracker detail_of <KEY>`. The raw command is
 > still listed because worker briefs receive it as `{TICKET_DETAIL_CMD}` — a worker has no
 > `tracker` dispatcher in scope.

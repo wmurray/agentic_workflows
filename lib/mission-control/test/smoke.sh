@@ -34,7 +34,7 @@ dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/.loop-heartbeat" "$LIVE/mc-inbox"
-  "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE"
+  "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF"
 )
 _stamp() {
   local f
@@ -181,6 +181,22 @@ says "review-check clean on approved"     no  'NEEDS-TRIAGE'             "$_MC_L
 # --- 5. the write path, against the temp board only ---------------------------------
 run "mc-lock acquire"              0,1 "$_MC_LIB/mc-lock.sh" acquire loop
 run "mc-lock release"              0,1 "$_MC_LIB/mc-lock.sh" release loop
+
+# --- loop guard: manual-only wrappers refuse while the loop holds the writer lock -----
+G="$_MC_LIB/mc-guard.sh"; GL="$WORK/guard.lock"; GO="$WORK/guard.off"
+run  "guard allows on a free lock"          0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+printf 'loop\t%s\n' "$(date +%s)" > "$GL"
+run  "guard REFUSES under a live loop lock" 4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+says "guard names the wrapper + holder"     yes "REFUSED.*merge.*'loop'" env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+run  "guard one-shot override (env)"        0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" MC_LOOP_GUARD=off "$G" check merge
+run  "guard marker override (mc guard off)" 0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" off
+run  "guard allows while marker present"    0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+says "guard says it is off, never silent"   yes 'guard is OFF' env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+run  "guard re-armed (mc guard on)"         0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" on
+printf 'loop\t%s\n' "$(( $(date +%s) - 100000 ))" > "$GL"
+run  "guard allows on a STALE loop lock"    0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+printf 'manual\t%s\n' "$(date +%s)" > "$GL"
+run  "guard allows a manual holder"         0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 printf 'ENG-999 a scratch inbox line\n' > "$WORK/mc-inbox"
 run "mc-inbox-drain"             0,1,2 "$_MC_LIB/mc-inbox-drain.sh" ENG-999
 
