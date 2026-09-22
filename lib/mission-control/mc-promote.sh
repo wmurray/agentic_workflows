@@ -32,7 +32,7 @@
 #       → the caller's state write should flip cycle:"sprint" in the same edit;
 #       exit 3 = no change needed (already consistent, or legitimately out of cycle);
 #       exit 4 = cycle:"sprint" ticket has LEFT the active cycle → do NOT demote, flag
-#       to Will. Read-only in every mode.
+#       to the operator. Read-only in every mode.
 #   MC_STATE=/path/to/state.json ~/.claude/mission-control/mc-promote.sh
 set -uo pipefail
 
@@ -64,7 +64,7 @@ if [ "${1:-}" = "--key" ]; then
     exit 0
   else
     if [ "$cur" = "sprint" ]; then
-      printf '%s: cycle:"sprint" but NO LONGER in the active cycle — do NOT demote; flag to Will\n' "$key"
+      printf '%s: cycle:"sprint" but NO LONGER in the active cycle — do NOT demote; flag to the operator\n' "$key"
       exit 4
     fi
     printf '%s: cycle consistent (%s, not in active cycle) — no change\n' "$key" "$cur"

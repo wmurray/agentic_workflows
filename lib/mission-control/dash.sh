@@ -107,7 +107,7 @@ render() {
   cap=$(jq -r '.concurrency // 3' "$STATE")
   active=$(jq '[.tickets[] | select(.worker != null and (.phase_done | not))] | length' "$STATE")
 
-  # "Needs you" = any state where the ball is in Will's court: an explicit
+  # "Needs you" = any state where the ball is in the operator's court: an explicit
   # block, OR sitting in a gate lane (plan-review = Gate 1, awaiting-review =
   # Gate 2), OR the escape-hatch lane. This is separate from the pipeline lane —
   # a ticket can be mid-pipeline and still be the human's turn.
