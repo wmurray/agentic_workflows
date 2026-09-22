@@ -86,9 +86,10 @@ A manual-only wrapper calls `mc-guard.sh check <name>` first and exits 4 if the 
 the writer lock (`mc-lock.sh`, owner `loop`, heartbeat within TTL). The loop takes that
 lock before every write, so the check needs no cooperation from the model.
 
-It is a switch, not a wall: `mc guard off` drops a `LOOP_GUARD_OFF` marker in the runtime
-dir and every wrapper runs unguarded (printing that it is), `mc guard on` removes it, and
-`MC_LOOP_GUARD=off` disables it for a single invocation. `mc guard status` shows both the
+It is a switch, not a wall: `mc guard off merge` disables it for one wrapper, `mc guard off`
+for all (a `LOOP_GUARD_OFF` marker in the runtime dir, one name per line or `*`), `mc guard
+on [name…]` re-enables, and `MC_LOOP_GUARD=off` disables it for a single invocation. A
+disabled wrapper always prints that it ran unguarded. `mc guard status` shows both the
 switch and who holds the lock. Which wrappers are manual-only is the overlay's call; the
 engine ships only the check.
 

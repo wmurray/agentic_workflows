@@ -96,9 +96,9 @@ mc() {
     local gs="${MC_GUARD_SCRIPT:-$HOME/.claude/mission-control/mc-guard.sh}"
     [[ -x "$gs" ]] || { printf 'mc: no mc-guard.sh at %s\n' "$gs" >&2; return 1; }
     case "$2" in
-      on|off)        "$gs" "$2" ;;
+      on|off)        "$gs" "$2" "${@:3}" ;;
       ""|status|show) "$gs" status ;;
-      *) printf 'mc: usage: mc guard [on|off|status]  — refuse manual-only wrappers (merge/qa/done…) while the loop holds the writer lock\n' >&2; return 1 ;;
+      *) printf 'mc: usage: mc guard [on|off] [wrapper…] | status  — no wrapper = all. Refuses manual-only wrappers (merge/qa/done…) while the loop holds the writer lock\n' >&2; return 1 ;;
     esac
     return 0
   fi

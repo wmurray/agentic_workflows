@@ -193,6 +193,12 @@ run  "guard marker override (mc guard off)" 0 env MC_LOCK="$GL" MC_GUARD_OFF_FIL
 run  "guard allows while marker present"    0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 says "guard says it is off, never silent"   yes 'guard is OFF' env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 run  "guard re-armed (mc guard on)"         0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" on
+run  "guard off for ONE wrapper"            0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" off merge
+run  "  … that wrapper passes"              0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+run  "  … a sibling still REFUSES"          4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check qa-transition
+says "  … status lists only that one"      yes 'OFF for: merge'  env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" status
+run  "guard on for that wrapper"            0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" on merge
+run  "  … it REFUSES again"                 4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 printf 'loop\t%s\n' "$(( $(date +%s) - 100000 ))" > "$GL"
 run  "guard allows on a STALE loop lock"    0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 printf 'manual\t%s\n' "$(date +%s)" > "$GL"
