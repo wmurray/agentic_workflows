@@ -107,6 +107,6 @@ read it by absolute path, so there is no gitignore rule to get wrong.
 The five worker-phase briefs the SKILL spawns live in `skills/mission-control/templates/`
 and follow the same split: each names its org-valued placeholders (`{MC_HOME}`,
 `{BRANCH_PREFIX}`, `{BASE_REF}`, `{WORKTREE_RECIPE}`, `{TICKET_DETAIL_CMD}`,
-`{VAULT_PROJECTS_DIR}`, `{CATCH_ALL_GROUP}`, `{COMMIT_TRAILER}`, `{STYLE_GUIDE}`,
+`{VAULT_PROJECTS_DIR}`, `{CATCH_ALL_GROUP}`, `{STYLE_GUIDE}`,
 `{TEST_CONVENTIONS}`) and the overlay's **Template fills** section binds them. The runtime
 dir symlinks each template into the repo, as it does the scripts.

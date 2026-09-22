@@ -23,7 +23,7 @@ alone.
   roles named below · the **ticket-detail command** · the release-freeze window (if any) ·
   the notes-vault path · the **Template fills** table (the org values the worker templates
   take: `{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}`
-  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{COMMIT_TRAILER}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`).
+  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`).
 
 **Pipeline wrapper ROLES** (this file names roles; the overlay names the actual commands):
 

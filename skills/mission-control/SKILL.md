@@ -119,7 +119,7 @@ Use the `Agent` tool with `run_in_background: true`. Read the matching template 
 - **Coder, a TypeScript repo** → `templates/coder-typescript.md` (agent type `typescript-developer`)
 - **Reviewer** → `templates/reviewer.md` (agent type `rails-code-reviewer` for a Rails repo, `typescript-reviewer` otherwise)
 
-Placeholders that name an org value (`{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}` `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{COMMIT_TRAILER}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`) are filled from the overlay's **Template fills** section; the rest come from the ticket, the board row, and the phase. `{BASE_REF}` defaults to the overlay's value and is overridden per ticket only when the work stacks on an open branch.
+Placeholders that name an org value (`{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}` `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`) are filled from the overlay's **Template fills** section; the rest come from the ticket, the board row, and the phase. `{BASE_REF}` defaults to the overlay's value and is overridden per ticket only when the work stacks on an open branch.
 
 When you spawn concurrent workers for independent tickets, send them in a single message (multiple tool calls) so they run in parallel. **Name each worker so it embeds the ticket + phase** (e.g. `coder-abc1657`, `reviewer-abc1635-r2`) — that name is how a completion notification / `TaskList` entry maps back to a board ticket (the `worker` field is only a role label). Set the ticket's `worker` and `phase_done:false` before/at spawn; on completion, write the structured return into state.json and route.
 

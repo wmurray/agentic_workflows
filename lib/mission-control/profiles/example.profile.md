@@ -99,7 +99,6 @@ orchestrator (loop or manual session) substitutes the values below when it build
 | `{TICKET_DETAIL_CMD}` | the ticket-detail command above |
 | `{VAULT_PROJECTS_DIR}` | `<vault>/Projects` |
 | `{CATCH_ALL_GROUP}` | `Standalone Tickets` (the catch-all folder below) |
-| `{COMMIT_TRAILER}` | `Co-Authored-By: <agent name> <noreply@example.com>` (empty if your repos want none) |
 | `{STYLE_GUIDE}` | path to your prose style guide, or `(none)` |
 
 ### `{TEST_CONVENTIONS}` per repo (optional)
