@@ -23,12 +23,15 @@
 #                             '#' comments and blank lines ignored
 #   tracker/active_cycle.tsv  id⇥name — the open cycle. Missing/empty = no open cycle.
 #   tracker/capabilities      space-separated; default "cycles vetting".
+#   tracker/details/<KEY>.md  one ticket's full detail as plain text (detail_of). A key
+#                             with no file falls back to a stub built from issues.tsv.
 #
 #   tracker list_ready "Ready for Dev" in
 #   tracker list_ready "Ready for Dev" out vetted
 #   tracker fields_of KEY-1 KEY-2
 #   tracker in_active_cycle KEY-1 KEY-2
 #   tracker active_cycle
+#   tracker detail_of KEY-1
 #   tracker capabilities
 set -uo pipefail
 
@@ -97,6 +100,16 @@ case "$op" in
     _has cycles || exit 0          # cycle-less → no rollover trigger
     [ -f "$FIX/active_cycle.tsv" ] || exit 0
     grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$FIX/active_cycle.tsv" | head -1
+    ;;
+
+  detail_of)
+    key="${1:-}"; [ -n "$key" ] || { echo "fixture detail_of: need a key" >&2; exit 2; }
+    if [ -f "$FIX/details/$key.md" ]; then
+      cat "$FIX/details/$key.md"
+    else
+      # No authored detail: a stub from the row keeps the engine's ingest path exercisable.
+      _rows | awk -F'\t' -v k="$key" '$1==k{printf "Key:      %s\nStatus:   %s\nSummary:  %s\n", $1, $2, $6}'
+    fi
     ;;
 
   capabilities)

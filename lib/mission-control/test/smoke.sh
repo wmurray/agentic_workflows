@@ -99,6 +99,9 @@ run "tracker list_ready out+vet"  0 tracker list_ready "Ready for Dev" out vette
 run "tracker fields_of"           0 tracker fields_of ENG-201 ENG-202
 run "tracker in_active_cycle"     0 tracker in_active_cycle ENG-204 ENG-207
 run "tracker active_cycle"        0 tracker active_cycle
+run "tracker detail_of"           0 tracker detail_of ENG-101
+says "detail_of returns the authored body" yes 'token bucket'  tracker detail_of ENG-101
+says "detail_of stubs an undetailed key"   yes 'ENG-201'       tracker detail_of ENG-201
 run "host capabilities"           0 host capabilities
 run "host list_prs"               0 host list_prs example-org/app all
 run "host list_prs mine"          0 host list_prs example-org/app open mine

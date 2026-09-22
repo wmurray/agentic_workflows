@@ -11,6 +11,7 @@
 #   tracker fields_of KEY-1 KEY-2 KEY-3
 #   tracker in_active_cycle KEY-1 KEY-2
 #   tracker active_cycle
+#   tracker detail_of KEY-1
 #   tracker capabilities
 set -uo pipefail
 
@@ -53,6 +54,14 @@ case "$op" in
     # collapses padding so STATE is reliably the last field even when COMPLETE is empty.
     jira sprint list --plain --no-headers 2>/dev/null | tr -s '\t' \
       | awk -F'\t' '$NF=="active"{printf "%s\t%s\n",$1,$2; exit}'
+    ;;
+
+  detail_of)
+    # One ticket's full detail (description, acceptance criteria, issue type, parent) as
+    # plain text. The engine reads it at ingest to classify `type` and to brief a worker;
+    # it does not parse fields out of it, so the layout is the CLI's own.
+    key="${1:-}"; [ -n "$key" ] || { echo "jira detail_of: need a key" >&2; exit 2; }
+    jira issue view "$key" --plain 2>/dev/null
     ;;
 
   capabilities)

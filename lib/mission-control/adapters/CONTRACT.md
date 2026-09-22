@@ -32,6 +32,7 @@ host()    { "$MC_ADAPTERS/host/${MC_HOST:-github}.sh"     "$@"; }
 | `fields_of` | `<key…>` (comma- or space-joined) | TSV `key⇥status⇥assignee` | mc-poll, mc-archive |
 | `in_active_cycle` | `<key…>` | bare `key` per line — the subset in the active cycle | mc-promote *(optional: `cycles`)* |
 | `active_cycle` | — | TSV `id⇥name` of the open cycle (empty if none) | mc-archive *(optional: `cycles`)* |
+| `detail_of` | `<key>` | one ticket's full detail (description / AC / issue type / parent) as plain text | ingest (driver + SKILL), worker briefs |
 | `capabilities` | — | space-separated feature list, e.g. `cycles vetting` | any gating step |
 
 **`list_ready`** — assigned-to-me tickets at `<status>`, filtered by cycle membership:
@@ -57,6 +58,14 @@ extra, cheap call in a rarely-run detector — keeps the op orthogonal).
 `archivedAtSprint` from the *marker's* name and only needs the *current* cycle here.
 *(Done — mc-archive converted; the live marker was backfilled with its name at cutover.
 A legacy id-only marker is read as id-with-no-name and upgraded on the next commit.)*
+
+**`detail_of`** closes the gap the doctrine split found: ingest needs a ticket's
+description, acceptance criteria and issue type (to classify `type`), and no other op
+returns them. Output is plain text in the provider CLI's own layout — the engine reads
+it and pastes it into a worker brief, it never parses fields out of it, so no shape is
+promised beyond "human-readable, one ticket". Worker briefs still carry the raw command
+(the overlay's `{TICKET_DETAIL_CMD}`) because a worker has no `tracker` dispatcher in
+scope; the engine itself calls the op.
 
 ### Optional capabilities (consequence A — reserve the seam now)
 `cycles` and `vetting` are **optional**. Both v1 adapters (Jira, Linear) report both,
