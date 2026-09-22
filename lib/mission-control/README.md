@@ -104,7 +104,9 @@ Start from `profiles/example.profile.md`, and put your copy in the **runtime** d
 than here. It is the one config file with no reason to live in the repo at all: both docs
 read it by absolute path, so there is no gitignore rule to get wrong.
 
-**Not yet published:** `skills/mission-control/templates/` (the five worker-phase briefs
-the SKILL spawns) still live only in the runtime dir — they carry org values and are the
-edit target of in-flight runner-adapter work, so they are genericized in a later pass. The
-committed SKILL is complete doctrine but not yet a self-contained installable skill.
+The five worker-phase briefs the SKILL spawns live in `skills/mission-control/templates/`
+and follow the same split: each names its org-valued placeholders (`{MC_HOME}`,
+`{BRANCH_PREFIX}`, `{BASE_REF}`, `{WORKTREE_RECIPE}`, `{TICKET_DETAIL_CMD}`,
+`{VAULT_PROJECTS_DIR}`, `{CATCH_ALL_GROUP}`, `{COMMIT_TRAILER}`, `{STYLE_GUIDE}`,
+`{TEST_CONVENTIONS}`) and the overlay's **Template fills** section binds them. The runtime
+dir symlinks each template into the repo, as it does the scripts.

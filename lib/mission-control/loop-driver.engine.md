@@ -21,7 +21,9 @@ alone.
   status vocabulary (ready / in-progress / QA / terminal-done) · the **repo → coder-template
   map** (with each repo's worktree helper) · the **pipeline wrapper** commands for the four
   roles named below · the **ticket-detail command** · the release-freeze window (if any) ·
-  the notes-vault path.
+  the notes-vault path · the **Template fills** table (the org values the worker templates
+  take: `{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}`
+  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{COMMIT_TRAILER}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`).
 
 **Pipeline wrapper ROLES** (this file names roles; the overlay names the actual commands):
 
@@ -31,7 +33,7 @@ alone.
 | **assign wrapper** | claim an UNASSIGNED our-turn ticket for the operator; refuses `qa`/`product-review`/`done` (exit 4); colleague-held → exit 5 | reconcile |
 | **qa-transition wrapper** | the field-bearing `qa` transition — **MANUAL, never yours** | reconcile (flag only) |
 | **done-transition wrapper** | the field-bearing `done` transition — **MANUAL, never yours** | reconcile (flag only) |
-| **ticket-detail command** | read one ticket's full detail (description / AC / issue type) for ingest | Prep-write 1 |
+| **ticket-detail command** | the raw CLI command a WORKER brief gets as `{TICKET_DETAIL_CMD}`; the engine itself reads detail through `tracker detail_of <KEY>` | Prep-write 1, planner template |
 
 **Vocabulary used throughout this file:**
 
@@ -547,7 +549,7 @@ Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you
 1. **`mc-lock.sh check loop`** → yield if held; else `acquire loop`.
 2. **Re-read `state.json` fresh** (durable-memory rule) and re-confirm the ticket is still off-board
    — the manual session may have ingested it between your poll and the lock. If present, release + skip.
-3. **Ingest per the SKILL's "Ingest" flow:** the overlay's **ticket-detail command** for full detail, add a
+3. **Ingest per the SKILL's "Ingest" flow:** `tracker detail_of <KEY>` for full detail, add a
    `refined` row **with the right `cycle` tag** (`sprint` or `background`), `source: "<tracker name>"`, **and
    `type`** (`bug` \| `feature` \| `chore`, classified from the issue-type header in that detail — see the
    SKILL's `type` field; a Task/Story that reports a malfunction with a repro is a `bug`, a "Bug" that's

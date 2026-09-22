@@ -23,7 +23,8 @@ the `/loop` driver reads the same overlay, so the two stay consistent by constru
   repo → coder-template map · pipeline wrappers · freeze window · vault · blocked-on
   parties · the operator) **plus** tracker instance specifics (field + transition ids,
   operator account id) · the default reviewer team · known CI failure modes · the
-  surfaces map · worktree helpers · the catch-all project folder + shipped-log path.
+  surfaces map · worktree helpers · the catch-all project folder + shipped-log path ·
+  the **Template fills** table (the org values the worker templates take).
 
 **Vocabulary:** *tracker* = your issue tracker (Jira, Linear, …) · *host* / *PR host* =
 your code host (GitHub, …); concrete `gh …` commands here are GitHub-shaped · *the
@@ -117,6 +118,8 @@ Use the `Agent` tool with `run_in_background: true`. Read the matching template 
 - **Coder, a Rails repo** → `templates/coder-rails.md` (agent type `rails-feature-developer`)
 - **Coder, a TypeScript repo** → `templates/coder-typescript.md` (agent type `typescript-developer`)
 - **Reviewer** → `templates/reviewer.md` (agent type `rails-code-reviewer` for a Rails repo, `typescript-reviewer` otherwise)
+
+Placeholders that name an org value (`{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}` `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{COMMIT_TRAILER}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`) are filled from the overlay's **Template fills** section; the rest come from the ticket, the board row, and the phase. `{BASE_REF}` defaults to the overlay's value and is overridden per ticket only when the work stacks on an open branch.
 
 When you spawn concurrent workers for independent tickets, send them in a single message (multiple tool calls) so they run in parallel. **Name each worker so it embeds the ticket + phase** (e.g. `coder-abc1657`, `reviewer-abc1635-r2`) — that name is how a completion notification / `TaskList` entry maps back to a board ticket (the `worker` field is only a role label). Set the ticket's `worker` and `phase_done:false` before/at spawn; on completion, write the structured return into state.json and route.
 
@@ -396,7 +399,7 @@ Ready work enters the board **without an `mc` write or a prompt** — the operat
 
 **The story-point value is the vetting gate** for the background tier: a pointed ticket cleared estimation/grooming, so it was *considered* before an idle agent scoops it — vs a raw groomed-to-`Selected` ticket that isn't really ready. It fails safe (an unpointed ready ticket is skipped, never wrongly grabbed). The sprint clause is thus no longer a hard filter — it's a **tier/urgency signal**: sprint = eager, background = opportunistic. A background ticket you want planned NOW jumps the opportunistic queue via `mc plan ABC-N`; and if you pull one into a sprint, reconcile auto-promotes `cycle` `background`→`sprint` on the next pass (one-directional — never the reverse).
 
-**On a match, per tier:** fetch detail (`jira issue view ABC-NNNN --plain`), add the `refined` row with the right `cycle` + `source` + **`type`** (classify from the issue-type header in that detail — see the `type` field; this is what decides whether the investigator runs); sprint tier also spawns the planner immediately → `plan-review` (**for a `type:"bug"` ticket, the `bug-investigator` runs first and writes `evidence` — see the `refined` lane; a `reproduced: no` return holds at Gate 1 instead of planning**). the operator's first touch is then Gate 1. *(Step boundary: BOTH the manual orchestrator and the **Step-2.5 `/loop`** do this — one of the loop's prep-class write grants, lock-wrapped, hard stop at `plan-review`; see loop-driver "Prep-write 1" for the two-tier procedure + the opportunistic-planning bound.)*
+**On a match, per tier:** fetch detail (`tracker detail_of ABC-NNNN`, via `adapters/dispatch.sh`), add the `refined` row with the right `cycle` + `source` + **`type`** (classify from the issue-type header in that detail — see the `type` field; this is what decides whether the investigator runs); sprint tier also spawns the planner immediately → `plan-review` (**for a `type:"bug"` ticket, the `bug-investigator` runs first and writes `evidence` — see the `refined` lane; a `reproduced: no` return holds at Gate 1 instead of planning**). the operator's first touch is then Gate 1. *(Step boundary: BOTH the manual orchestrator and the **Step-2.5 `/loop`** do this — one of the loop's prep-class write grants, lock-wrapped, hard stop at `plan-review`; see loop-driver "Prep-write 1" for the two-tier procedure + the opportunistic-planning bound.)*
 
 `mc plan ABC-N` pulls a specific row forward — a raw-backlog ticket, or a `cycle:background` one the operator wants planned ahead of the opportunistic queue — leaving the rest of the `mc` channel for **gate decisions on in-flight work** (approve/ready/merge/qa/changes), not for introducing work.
 

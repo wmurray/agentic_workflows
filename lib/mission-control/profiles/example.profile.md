@@ -64,10 +64,9 @@ compound) so the permission allow-prefix matches.
 | done-transition wrapper | `~/.claude/lib/pipeline/done-transition.sh` — **manual only, never the loop's** |
 | ticket-detail command | `<your tracker CLI> issue view <KEY> --plain` |
 
-> The ticket-detail command is the one tracker touch with no adapter op behind it
-> (`adapters/CONTRACT.md` covers `list_ready` / `fields_of` / `in_active_cycle` /
-> `active_cycle`, none of which return a description). Until a `detail_of` op exists, the
-> overlay supplies the raw command.
+> The engine reads ticket detail through `tracker detail_of <KEY>`. The raw command is
+> still listed because worker briefs receive it as `{TICKET_DETAIL_CMD}` — a worker has no
+> `tracker` dispatcher in scope.
 
 ## Release-freeze window (optional)
 
@@ -86,6 +85,43 @@ Leave this section out entirely if your org has no freeze concept.
 
 - **Path:** `~/Documents/notes` (any directory of markdown files; Obsidian is the common case).
 - **Plan / triage docs:** `<vault>/Projects/<Project Group>/<KEY> <Title> Plan.md`
+
+## Template fills
+
+The worker templates under `$MC_SKILL_DIR/templates/` name these placeholders; the
+orchestrator (loop or manual session) substitutes the values below when it builds a brief.
+
+| Placeholder | Value |
+|---|---|
+| `{MC_HOME}` | `/home/you/.claude/mission-control` (the runtime dir, absolute) |
+| `{BRANCH_PREFIX}` | `xy-` (must match the branch prefix above) |
+| `{BASE_REF}` | `origin/main`; per ticket, the `origin/<branch>` it stacks on |
+| `{TICKET_DETAIL_CMD}` | the ticket-detail command above |
+| `{VAULT_PROJECTS_DIR}` | `<vault>/Projects` |
+| `{CATCH_ALL_GROUP}` | `Standalone Tickets` (the catch-all folder below) |
+| `{COMMIT_TRAILER}` | `Co-Authored-By: <agent name> <noreply@example.com>` (empty if your repos want none) |
+| `{STYLE_GUIDE}` | path to your prose style guide, or `(none)` |
+
+### `{TEST_CONVENTIONS}` per repo (optional)
+
+- `your-org/api`: ` (arrange/act/assert layout, no shared `let`/`before`, real objects over mocks, factories)`
+- `your-org/web`: omit — `AGENTS.md` covers it.
+
+### `{WORKTREE_RECIPE}` per Rails repo
+
+The exact block the `coder-rails` template pastes. One per repo that uses it; a repo with
+a shared test database MUST isolate it here.
+
+`your-org/api`:
+```
+cd /path/to/api
+git fetch origin && git merge --ff-only {BASE_REF} 2>/dev/null || true
+WT=$(bin/create-worktree {BRANCH_PREFIX}{TICKET_SLUG})    # isolates the test DB per worktree
+cd "$WT"
+[ "{BASE_REF}" = origin/main ] || {MC_HOME}/mc-gitop.sh reset-hard {BASE_REF}   # stacked base
+```
+Add the helper's caveats (a seed step that needs a sibling service, assets a worktree does
+not inherit) as comment lines inside the block.
 
 ## Colleagues / blocked-on parties (optional)
 

@@ -211,7 +211,7 @@ files before catching itself. Every brief states the worktree path and says not 
 1. This note. (done)
 2. Spike. (done, see findings above)
 3. `runner/CONTRACT` section appended to `adapters/CONTRACT.md`; `dispatch.sh` gains `runner()`, `runner_for()`, `runner_of()`. (done 2026-09-09)
-4. `runner/inprocess.sh` + `runner/herdr.sh`; templates gain `{RESULT_PATH}`. (done 2026-09-09; herdr impl verified live: spawn→wait→harvest→teardown in 15 s on a trivial brief. Templates live in the skills tree, not this repo — footer appended there.)
+4. `runner/inprocess.sh` + `runner/herdr.sh`; templates gain `{RESULT_PATH}`. (done 2026-09-09; herdr impl verified live: spawn→wait→harvest→teardown in 15 s on a trivial brief. Templates lived in the skills tree at the time — footer appended there; they have since moved into `skills/mission-control/templates/` and the runtime copies are symlinks.)
 5. `profiles/example.env` gains the `MC_RUNNER_*` block; `local.env` filled in. (done 2026-09-09)
 6. `loop-driver.engine.md` edits (two places). `mc-poll` / `mc-orphans` read `runner`. Runner assertions added to `test/smoke.sh`. (done 2026-09-09; smoke 70/70; adds `list` op, `MC_RUNNER_DIR`, and a "Runner seam" doctrine block that also carries the settled-prompt rule.) Built on branch `runner-adapter` in a separate worktree (`../agentic_workflows-wt-runner`) so the live loop (which reads the engine doc through a symlink into the main checkout) and the extraction worker's pending engine-doc edits are untouched until merge.
 7. One sprint ticket end to end under the loop with `CODER_SPAWN_LIVE` armed. Then unpause
