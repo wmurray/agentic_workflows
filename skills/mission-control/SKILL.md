@@ -226,7 +226,7 @@ When you drain a `merge <T>`:
 
 ## Pipeline action wrappers (`$MC_PIPELINE/` — use these for ALL mutating tracker/host writes)
 
-Every mutating write goes through a wrapper in `$MC_PIPELINE/`, never a raw `gh`/`jira`/`curl` command. The **safety/precondition logic lives in the script**, so each can be allow-listed for unattended (Step-3) execution without weakening the gate — and the map/field-IDs live in **one** place (shared with flake-fleet). Authorization stays upstream (you only invoke them when the operator authorized the step). All take `--check` (read-only dry-run) and are idempotent (no-op when already in the target state).
+Every mutating write goes through a wrapper in `$MC_PIPELINE/`, never a raw `gh`/`jira`/`curl` command. The wrappers are the `lib/jira-toolkit/` scripts, symlinked to `$MC_PIPELINE`; their org values (site, status names, transition and field ids, reviewer team) come from `jira-toolkit/jira.env`, not from this profile. The **safety/precondition logic lives in the script**, so each can be allow-listed for unattended (Step-3) execution without weakening the gate — and the map/field-IDs live in **one** place (shared with flake-fleet). Authorization stays upstream (you only invoke them when the operator authorized the step). All take `--check` (read-only dry-run) and are idempotent (no-op when already in the target state).
 
 | Wrapper | Does | Notes |
 |---|---|---|

@@ -53,12 +53,16 @@ those drive the scripts, this table tells the *driver* what the names mean.
 
 ## Pipeline wrappers
 
+The wrappers are `lib/jira-toolkit/` in this repo, symlinked to the path below. Their org
+values live in `lib/jira-toolkit/jira.env` (copy `example.env`), so this section only binds
+paths and the manual-only list.
+
 The engine names roles; these are the commands. All are invoked **BARE** (no pipe, no
 compound) so the permission allow-prefix matches.
 
 | Role | Command |
 |---|---|
-| status-sync wrapper | `~/.claude/lib/pipeline/tracker-status.sh <KEY> <lane>` |
+| status-sync wrapper | `~/.claude/lib/pipeline/jira-status.sh <KEY> <lane>` |
 | assign wrapper | `~/.claude/lib/pipeline/assign.sh <KEY> --lane <lane>` |
 | qa-transition wrapper | `~/.claude/lib/pipeline/qa-transition.sh` — **manual only, never the loop's** |
 | done-transition wrapper | `~/.claude/lib/pipeline/done-transition.sh` — **manual only, never the loop's** |

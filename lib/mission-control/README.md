@@ -14,6 +14,8 @@ so the repo and the running loop cannot diverge; git is the durable backup.
 ```
 mc-*.sh              the engine — detectors, the lock, the inbox drain
 worklog.sh           append-only per-day work log (JSONL); fed by mc, the drain and the wrappers
+../jira-toolkit/     the pipeline wrappers ($MC_PIPELINE): merge, status moves, QA/Done transitions,
+                     field writers — org values in its own gitignored jira.env
 dash.sh              the renderer (a pure function of state.json)
 loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
 adapters/

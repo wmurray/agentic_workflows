@@ -113,6 +113,18 @@ See [`lib/mission-control/README.md`](lib/mission-control/README.md) for the lay
 setup, and [`adapters/CONTRACT.md`](lib/mission-control/adapters/CONTRACT.md) for the two
 adapter contracts.
 
+### `lib/jira-toolkit/`
+
+Eleven idempotent wrappers for the outward writes a delivery workflow makes against Jira
+and GitHub: status moves, the QA and Done transitions, the release-note, testing-notes and
+feature-flag fields, sprint membership, assignment, marking a PR ready, and two guarded
+merges. Every org value (site, status names, transition and field ids, reviewer team,
+labels) lives in one gitignored `jira.env`; the safety logic lives in the scripts, so each
+can be allow-listed for unattended use. Mission-control's manual-only actions call them,
+and they run standalone without it. `test/lint.sh` checks them with no network.
+
+See [`lib/jira-toolkit/README.md`](lib/jira-toolkit/README.md) for the config table.
+
 ---
 
 ## Setup
@@ -164,6 +176,9 @@ export JIRA_PROJECT="ENG"
 export JIRA_BOARD_ID="123"
 
 ```
+
+The `lib/jira-toolkit/` wrappers do not read these; they take their org values from
+`lib/jira-toolkit/jira.env` (copy `example.env`). `JIRA_API_TOKEN` is shared by both.
 
 ### 5. Extend for your stack
 

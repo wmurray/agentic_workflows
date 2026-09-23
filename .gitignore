@@ -29,3 +29,6 @@ plugins/
 session-env/
 projects/
 rules/
+
+# jira-toolkit: your org values (never commit)
+lib/jira-toolkit/jira.env
