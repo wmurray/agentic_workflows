@@ -17,6 +17,7 @@
 #   mc unblock ABC-1234             # lift a hold (blocked:false) — board-only, loop-drainable
 #   mc note ABC-1234: <note>       # attach a one-line note, no lane change
 #   mc ls                         # show what's queued (read-only — does NOT queue anything)
+#   mc log [N]                    # today's work log (or the last N days) — read-only
 #   mc pause                      # ⏸ PAUSE the loop (full freeze): it no-ops at its next tick (no writes/spawns)
 #   mc pause --drain              # ⏸ PAUSE new intake only — in-flight work finishes to its next human gate
 #   mc resume                     # ▶️ unpause: the loop acts again next tick
@@ -147,6 +148,18 @@ mc() {
     return 0
   fi
 
+  # Read-only: the work log — today's entries, or the last N days. Every queued verb lands
+  # here (source `mc`), as do the drain, the wrappers and the loop's lane changes.
+  if [[ "$1" == "log" || "$1" == "worklog" ]]; then
+    local wls="${MC_WORKLOG_SH:-$HOME/.claude/mission-control/worklog.sh}"
+    if [[ -x "$wls" ]]; then
+      if [[ -n "${2:-}" ]]; then "$wls" show --days "$2"; else "$wls" today; fi
+    else
+      printf 'mc: no worklog.sh at %s\n' "$wls" >&2; return 1
+    fi
+    return 0
+  fi
+
   # Read-only: who holds the single-writer lock right now (owner + age + TTL). Safe to
   # run from ANY window — it just reads the lock file. Useful when a manual session
   # seems blocked, or to confirm the loop yielded to you.
@@ -194,6 +207,7 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
                             off = loop only proposes "would spawn coder". Halts only code-writing,
                             unlike `mc pause` (whole loop). Takes effect next tick.
     lock | who              show the single-writer lock owner
+    log [N]                 today's work log (or the last N days); queued verbs are logged automatically
     health | creds          probe GitHub + the tracker credential/reachability health
     help | -h | --help      this text
     mc                      (no args) queue + pause state + one-line usage

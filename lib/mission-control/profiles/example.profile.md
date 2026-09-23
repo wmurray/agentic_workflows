@@ -68,6 +68,10 @@ Every wrapper marked **manual only** should call `$MC_HOME/mc-guard.sh check <na
 first statement, so it refuses (exit 4) while the loop holds the writer lock. `mc guard
 off|on|status` toggles that for testing.
 
+Each wrapper should also append one line to the work log when it succeeds, so the day's
+outward transitions are recorded without anyone remembering to:
+`MC_WORKLOG_SOURCE=<name> $MC_HOME/worklog.sh add --ticket <KEY> "<what changed>"`.
+
 > The engine reads ticket detail through `tracker detail_of <KEY>`. The raw command is
 > still listed because worker briefs receive it as `{TICKET_DETAIL_CMD}` — a worker has no
 > `tracker` dispatcher in scope.
