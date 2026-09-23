@@ -109,6 +109,14 @@ itself when `GATE1_AUTO` is present (`mc gate1 auto`). Without the file the loop
 "would auto-approve", which is the soak to compare against real approvals before arming.
 Gate 2 and merge are unchanged.
 
+## Kickback address
+
+After the loop triages new review comments on an open PR it can, when `KICKBACK_AUTO` is
+present (`mc address on`), run a coder address round for the mechanical and clear items, push to
+the PR branch, and draft each reply as a private pending review comment the operator publishes.
+Judgment items, publishing, resolving threads and marking ready stay the operator's. Without the
+file the loop only logs "would address N/M", the soak that earns the switch.
+
 ## The work log
 
 `worklog.sh` keeps one JSONL file per day (default `~/.claude/worklog/`). The `mc` verbs log

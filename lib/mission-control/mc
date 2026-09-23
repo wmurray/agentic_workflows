@@ -24,6 +24,8 @@
 #   mc coder on|off               # 🟢/⚪ arm/disarm the loop's autonomous coder-spawn (default off)
 #   mc gate1 auto|manual          # 🟢/⚪ let the loop approve Gate 1 itself when a plan has no open
 #                                #   questions and passes the critic + size fences (default manual = propose only)
+#   mc address on|off             # 🟢/⚪ let the loop fix the clear review-comment items in code + draft the
+#                                #   replies as private pending comments you publish (default off = propose only)
 #   mc                            # (no args) show what's queued + pause state + usage
 #
 # `mc pause`/`mc resume` toggle a PAUSED flag file DIRECTLY (not queued) — the loop checks
@@ -175,6 +177,31 @@ mc() {
     return 0
   fi
 
+  # Kickback-address switch — direct side effect (NOT queued). ON (flag present) → on a triaged
+  # review kickback the loop runs a coder address round for the mechanical + clear items, pushes to
+  # the PR branch, and drafts each reply as a PRIVATE pending review comment (visible only to you until
+  # you submit). Judgment items stay yours. OFF (default) → the loop only prints + logs "would address
+  # N/M". Needs `mc coder on` too (it is code-writing). Effective next tick.
+  if [[ "$1" == "address" || "$1" == "kickback" ]]; then
+    local adf="${MC_ADDRESS_FILE:-$HOME/.claude/mission-control/KICKBACK_AUTO}"
+    case "$2" in
+      on|arm|auto)
+        printf 'KICKBACK_AUTO %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$adf"
+        printf 'mc: 🟢 kickback-address ON (%s) — clear review items get fixed + pushed, replies drafted for you to publish. `mc address off` to disarm.\n' "$adf" ;;
+      off|disarm|propose|manual)
+        rm -f "$adf"
+        printf 'mc: ⚪ kickback-address OFF — the loop only proposes "would address N/M"; you apply via the triage doc.\n' ;;
+      ""|status|show)
+        if [[ -f "$adf" ]]; then
+          printf 'mc: 🟢 kickback-address ON (%s) — clear items fixed + pushed, replies drafted privately.\n' "$adf"
+        else
+          printf 'mc: ⚪ kickback-address OFF (default) — loop proposes only. `mc address on` to arm.\n'
+        fi ;;
+      *) printf 'mc: usage: mc address [on|off|status]\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
   # Read-only: the work log — today's entries, or the last N days. Every queued verb lands
   # here (source `mc`), as do the drain, the wrappers and the loop's lane changes.
   if [[ "$1" == "log" || "$1" == "worklog" ]]; then
@@ -236,6 +263,9 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
     gate1 auto|manual|status 🟢/⚪ let the loop approve Gate 1 itself for a plan with no open questions
                             that passed the pre-plan critic and the profile's size/type fences (default
                             manual = the loop only says "would auto-approve"). Gate 2 + merge unchanged.
+    address on|off|status   🟢/⚪ let the loop fix the mechanical + clear review-comment items in code,
+                            push to the PR branch, and draft each reply as a PRIVATE pending comment you
+                            publish. Judgment items stay yours. Default off = "would address N/M".
     guard on|off [wrapper…] loop guard: manual-only wrappers (merge, qa, done, …) refuse with exit 4
     guard status            while the loop holds the writer lock. `off` is your testing override, all
                             or per wrapper; `on` re-arms. Default ON. Never silent when off.

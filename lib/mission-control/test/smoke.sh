@@ -35,7 +35,7 @@ dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/.loop-heartbeat" "$LIVE/mc-inbox"
-  "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO"
+  "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO" "$LIVE/KICKBACK_AUTO"
 )
 _stamp() {
   local f
@@ -223,7 +223,7 @@ says "  … as an orchestrator line"         yes '\[orchestrator\].*acted on: ap
 rm -rf "$MC_WORKLOG_DIR"
 
 # --- 6. dash renders the fixture board ----------------------------------------------
-frame="$(MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh" 2>&1)"
+frame="$(MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_ADDRESS_FILE="$WORK/KICKBACK_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh" 2>&1)"
 if printf '%s' "$frame" | grep -q 'MISSION CONTROL'; then
   grn "  PASS  dash renders ($(printf '%s' "$frame" | wc -l | tr -d ' ') lines)"; pass=$((pass+1))
   [ -n "$VERBOSE" ] && printf '%s\n' "$frame" | sed 's/^/          /'

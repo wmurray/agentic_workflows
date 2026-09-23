@@ -12,6 +12,14 @@ Read the full plan at: `{PLAN_PATH}`
 ## Approved decisions (settled — implement exactly as stated)
 {APPROVED_DECISIONS — the resolved open questions from Gate 1, as imperative bullets. Leave none ambiguous.}
 
+{ADDRESS_ROUND — OMIT this whole section for a normal implement round. When present, this is a REVIEW-ADDRESS round on the ticket's OPEN PR, not new feature work. Items, one per reviewer thread:
+
+  - thread `<thread node id>` · `<file>:<line>` · reviewer: "<comment verbatim>" · triage's drafted fix: "<one line>"
+
+Rules for this round: work in the existing worktree on the existing branch (do NOT recreate it); address ONLY the threads listed, one commit per thread or one grouped commit with each thread named in the body; no drive-by changes, no refactors beyond the fix; never touch a file or item not listed; run the full pre-push verification; push to the PR branch (a normal push, never force). If a listed fix turns out to need a product or design decision, do NOT guess: leave it and report it under (j) with why. Add to your return:
+  (i) `addressed`: `[{thread, sha, summary}]` for every thread you fixed and pushed
+  (j) `not_addressed`: `[{thread, why}]` for every listed thread you left alone}
+
 ## CRITICAL — worktree isolation (do this first)
 Do NOT work in the shared checkout. Create your own worktree:
 ```

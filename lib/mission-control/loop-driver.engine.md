@@ -93,6 +93,9 @@ The FIVE internal writes you hold today:
    that drains the background queue (ordered future-cycle first, then nearest due date).
 2. **Review-triage prep → kickback** — on new review comments, fetch + classify + draft fixes/replies
    into the ticket's plan doc in the notes vault, set `triage_doc`, stop for the operator to direct.
+   **2b. Kickback address (flag-gated `KICKBACK_AUTO`, Prep-write 5)** — armed, the clear items of that
+   triage are fixed in code by a coder address round, pushed to the PR branch, and the replies drafted
+   as PRIVATE pending review comments the operator publishes. Disarmed (default): "would address N/M".
 3. **Board reconcile → mirror reality** — advance/correct **board lanes + `ci` + the `reconcile`
    field** to match what you OBSERVE in host/tracker (PR merged, approval current, re-review, etc.).
    You move the *board* toward reality; you NEVER push the board's intent outward.
@@ -476,7 +479,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      **`NEEDS-TRIAGE` (exit 10)** and lane not yet `kickback` → **this is the SECOND thing you now
      ACT on: execute the review-triage prep write-path in "The writes you may make."** `CLEAN`/`NO-NEW`
      → leave it (still "waiting on others"). Pure PREP — you draft the triage into the plan doc and
-     stop; you NEVER push a fix, post a reply, or resolve a thread (all of that is the operator's, post-gate).
+     stop; you NEVER post a reply or resolve a thread. A fix push and a DRAFT reply happen only through
+     Prep-write 5 when `KICKBACK_AUTO` is armed; publishing the reply stays the operator's.
      The detector handles the "reviewDecision alone isn't the test" nuance + bot filtering for you.
    - **`re-review` in the REVIEW column = STALE APPROVAL — also waiting on others, NOT mergeable.**
      The poller emits `re-review` when a PR is `APPROVED` but has pending review requests: a change
@@ -673,8 +677,10 @@ session.**
    items, see the plan doc`), **store the detector's `signature:` line verbatim as `review_seen`** (so a
    later tick verdicts `NO-NEW` until feedback actually changes), and set lane → `kickback`.
 4. **`mc-lock.sh release loop`.** **STOP. `kickback` with `triage_doc` set is the operator's gate** — he
-   reads the doc and directs. You NEVER push the fix, post a reply, resolve a thread, or advance past
-   `kickback`. (If the triage is heavy, spawn a background triage worker scoped to *doc output only*;
+   reads the doc and directs. You NEVER post a reply, resolve a thread, or advance past `kickback`.
+   The one exception is Prep-write 5: with `KICKBACK_AUTO` armed, the triage's clear items go to a coder
+   address round and the replies land as private drafts; disarmed, you print what you would address.
+   Either way the triage doc is written first, so the operator always has the full picture. (If the triage is heavy, spawn a background triage worker scoped to *doc output only*;
    it writes the section + returns, and a later tick sets `triage_doc`/lane — same async shape as the planner.)
 
 ### Prep-write 3 — Board-only inbox drain (`note` / `hold` / `unblock`)
@@ -822,6 +828,62 @@ goes through `adapters/dispatch.sh`'s third dispatcher (contract: `adapters/CONT
    review `pass`, on abandon, and on died-mid-run once the result is recovered or given up on. The
    worktree stays for Gate 2 inspection; only the session goes. `mc-orphans` lists sessions no row
    points at — tear those down under the internal-write grant, never silently.
+
+### Prep-write 5 — Kickback address (FLAG-GATED: `KICKBACK_AUTO`; `mc address on|off|status`)
+
+A reviewer's comment on an open PR is work the ticket's author does. When the triage says what the
+fix is, waiting for the operator to say "apply" is a delay; the operator's real decisions are the
+judgment items and the moment of publishing. This rung fixes the clear items in code and leaves the
+publishing, and every judgment call, to the operator. Misfire cost: a wrong fix on a PR branch that
+the operator reverts before publishing anything, plus one wasted coder round.
+
+**Trigger:** a `kickback` row whose `triage_doc` holds a `## Review triage — round N` section for the
+CURRENT `review_seen` signature (Prep-write 2 ran this round), PR open, no `address_round.sig` equal to
+that signature yet, no worker on the row, and a coder slot free (this round counts toward the ≤1 coder
+cap). One address round per tick.
+
+**Partition the round's items** (the triage table is the source; do not re-triage):
+- **eligible:** `mechanical`, and `substantive` items the triage marked **clear** (the drafted fix is
+  the only reasonable one and needs no product or design call). The triage writes `clear`/`judgment`
+  on every substantive row from now on; an unmarked substantive row is `judgment`.
+- **held for the operator:** `needs-you` / `needs-a-reply`, `substantive · judgment`, and any item whose
+  drafted fix touches a path in `$MC_GATE1_PATH_DENY` (the same always-a-human list Gate 1 uses).
+No eligible items → nothing to do here; the row waits as today.
+
+**Disarmed (default) → propose only.** Print `would address ABC-N: <eligible>/<total> items (<kinds>)`,
+log once as `worklog.sh add --source loop --ticket ABC-N "kickback would-address: <e>/<t>"` and set
+`address_proposed: "<sig>"`. **Soak:** compare these against what the operator later applies by hand
+(`apply` / `apply all` in the triage doc vs `skip`); disagreement on a `mechanical` item is a triage
+classification bug, on a `clear` item a fence bug.
+
+**Armed → address.** Lock-wrapped as ever (acquire → row write → release BEFORE the coder runs):
+1. Spawn the **coder in address mode** for the ticket's repo (runner seam, `--reuse` the ticket's author
+   session as for any address round). Fill the coder template's `{ADDRESS_ROUND}` block with the
+   eligible items only: thread node id, file:line, the reviewer's comment verbatim, the triage's drafted
+   fix. The block's rules bind the coder to those threads, forbid drive-bys, require the full pre-push
+   verification, and forbid touching a held item. Set `worker: "coder"`, `address_round: {sig, spawned}`.
+2. **On return** (per the Runner seam / detection path): the coder pushed to the PR branch and returned
+   `(i) addressed: [{thread, sha, summary}]` and `(j) not_addressed: [{thread, why}]`.
+   - For each addressed thread, draft the reply with the overlay's **reply-draft wrapper**
+     (`draft-review-comment.sh reply --repo <r> --pr <n> --thread <id> --body "<reply>"`), body in the
+     author-reply voice: one or two sentences, what changed + the short SHA + why, warm not terse, no
+     em dashes. **A pending review is visible only to the operator until they submit it.** Never call
+     anything that submits, resolves or marks ready.
+   - Set `address_round: {sig, addressed:[…], held:[…], drafts:<n>}`, `question:
+     "[review] addressed <a>/<t> · <h> need you · <n> drafts pending"`, keep lane `kickback`. If `<h>` > 0
+     leave `blocked_on` unset so it floats in ⛔ NEEDS YOU; if `<h>` = 0 the row still sits in the
+     `kickback` gate lane (publishing is the operator's), so it stays visible without a block.
+   - Log `worklog.sh add --source loop --ticket ABC-N "kickback addressed <a>/<t>, <n> reply drafts"`.
+   - **Not addressed / tests red / push failed** → no reply draft for those items; name them in
+     `question`; the coder's return says why. Never retry a push on your own.
+3. **After the push, CI is the next signal.** Reconcile tracks `ci` as for any open PR; red after an
+   address round → `question: "[review] addressed, CI red: <check>"`, no further action.
+4. The operator publishes the drafts on GitHub (or discards them), answers the held items in the
+   triage doc, and the round is over when the detector says `NO-NEW` or `CLEAN`.
+
+**Arming checklist** (the operator's, once the soak is convincing): allow-rule for the reply-draft
+wrapper in the harness settings; `mc coder on` (the round is code-writing); then `mc address on`.
+The coder's push uses the same permissions the Gate-2 draft-PR push already does.
 
 **⚠ Worker completion DETECTION — how you know a background worker finished (coder / reviewer /
 planner / bug-investigator). This fixes the 2026-07-10 stall; read it before the routing rules.

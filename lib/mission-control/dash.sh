@@ -138,6 +138,14 @@ render() {
   else
     gate1_badge=$'   \033[2mGate1 ⚪ manual\033[0m'
   fi
+  # Kickback-address badge (`mc address on`/`off`; flag file `KICKBACK_AUTO`). Honors MC_ADDRESS_FILE.
+  local adf addr_badge
+  adf="${MC_ADDRESS_FILE:-$HOME/.claude/mission-control/KICKBACK_AUTO}"
+  if [[ -f "$adf" ]]; then
+    addr_badge=$'   \033[1;32mAddress 🟢 ON\033[0m'
+  else
+    addr_badge=$'   \033[2mAddress ⚪ off\033[0m'
+  fi
   # Pause badge — none while running; ⏸ PAUSED (full freeze) or ⏸ DRAIN (no new intake, in-flight
   # still finishing to its next gate) read from the PAUSED flag (`mc pause [--drain]`). Honors MC_PAUSE_FILE.
   local pf pause_badge=""
@@ -149,7 +157,7 @@ render() {
       pause_badge=$'   \033[1;33m⏸ PAUSED\033[0m'
     fi
   fi
-  printf '\033[1m  MISSION CONTROL\033[0m   %s   workers %s/%s   %b%b%b\n' "$now" "$active" "$cap" "$coder_badge" "$gate1_badge" "$pause_badge"
+  printf '\033[1m  MISSION CONTROL\033[0m   %s   workers %s/%s   %b%b%b%b\n' "$now" "$active" "$cap" "$coder_badge" "$gate1_badge" "$addr_badge" "$pause_badge"
   printf '  ────────────────────────────────────────────────────────────────\n'
 
   # ⚠ HEALTH banner — credential / reachability failures the loop hit, + a

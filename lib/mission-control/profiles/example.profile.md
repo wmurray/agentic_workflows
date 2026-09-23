@@ -143,6 +143,19 @@ The loop can approve a plan itself when it has zero open questions, the pre-plan
 file (`mc gate1 auto|manual`); without it the loop only logs "would auto-approve", which is the
 soak to compare against your own approvals before arming.
 
+## Kickback address (optional)
+
+With `KICKBACK_AUTO` present (`mc address on`) the loop fixes the mechanical and clear
+review-comment items itself and drafts the replies through your **reply-draft wrapper**, a
+script that adds a reply inside a review thread as a PRIVATE pending review comment (GitHub
+shows a pending review only to its author). Name it here:
+
+| Role | Command |
+|---|---|
+| reply-draft wrapper | `~/.claude/lib/draft-review-comment.sh reply --repo <r> --pr <n> --thread <id> --body "…"` |
+
+Without the file the loop only logs "would address N/M". Judgment items always wait for you.
+
 ## Colleagues / blocked-on parties (optional)
 
 Names or roles the driver may set as `blocked_on` so the dash files a ticket under
