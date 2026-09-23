@@ -112,6 +112,7 @@ orchestrator (loop or manual session) substitutes the values below when it build
 | `{VAULT_PROJECTS_DIR}` | `<vault>/Projects` |
 | `{CATCH_ALL_GROUP}` | `Standalone Tickets` (the catch-all folder below) |
 | `{STYLE_GUIDE}` | path to your prose style guide, or `(none)` |
+| `{CONTEXT_DOCS}` | what the pre-plan critic may resolve ambiguity from: your domain glossary, project context docs, ADR folders (paths, one per line) |
 
 ### `{TEST_CONVENTIONS}` per repo (optional)
 
@@ -133,6 +134,14 @@ cd "$WT"
 ```
 Add the helper's caveats (a seed step that needs a sibling service, assets a worktree does
 not inherit) as comment lines inside the block.
+
+## Gate-1 auto-approve (optional)
+
+The loop can approve a plan itself when it has zero open questions, the pre-plan critic said
+`ready`, and the row is inside these fences (set in `local.env`): `MC_GATE1_CYCLES`,
+`MC_GATE1_TYPES`, `MC_GATE1_MAX_POINTS`, `MC_GATE1_PATH_DENY`. The switch is the `GATE1_AUTO`
+file (`mc gate1 auto|manual`); without it the loop only logs "would auto-approve", which is the
+soak to compare against your own approvals before arming.
 
 ## Colleagues / blocked-on parties (optional)
 

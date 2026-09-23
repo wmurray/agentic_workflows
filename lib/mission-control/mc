@@ -22,6 +22,8 @@
 #   mc pause --drain              # ⏸ PAUSE new intake only — in-flight work finishes to its next human gate
 #   mc resume                     # ▶️ unpause: the loop acts again next tick
 #   mc coder on|off               # 🟢/⚪ arm/disarm the loop's autonomous coder-spawn (default off)
+#   mc gate1 auto|manual          # 🟢/⚪ let the loop approve Gate 1 itself when a plan has no open
+#                                #   questions and passes the critic + size fences (default manual = propose only)
 #   mc                            # (no args) show what's queued + pause state + usage
 #
 # `mc pause`/`mc resume` toggle a PAUSED flag file DIRECTLY (not queued) — the loop checks
@@ -148,6 +150,31 @@ mc() {
     return 0
   fi
 
+  # Gate-1 auto-approve switch — direct side effect (NOT queued). AUTO (flag present) → the loop
+  # approves a plan-review row itself when the plan has zero open questions, the pre-plan critic
+  # said ready, and the row is inside the profile's cycle/type/points/path fences (and coder-spawn
+  # is armed). MANUAL (default, flag absent) → the loop only prints + logs "would auto-approve", which
+  # is the soak you compare against your own approvals before arming. Effective next tick.
+  if [[ "$1" == "gate1" ]]; then
+    local g1f="${MC_GATE1_FILE:-$HOME/.claude/mission-control/GATE1_AUTO}"
+    case "$2" in
+      auto|on|arm)
+        printf 'GATE1_AUTO %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$g1f"
+        printf 'mc: 🟢 Gate-1 AUTO (%s) — the loop approves fenced, question-free plans itself. `mc gate1 manual` to return to propose-only.\n' "$g1f" ;;
+      manual|off|propose)
+        rm -f "$g1f"
+        printf 'mc: ⚪ Gate-1 MANUAL — the loop only proposes "would auto-approve"; approvals wait for you.\n' ;;
+      ""|status|show)
+        if [[ -f "$g1f" ]]; then
+          printf 'mc: 🟢 Gate-1 AUTO (%s) — fenced, question-free plans are approved by the loop.\n' "$g1f"
+        else
+          printf 'mc: ⚪ Gate-1 MANUAL (default) — loop proposes only. `mc gate1 auto` to arm.\n'
+        fi ;;
+      *) printf 'mc: usage: mc gate1 [auto|manual|status]\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
   # Read-only: the work log — today's entries, or the last N days. Every queued verb lands
   # here (source `mc`), as do the drain, the wrappers and the loop's lane changes.
   if [[ "$1" == "log" || "$1" == "worklog" ]]; then
@@ -206,6 +233,12 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
     coder on|off|status     🟢/⚪ arm/disarm the loop's autonomous coder-spawn (default off);
                             off = loop only proposes "would spawn coder". Halts only code-writing,
                             unlike `mc pause` (whole loop). Takes effect next tick.
+    gate1 auto|manual|status 🟢/⚪ let the loop approve Gate 1 itself for a plan with no open questions
+                            that passed the pre-plan critic and the profile's size/type fences (default
+                            manual = the loop only says "would auto-approve"). Gate 2 + merge unchanged.
+    guard on|off [wrapper…] loop guard: manual-only wrappers (merge, qa, done, …) refuse with exit 4
+    guard status            while the loop holds the writer lock. `off` is your testing override, all
+                            or per wrapper; `on` re-arms. Default ON. Never silent when off.
     lock | who              show the single-writer lock owner
     log [N]                 today's work log (or the last N days); queued verbs are logged automatically
     health | creds          probe GitHub + the tracker credential/reachability health

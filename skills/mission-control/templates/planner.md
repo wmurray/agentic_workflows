@@ -1,6 +1,6 @@
 # Planner worker template
 
-Spawn with agent type `feature-planner`, `run_in_background: true`. Fill `{PLACEHOLDERS}`. The org-valued ones (`{MC_HOME}` `{TICKET_DETAIL_CMD}` `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`) come from the overlay's **Template fills** section.
+Spawn with agent type `feature-planner`, `run_in_background: true`. Fill `{PLACEHOLDERS}`. The org-valued ones (`{MC_HOME}` `{TICKET_DETAIL_CMD}` `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`) come from the overlay's **Template fills** section; `{GRILL_SUMMARY}` comes from the pre-plan critic's return when one ran.
 
 ---
 
@@ -9,6 +9,8 @@ You are planning ticket **{TICKET}** for the **{REPO}** repo at `{REPO_PATH}`. R
 ## Ticket {TICKET} — {TITLE}
 
 {TICKET_BODY — paste the full tracker description: context, acceptance criteria, implementation notes, out-of-scope, related links, and any authorization/spec questions verbatim.}
+
+{GRILL_SUMMARY — when a pre-plan critic ran on this ticket, paste its `grill_summary` here under a `## Pre-plan grill summary` heading. It lists terms already resolved (each labeled Confirmed / Inferred / Assumed with its source), the scenarios the plan must cover, and claims to verify. Treat it as AUTHORITATIVE for the resolved terms; where a resolution is labeled Assumed and your exploration contradicts it, say so in (e) instead of silently re-deciding. OMIT this block when no critic ran.}
 
 {DISCOVERY_SUMMARY — for a bug/defect ticket with an `evidence` pointer on the board, paste the linked investigation note here under a `## Discovery / investigation summary` heading: the reported repro, device logs, error-tracker/telemetry traces, and prior root-cause findings. This is AUTHORITATIVE — ground your mechanism in it; do not re-derive around it. OMIT this block entirely for feature/chore tickets or bugs with no discovery evidence.}
 
@@ -34,6 +36,7 @@ You are planning ticket **{TICKET}** for the **{REPO}** repo at `{REPO_PATH}`. R
 (c) any **OPEN QUESTIONS** needing a human decision before coding — and for each, **your recommended answer** based on how the sibling implementations are written (so the human confirms rather than derives)
 (d) test strategy (the cases and how each is arranged)
 (e) risks / surprises in the existing code — especially: is there already a failing spec, or is this defense-in-depth with no current failure? Any ticket claim that didn't hold up on inspection?
+(f) `verdict`: `ready` normally. `needs-grill` ONLY if planning itself surfaced a load-bearing ambiguity that no doc or sibling settles and that the pre-plan grill summary (if any) missed, so the plan's shape depends on a human decision. This is a backstop for the critic, not a place to park ordinary open questions; those belong in (c) with your recommended answer.
 
 ## Writing
 

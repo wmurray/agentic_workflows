@@ -447,7 +447,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - inbox has `approve ABC-N` → **Gate-1 approval (the operator's decision; you execute the consequence):** if
      `CODER_SPAWN_LIVE` is armed → **drain it** and run Prep-write 4 Trigger A (flip plan-review→implement,
      the tracker → its in-progress status, spawn coder). If disarmed → **leave the line** and propose "would approve Gate 1 →
-     implement + spawn coder" (today's behavior — approve stays the operator's to execute).
+     implement + spawn coder" (today's behavior — approve stays the operator's to execute). An
+     `approve ABC-N: <note>` carries the operator's **answers to the plan's open questions**; Trigger A
+     writes them into the plan doc before the coder spawns.
    - inbox has `qa ABC-N` → "would hand ABC-N to QA (testing notes + the tracker's QA status)" — only valid
      from `alpha-verify`; like merge, the loop executes the operator's handoff, never originates it
    - inbox has `merge ABC-N` → "would execute your authorized merge: `gh pr merge` after the
@@ -565,13 +567,42 @@ Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you
        `bug-investigator`, template `$MC_SKILL_DIR/templates/bug-investigator.md` —
        absolute), NOT the planner. It reproduces + root-causes and returns a note path. Safe prep
        (read-only, no code). The planner spawns on a **later tick** once `evidence` is set (see 5a).
-     - **`type:"feature"`/`"chore"`, or a bug whose `evidence` is already set → spawn the planner**
-       (agent type `feature-planner`, template `.../planner.md` — absolute, don't search). **If the row
-       has an `evidence` pointer**, read that note and paste it into the template's `{DISCOVERY_SUMMARY}`
-       block as an authoritative `## Discovery / investigation summary` — grounds the planner in observed
-       evidence, not a code-derived guess (the ABC-2012 failure mode). No `evidence` → omit the block.
+     - **`type:"feature"`/`"chore"`, or a bug whose `evidence` is already set → spawn the pre-plan
+       CRITIC first, not the planner** (runner role `critic`, agent type `pre-plan-critic`, template
+       `$MC_SKILL_DIR/templates/pre-plan-critic.md` — absolute). Read-only; it hunts for what makes the
+       ticket un-plannable, resolves the mild ambiguities from the overlay's `{CONTEXT_DOCS}` and returns
+       `verdict` + `grill_summary` + `blocking_questions`. Set `worker: "critic"`. **If the row has an
+       `evidence` pointer**, paste that note into the critic brief's `{DISCOVERY_SUMMARY}` block too. The
+       planner spawns on the critic's return (3b), never directly from ingest. **Also record `points`**
+       (the estimate-field value from the inbound row or `tracker fields_of`) on the row; Gate-1
+       auto-approve reads it.
    - **Background tier:** stop at the captured `refined` row — **NO worker spawn here** (investigator or
      planner). It surfaces in the dash's ⌾ OUT OF CYCLE queue and is picked up opportunistically.
+3b. **Critic return (a later tick; row has `worker:"critic"`, `phase_done`).** Re-acquire the lock, read
+   the harvested JSON, then branch:
+   - **`verdict: "ready"`** → set `critic: {verdict:"ready", rationale}` on the row, clear `worker → null`,
+     and spawn the **planner** (agent type `feature-planner`, template `.../planner.md` — absolute).
+     Paste the critic's `grill_summary` into the template's `{GRILL_SUMMARY}` block under a
+     `## Pre-plan grill summary` heading (authoritative for the resolved terms; the Assumed labels stay
+     visible so a wrong pick is caught at plan review). **If the row has an `evidence` pointer**, also
+     paste that note into `{DISCOVERY_SUMMARY}` as `## Discovery / investigation summary` — grounds the
+     planner in observed evidence, not a code-derived guess (the ABC-2012 failure mode). Set
+     `worker: "planner"`. Release.
+   - **`verdict: "needs-grill"`** → do **NOT** plan. Set `critic: {verdict:"needs-grill", questions:[…]}`,
+     `blocked: true`, leave `blocked_on` unset (it is on the operator), `question: "[grill] N decision(s):
+     <first question, terse>"`, clear `worker → null`, log
+     `worklog.sh add --source loop --ticket ABC-N "parked [grill]: <rationale>"`, release, **STOP**. It floats
+     in ⛔ NEEDS YOU. The operator resolves it one of three ways, all of which you honor on a later tick:
+     `unblock ABC-N: <answers>` in the inbox (the note IS the answers → spawn the planner per the `ready`
+     branch with the answers appended to the grill summary under `### Operator decisions`); a bare
+     `unblock` (plan anyway, questions unanswered → the planner carries them as open questions); or the
+     operator grills and plans hands-on with `/execute-plan`, after which `mc-poll` sees the plan and you
+     adopt the row at `plan-review`.
+   - **Harvest empty / worker gone** → died-mid-run handling as for any worker; re-spawn the critic once,
+     then park with `question: "[critic] no return twice"`.
+   The critic is read-only prep, the same class as the investigator, so this whole chain sits within the
+   loop's prep-write authority. **Skip the critic only when the row carries `critic` already** (a re-plan
+   after `changes`, or a row the manual session vetted).
 4. **`mc-lock.sh release loop`** as soon as the row is written (don't hold across any planner run).
 5. **Advance to `plan-review` when a plan is ready** (a later tick): re-acquire, set lane →
    `plan-review`, write the planner's returned path into the **`plan_path` field** (dedicated field,
@@ -580,6 +611,12 @@ Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you
    running and needlessly withholds an opportunistic-planning slot), release. **STOP.
    `plan-review` is Gate 1 — the operator's.** (`cycle` is preserved through the lifecycle — a background
    ticket that reaches a gate still needs the operator, and the NEEDS-YOU banner floats it regardless of cycle.)
+   Also record on the row **`open_qs`** (the count of the planner's (c) open questions) and honor the
+   planner's **(f) `verdict`**: `needs-grill` from the planner is the backstop for a critic miss and is
+   handled exactly like a critic `needs-grill` (park with `[grill]`, 3b) instead of landing at `plan-review`.
+   **Then run the Gate-1 auto-approve check (Prep-write 4, Trigger C)** in the same lock-held write: an
+   eligible plan is approved on this tick when the switch is armed, or proposed as "would auto-approve"
+   when it is not.
 5a. **Bug tickets add ONE earlier phase — investigator return (a later tick, before any plan exists).**
    When a `bug-investigator` worker returns (row has `worker:"bug-investigator"`, `phase_done`): re-acquire
    the lock, then branch on its result:
@@ -697,6 +734,10 @@ Tighter than the overall 2–3 cap on purpose; a planner/reviewer may still use 
    line + flag (don't guess).
 3. Flip lane `plan-review` → `implement` (MERGE fields onto the object, never reconstruct; atomic
    `tmp`+`mv`); run the **status-sync wrapper** `<KEY> implement` (BARE) → the tracker's in-progress status.
+3a. **If the approve line carries a note** (`approve ABC-N: Q1 yes; Q2 use the existing service`), it is
+   the operator's answers to the plan's open questions. Append to the plan doc at `plan_path`:
+   `## Operator answers (<date>)` followed by the note verbatim, one line per `;`-separated answer. The
+   coder reads the plan doc, so the answers reach it without a template change. Internal write (vault).
 4. Remove the `approve ABC-N` line from the inbox via the pinned wrapper:
    `mc-inbox-drain.sh "approve ABC-N"` (allow-listed — never an improvised in-place edit; see Prep-write 3
    step 4 for why a raw shell mutation trips the auto-mode bypass classifier).
@@ -711,6 +752,35 @@ Tighter than the overall 2–3 cap on purpose; a planner/reviewer may still use 
 
 **Trigger B — `implement` lane, no worker (`●` absent), ARMED, coder slot free:** spawn the coder as
 in A5. This catches an approved-but-uncoded ticket, or one that waited on the ≤1-coder cap.
+
+**Trigger C — Gate-1 auto-approve (flag-gated: `GATE1_AUTO` file, `mc gate1 auto|manual|status`).**
+Gate 1 exists so a human decides what a plan could not decide alone. When the plan left nothing to
+decide, the gate is a delay, not a check; the real check moves to Gate 2 where the operator reads the
+diff. So a `plan-review` row is **eligible** when ALL hold (every test is structural; none asks you to
+judge the plan's quality):
+- the row carries `critic.verdict == "ready"` (no critic ran → not eligible; the critic is the
+  adversarial pass that stops a planner from earning a wave-through by asking nothing);
+- the planner returned `open_qs == 0` and `verdict: "ready"`;
+- `cycle` is in `$MC_GATE1_CYCLES` (default `sprint`), `type` is in `$MC_GATE1_TYPES` (default
+  `feature chore`; a bug keeps the human gate), `points` is set and `≤ $MC_GATE1_MAX_POINTS`
+  (default 3; missing points → not eligible);
+- `$MC_GATE1_PATH_DENY` is empty, or `grep -Eq "$MC_GATE1_PATH_DENY" <plan doc>` finds nothing (the
+  overlay's list of paths that always get a human: auth, payments, migrations, …);
+- `CODER_SPAWN_LIVE` is armed (an approval with no coder to follow is a status write with no work behind it).
+Then:
+- **`GATE1_AUTO` present → approve.** Run Trigger A steps 1–3 and 5–6 with no inbox line to drain, set
+  `question: "auto-approved Gate 1 · 0 q · <points> pts · <type>"`, and log
+  `worklog.sh add --source loop --ticket ABC-N "gate1 auto-approved: 0 q, <points> pts, <type>"`.
+- **`GATE1_AUTO` absent → propose only.** Print `would auto-approve Gate 1 ABC-N (0 q · <points> pts ·
+  <type>)` in the tick summary, log the same line once as `gate1 would-auto-approve …` and set
+  `gate1_proposed: true` on the row so it is logged once, not every tick. The operator approves by hand
+  as today. **This is the soak:** after a week, count `would-auto-approve` lines against the operator's
+  later `queued: approve` (agreement) and `queued: changes` or a re-plan (disagreement) in the work log.
+  A high agreement rate is what earns `mc gate1 auto`; each disagreement names the fence that is missing.
+- **Not eligible → normal Gate 1**, and say which fence failed in one line (`gate1: ABC-N held, 2 open
+  questions` / `… 5 pts > 3`) so the soak also shows what the fences are catching.
+Gate 2 and merge are untouched by this trigger. `mc gate1 manual` (remove the file) returns to propose-only
+at the next tick; `mc pause` still freezes everything.
 
 **Runner seam — WHERE a worker runs (planner / investigator / coder / reviewer).** Every spawn above
 goes through `adapters/dispatch.sh`'s third dispatcher (contract: `adapters/CONTRACT.md` "Runner adapter"):

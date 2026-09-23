@@ -96,6 +96,19 @@ disabled wrapper always prints that it ran unguarded. `mc guard status` shows bo
 switch and who holds the lock. Which wrappers are manual-only is the overlay's call; the
 engine ships only the check.
 
+## The pre-plan critic and Gate-1 auto-approve
+
+Before the loop plans a ticket it spawns a read-only critic (`templates/pre-plan-critic.md`,
+agent `pre-plan-critic`) that hunts for what makes the ticket un-plannable, resolves the mild
+ambiguities from the overlay's `{CONTEXT_DOCS}` and returns `ready` or `needs-grill`. `ready`
+grounds the planner with the critic's summary; `needs-grill` parks the ticket for the
+operator with the questions and recommended answers. A plan that then has zero open
+questions, a `ready` verdict and sits inside the profile's fences (`MC_GATE1_CYCLES`,
+`MC_GATE1_TYPES`, `MC_GATE1_MAX_POINTS`, `MC_GATE1_PATH_DENY`) is approved by the loop
+itself when `GATE1_AUTO` is present (`mc gate1 auto`). Without the file the loop only logs
+"would auto-approve", which is the soak to compare against real approvals before arming.
+Gate 2 and merge are unchanged.
+
 ## The work log
 
 `worklog.sh` keeps one JSONL file per day (default `~/.claude/worklog/`). The `mc` verbs log

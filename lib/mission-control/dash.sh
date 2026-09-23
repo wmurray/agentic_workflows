@@ -130,6 +130,14 @@ render() {
   else
     coder_badge=$'\033[2;31mCoder 🔴 off\033[0m'
   fi
+  # Gate-1 auto-approve badge (`mc gate1 auto`/`manual`; flag file `GATE1_AUTO`). Honors MC_GATE1_FILE.
+  local g1f gate1_badge
+  g1f="${MC_GATE1_FILE:-$HOME/.claude/mission-control/GATE1_AUTO}"
+  if [[ -f "$g1f" ]]; then
+    gate1_badge=$'   \033[1;32mGate1 🟢 AUTO\033[0m'
+  else
+    gate1_badge=$'   \033[2mGate1 ⚪ manual\033[0m'
+  fi
   # Pause badge — none while running; ⏸ PAUSED (full freeze) or ⏸ DRAIN (no new intake, in-flight
   # still finishing to its next gate) read from the PAUSED flag (`mc pause [--drain]`). Honors MC_PAUSE_FILE.
   local pf pause_badge=""
@@ -141,7 +149,7 @@ render() {
       pause_badge=$'   \033[1;33m⏸ PAUSED\033[0m'
     fi
   fi
-  printf '\033[1m  MISSION CONTROL\033[0m   %s   workers %s/%s   %b%b\n' "$now" "$active" "$cap" "$coder_badge" "$pause_badge"
+  printf '\033[1m  MISSION CONTROL\033[0m   %s   workers %s/%s   %b%b%b\n' "$now" "$active" "$cap" "$coder_badge" "$gate1_badge" "$pause_badge"
   printf '  ────────────────────────────────────────────────────────────────\n'
 
   # ⚠ HEALTH banner — credential / reachability failures the loop hit, + a
