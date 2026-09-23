@@ -96,6 +96,11 @@ disabled wrapper always prints that it ran unguarded. `mc guard status` shows bo
 switch and who holds the lock. Which wrappers are manual-only is the overlay's call; the
 engine ships only the check.
 
+The switch is also how an operator grants the loop a wrapper one at a time. The driver's
+merge rule reads it: while `mc guard off merge` is set, a queued `mc merge` is executed by
+the loop (the wrapper still re-checks every precondition); with the guard on, the loop only
+proposes it. The same pattern extends to any other wrapper the operator decides to open.
+
 ## The pre-plan critic and Gate-1 auto-approve
 
 Before the loop plans a ticket it spawns a read-only critic (`templates/pre-plan-critic.md`,

@@ -267,8 +267,9 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
                             push to the PR branch, and draft each reply as a PRIVATE pending comment you
                             publish. Judgment items stay yours. Default off = "would address N/M".
     guard on|off [wrapper…] loop guard: manual-only wrappers (merge, qa, done, …) refuse with exit 4
-    guard status            while the loop holds the writer lock. `off` is your testing override, all
-                            or per wrapper; `on` re-arms. Default ON. Never silent when off.
+    guard status            while the loop holds the writer lock. `off` is your per-wrapper override
+                            (all if no name); `on` re-arms. Default ON. Never silent when off.
+                            `guard off merge` also lets the loop EXECUTE a queued `mc merge`.
     lock | who              show the single-writer lock owner
     log [N]                 today's work log (or the last N days); queued verbs are logged automatically
     health | creds          probe GitHub + the tracker credential/reachability health

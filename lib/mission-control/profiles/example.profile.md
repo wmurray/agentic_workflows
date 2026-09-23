@@ -72,6 +72,10 @@ Every wrapper marked **manual only** should call `$MC_HOME/mc-guard.sh check <na
 first statement, so it refuses (exit 4) while the loop holds the writer lock. `mc guard
 off|on|status` toggles that for testing.
 
+A wrapper you decide to open to the loop stays on this list; you open it with `mc guard off
+<name>` and the driver's rule for that verb reads the guard. `merge` is the one the engine
+already knows how to drain this way.
+
 Each wrapper should also append one line to the work log when it succeeds, so the day's
 outward transitions are recorded without anyone remembering to:
 `MC_WORKLOG_SOURCE=<name> $MC_HOME/worklog.sh add --ticket <KEY> "<what changed>"`.

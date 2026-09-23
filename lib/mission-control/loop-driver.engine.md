@@ -455,10 +455,21 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      writes them into the plan doc before the coder spawns.
    - inbox has `qa ABC-N` → "would hand ABC-N to QA (testing notes + the tracker's QA status)" — only valid
      from `alpha-verify`; like merge, the loop executes the operator's handoff, never originates it
-   - inbox has `merge ABC-N` → "would execute your authorized merge: `gh pr merge` after the
-     APPROVED+green+mergeable+not-draft check". **`mc merge` is the ONLY thing that authorizes a
-     merge — never propose merging a `ready-to-merge` PR on your own; merge is always the operator's
-     explicit call, you only execute his queued authorization.**
+   - inbox has `merge ABC-N` → **the guard decides whether you execute or propose.** Run
+     `$MC_HOME/mc-guard.sh check merge` (BARE). **Exit 4** (guard ON for merge, the default) → propose as
+     before: "would execute your authorized merge after the APPROVED+green+mergeable+not-draft check" and
+     leave the line for the manual session. **Exit 0** (the operator opened merge to you with
+     `mc guard off merge`; the check prints that it runs unguarded) AND the row is at `ready-to-merge` →
+     **drain + execute:** lock-wrapped, run `$MC_PIPELINE/merge.sh <owner/repo> <n>` BARE with **no
+     flags** (never `--allow-freeze` or `--allow-rebase-stale`; those are the operator's, passed
+     conversationally in a manual session). Exit 0 → lane `ready-to-merge` → `alpha-verify`, set
+     `merged_at`, `question: "merged · post-merge fields are yours (release note, flags, QA cases)"`,
+     `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop "merged <repo>#<n> on queued mc merge"`.
+     Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. The post-merge
+     field flow (release note, feature flags, QA cases, sprint label) is NOT yours; those wrappers stay
+     guarded. **`mc merge` is the ONLY thing that authorizes a merge — never propose merging a
+     `ready-to-merge` PR on your own; merge is always the operator's explicit call, you only execute
+     his queued authorization, and only while the guard is open for it.**
    - inbox has `note ABC-N: <text>`, `hold ABC-N: <reason>`, or `unblock ABC-N` → **ACT (board-only inbox drain grant):**
      apply the annotation to the ticket (`note` → set `question`/`result`, no lane change; `hold` →
      `blocked: true` + `question` (+ `blocked_on` if the blocker is someone else); `unblock` → `blocked: false`,
@@ -966,7 +977,8 @@ bounded review → draft PR, parking at Gate 2, plus draining the `approve` line
 grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
 then lane `in-review` + status-sync). The instant a write would touch the **OUTWARD** world beyond those —
 an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write, reassigning a **colleague**-held ticket, a `qa`/`done`
-transition, a **merge**, or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
+transition, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
+or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
 STOP. That's a contract breach; flag it instead.
 
 ## What success looks like (Step 3)
@@ -1065,7 +1077,8 @@ first**: build shipped OFF; the operator arms it (`mc coder on`) and watches one
 cycle before trusting it unattended; `mc coder off` reverts to propose-only next tick. It's bounded by a
 Gate-1-approved plan (the operator's decision), the mandatory review, the ≤1-coder cap, and Gate 2 (nothing
 readies/merges without the operator). **Still FLAG-only after this rung** (ungranted): the tracker **field** writes,
-all `gh` outward except the queued-`ready` drain (comment/resolve/merge), `qa`/`done` transitions, pushing an approved
+all `gh` outward except the queued-`ready` drain and a queued `merge` while `mc guard off merge` is set
+(comment/resolve stay flag-only), `qa`/`done` transitions, pushing an approved
 review fix, and >1 concurrent coder. **Next: soak assignee-fix + the supervised coder-spawn arm clean,
 then consider widening the coder cap to 2 and draining more outward verbs.** Shared prerequisites (all BUILT):
 - **Single-writer lock — BUILT + NOW IN USE (`$MC_HOME/mc-lock.sh`).** Both prep
