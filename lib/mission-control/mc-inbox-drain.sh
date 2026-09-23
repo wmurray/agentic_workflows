@@ -53,4 +53,8 @@ awk -v tgt="$t_trim" '
     print $0
   }' "$INBOX" > "$tmp" && mv "$tmp" "$INBOX"
 echo "mc-inbox-drain: drained '$t_trim' (one line removed)."
+# Work log: a drained line means the orchestrator acted on it. Optional, never fails us.
+_wl="$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/worklog.sh"
+[ -x "$_wl" ] || _wl="${MC_HOME:-$HOME/.claude/mission-control}/worklog.sh"
+[ -x "$_wl" ] && "$_wl" add --source orchestrator "acted on: $t_trim" >/dev/null 2>&1 || true
 exit 0

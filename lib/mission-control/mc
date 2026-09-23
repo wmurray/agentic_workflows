@@ -233,4 +233,8 @@ HELP
 
   printf '%s\n' "$*" >> "$inbox"
   printf 'mc: queued -> %s\n' "$*"
+  # Work log: the queued verb is an operator decision (approve/ready/merge/qa/plan…) — the
+  # journal skills read this stream. Optional: silent no-op when worklog.sh is absent.
+  local wl="${MC_WORKLOG_SH:-$HOME/.claude/mission-control/worklog.sh}"
+  [[ -x "$wl" ]] && "$wl" add --source mc "queued: $*" >/dev/null 2>&1 || true
 }

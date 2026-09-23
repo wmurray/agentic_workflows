@@ -24,6 +24,7 @@ _MC_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIVE="$HOME/.claude/mission-control"
 
 pass=0; fail=0
+export MC_WORKLOG_DIR="${TMPDIR:-/tmp}/mc-smoke-worklog.$$"   # every producer under test logs HERE, never to the live log
 red()  { printf '\033[31m%s\033[0m\n' "$*"; }
 grn()  { printf '\033[32m%s\033[0m\n' "$*"; }
 dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
@@ -205,6 +206,21 @@ printf 'manual\t%s\n' "$(date +%s)" > "$GL"
 run  "guard allows a manual holder"         0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 printf 'ENG-999 a scratch inbox line\n' > "$WORK/mc-inbox"
 run "mc-inbox-drain"             0,1,2 "$_MC_LIB/mc-inbox-drain.sh" ENG-999
+
+# --- work log: append-only JSONL, one file per day --------------------------------------
+WL="$_MC_LIB/worklog.sh"
+run  "worklog add"                          0 "$WL" add --source smoke --ticket ENG-101 "merged the fixture PR"
+run  "worklog add infers the ticket key"    0 "$WL" add --source smoke "reviewed ENG-102 for a teammate"
+run  "worklog add with MC_WORKLOG=off"      0 env MC_WORKLOG=off "$WL" add "must not land"
+says "worklog today lists both lines"       yes 'ENG-101.*merged'     "$WL" today
+says "  … inferred key present"            yes 'ENG-102'             "$WL" today
+says "  … the off line is absent"          no  'must not land'       "$WL" today
+says "worklog --json is a 2-entry array"    yes '^2$'  bash -c '"$0" today --json | jq length' "$WL"
+run  "worklog add without text fails"       2 "$WL" add --source smoke
+printf 'approve ENG-101\n' > "$WORK/mc-inbox"
+run  "drain logs what it removed"           0 env MC_INBOX="$WORK/mc-inbox" "$_MC_LIB/mc-inbox-drain.sh" "approve ENG-101"
+says "  … as an orchestrator line"         yes '\[orchestrator\].*acted on: approve ENG-101' "$WL" today
+rm -rf "$MC_WORKLOG_DIR"
 
 # --- 6. dash renders the fixture board ----------------------------------------------
 frame="$(MC_INTERVAL=99 timeout 8 "$_MC_LIB/dash.sh" 2>&1)"

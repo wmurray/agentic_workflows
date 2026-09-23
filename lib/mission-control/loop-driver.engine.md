@@ -160,7 +160,9 @@ coder-spawn, if a write would touch tracker fields / other host writes / merge, 
   NOT touch any other inbox verb (`approve`/`merge`/`qa`/`plan`/`changes`): read-but-leave those, and
   propose. Writing the inbox for anything but a `note`/`hold`/`unblock`/`ready` drain is a breach.
 - **Report, don't write — for everything outside your five internal writes.** Outward proposals
-  and flags go to YOUR pane as terse lines, never into a file. **Never narrate a lane change as if YOU
+  and flags go to YOUR pane as terse lines, never into a file. **After every lane change you write, append one line to the work log:**
+  `{MC_HOME}/worklog.sh add --source loop --ticket ABC-N "<lane> → <lane>: <why>"`. Wrapper-driven
+  transitions log themselves; this covers the board writes only you make. **Never narrate a lane change as if YOU
   made it** *unless you actually made it via one of your internal writes (ingest / triage / reconcile).*
   If the board advanced some OTHER way between
   ticks, the orchestrator did it — say so ("orchestrator advanced ABC-2001 → alpha-verify"), never

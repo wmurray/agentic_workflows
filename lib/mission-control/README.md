@@ -13,6 +13,7 @@ so the repo and the running loop cannot diverge; git is the durable backup.
 
 ```
 mc-*.sh              the engine — detectors, the lock, the inbox drain
+worklog.sh           append-only per-day work log (JSONL); fed by mc, the drain and the wrappers
 dash.sh              the renderer (a pure function of state.json)
 loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
 adapters/
@@ -92,6 +93,15 @@ on [name…]` re-enables, and `MC_LOOP_GUARD=off` disables it for a single invoc
 disabled wrapper always prints that it ran unguarded. `mc guard status` shows both the
 switch and who holds the lock. Which wrappers are manual-only is the overlay's call; the
 engine ships only the check.
+
+## The work log
+
+`worklog.sh` keeps one JSONL file per day (default `~/.claude/worklog/`). The `mc` verbs log
+the operator's decisions, `mc-inbox-drain.sh` logs what the orchestrator acted on, and a
+manual-only wrapper logs each outward transition it completes. Interactive sessions append a
+line at natural checkpoints. Journal tooling reads it back with `worklog.sh show --days N
+--json`; that is how a day's work that left no commit, PR or tracker edit still gets recorded.
+`MC_WORKLOG=off` silences writes; `MC_WORKLOG_DIR` relocates the files.
 
 ## Doctrine: engine + overlay, read at runtime
 
