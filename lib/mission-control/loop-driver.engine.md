@@ -1080,7 +1080,7 @@ in the **assign wrapper** keep it reversible + colleague-silent; a **colleague**
 first**: build shipped OFF; the operator arms it (`mc coder on`) and watches one full Gate-1→coder→review→draft-PR
 cycle before trusting it unattended; `mc coder off` reverts to propose-only next tick. It's bounded by a
 Gate-1-approved plan (the operator's decision), the mandatory review, the ≤1-coder cap, and Gate 2 (nothing
-readies/merges without the operator). **Still FLAG-only after this rung** (ungranted): the tracker **field** writes,
+readies or merges without an operator-queued `mc ready` / `mc merge`). **Still FLAG-only after this rung** (ungranted): the tracker **field** writes,
 all `gh` outward except the queued-`ready` drain and a queued `merge` while `mc guard off merge` is set
 (comment/resolve stay flag-only), `qa`/`done` transitions, pushing an approved
 review fix, and >1 concurrent coder. **Next: soak assignee-fix + the supervised coder-spawn arm clean,
