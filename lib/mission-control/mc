@@ -1,0 +1,318 @@
+# mc — mission-control: queue an async control-return command for the orchestrator.
+#
+# The orchestrator drains this inbox at the top of each interaction (and, once the
+# /loop driver exists, each tick), applies the commands, then clears the file. This
+# is how you hand decisions back to the board WITHOUT a chat interrupt — the
+# terminal stand-in for "drag a card -> orchestrator applies it".
+#
+#   mc approve ABC-1234            # Gate 1: approve the plan
+#   mc ready ABC-1234              # Gate 2: mark the draft PR ready
+#   mc merge ABC-1234             # authorize the merge -> orchestrator runs gh pr merge
+#                                #   (only after APPROVED + CI green + mergeable) + post-merge flow
+#   mc qa ABC-1234                # alpha smoke passed -> hand to QA (writes Testing notes,
+#                                #   moves the tracker to its QA status, lane -> qa)
+#   mc changes ABC-1234: <note>    # send back with a note
+#   mc plan ABC-1234               # pull a refined backlog ticket into planning
+#   mc hold ABC-1234: <reason>      # park (blocked) until cleared
+#   mc unblock ABC-1234             # lift a hold (blocked:false) — board-only, loop-drainable
+#   mc note ABC-1234: <note>       # attach a one-line note, no lane change
+#   mc ls                         # show what's queued (read-only — does NOT queue anything)
+#   mc log [N]                    # today's work log (or the last N days) — read-only
+#   mc pause                      # ⏸ PAUSE the loop (full freeze): it no-ops at its next tick (no writes/spawns)
+#   mc pause --drain              # ⏸ PAUSE new intake only — in-flight work finishes to its next human gate
+#   mc resume                     # ▶️ unpause: the loop acts again next tick
+#   mc coder on|off               # 🟢/⚪ arm/disarm the loop's autonomous coder-spawn (default off)
+#   mc gate1 auto|manual          # 🟢/⚪ let the loop approve Gate 1 itself when a plan has no open
+#                                #   questions and passes the critic + size fences (default manual = propose only)
+#   mc address on|off             # 🟢/⚪ let the loop fix the clear review-comment items in code + draft the
+#                                #   replies as private pending comments you publish (default off = propose only)
+#   mc                            # (no args) show what's queued + pause state + usage
+#
+# `mc pause`/`mc resume` toggle a PAUSED flag file DIRECTLY (not queued) — the loop checks
+# it at the TOP of every tick, before it reads anything, so the pause is immediate and does
+# not depend on the loop draining the inbox. The cron trigger keeps FIRING; the loop just
+# wakes and no-ops, so `mc resume` restarts it instantly. (It stops the loop taking NEW
+# actions; background workers already running are not retroactively killed.) This is distinct
+# from UN-SCHEDULING the loop (removing the cron trigger entirely) — that's an agent action
+# (CronList -> CronDelete every job whose prompt carries the `[mc-loop]` marker; cron jobs have
+# no name, so the marker is the handle), not a shell command.
+#
+# Override targets: MC_INBOX (inbox; mirrors dash.sh's MC_STATE) · MC_PAUSE_FILE (pause flag).
+mc() {
+  local inbox="${MC_INBOX:-$HOME/.claude/mission-control/mc-inbox}"
+  local pausef="${MC_PAUSE_FILE:-$HOME/.claude/mission-control/PAUSED}"
+
+  # Pause switch — direct side effect (NOT queued), so it takes effect at the loop's
+  # next tick-top check regardless of inbox state.
+  if [[ "$1" == "pause" || "$1" == "halt" ]]; then
+    if [[ "$2" == "--drain" || "$2" == "drain" ]]; then
+      # Drain pause: stop taking NEW work (ingest / plan / approve→first-coder / opportunistic
+      # planning) but let anything already in-flight finish to its next HUMAN gate (Gate 1
+      # plan-review or Gate 2 draft PR). The loop still ticks; the `mode=drain` line tells step 0
+      # to run-but-gate-intake instead of a full abort. Safe: in-flight never crosses a gate.
+      printf 'PAUSED %s\nmode=drain\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$pausef"
+      printf 'mc: ⏸ loop PAUSED (drain) (%s) — no NEW intake; in-flight work finishes to its next gate. `mc resume` to unpause.\n' "$pausef"
+    else
+      printf 'PAUSED %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$pausef"
+      printf 'mc: ⏸ loop PAUSED (%s) — full freeze; it no-ops at its next tick. `mc resume` to unpause. (`mc pause --drain` lets in-flight finish.)\n' "$pausef"
+    fi
+    return 0
+  fi
+  if [[ "$1" == "resume" || "$1" == "go" ]]; then
+    rm -f "$pausef"
+    printf 'mc: ▶️ loop RESUMED — it acts again next tick.\n'
+    return 0
+  fi
+
+  # Coder-spawn arm/disarm — direct side effect (NOT queued), the arm switch for the loop's
+  # autonomous code-writing. ARMED (flag present) → on a Gate-1 approval the loop spawns the
+  # coder→reviewer→draft-PR chain unattended (max 1 coder in flight). DISARMED (default, flag
+  # absent) → the loop only PROPOSES "would spawn coder" and leaves the approve for you. Sits
+  # alongside `mc pause`: pause halts the WHOLE loop; `mc coder off` halts only code-writing.
+  # Checked at the spawn point each tick, so a toggle takes effect at the next (~10 min) tick.
+  if [[ "$1" == "coder" ]]; then
+    local coderf="${MC_CODER_FILE:-$HOME/.claude/mission-control/CODER_SPAWN_LIVE}"
+    case "$2" in
+      on|arm|live)
+        printf 'CODER_SPAWN_LIVE %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$coderf"
+        printf 'mc: 🟢 coder-spawn ARMED (%s) — loop spawns coders on Gate-1 approvals (max 1 at a time). `mc coder off` to disarm.\n' "$coderf" ;;
+      off|disarm|propose)
+        rm -f "$coderf"
+        printf 'mc: ⚪ coder-spawn DISARMED — loop only PROPOSES "would spawn coder"; approvals wait for you.\n' ;;
+      ""|status|show)
+        if [[ -f "$coderf" ]]; then
+          printf 'mc: 🟢 coder-spawn ARMED (%s) — loop spawns coders unattended.\n' "$coderf"
+        else
+          printf 'mc: ⚪ coder-spawn DISARMED (default) — loop proposes only. `mc coder on` to arm.\n'
+        fi ;;
+      *) printf 'mc: usage: mc coder [on|off|status]\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
+  # Print (+ copy) the canonical `/loop` START command so you don't hand-type it. Paste
+  # the copied string into the loop-pane agent to (re)start the loop. The tick prompt is
+  # extracted LIVE from loop-driver.md's canonical spec (never a hardcoded copy, so it
+  # can't drift) and always carries the `[mc-loop]` marker — which is what makes the
+  # created cron findable for de-dup + end-of-day teardown. Optional interval arg
+  # (default 10m, matching the canonical cadence): `mc prompt` / `mc prompt 15m`.
+  # (Replaces the old standalone `mcloop`, whose string lacked the marker.) Local action.
+  if [[ "$1" == "guard" ]]; then
+    local gs="${MC_GUARD_SCRIPT:-$HOME/.claude/mission-control/mc-guard.sh}"
+    [[ -x "$gs" ]] || { printf 'mc: no mc-guard.sh at %s\n' "$gs" >&2; return 1; }
+    case "$2" in
+      on|off)        "$gs" "$2" "${@:3}" ;;
+      ""|status|show) "$gs" status ;;
+      *) printf 'mc: usage: mc guard [on|off] [wrapper…] | status  — no wrapper = all. Refuses manual-only wrappers (merge/qa/done…) while the loop holds the writer lock\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+  if [[ "$1" == "prompt" || "$1" == "loop-prompt" || "$1" == "loop" ]]; then
+    local driver="${MC_LOOP_DRIVER:-$HOME/.claude/mission-control/loop-driver.md}"
+    local interval="${2:-10m}"
+    local p cmd
+    p=$(grep -m1 '\[mc-loop\] Mission-control loop tick' "$driver" 2>/dev/null \
+        | sed -E 's/^[[:space:]]*`?//; s/`?[[:space:]]*$//')
+    if [[ -z "$p" ]]; then
+      printf 'mc: could not find the [mc-loop] prompt in %s\n' "$driver" >&2
+      return 1
+    fi
+    cmd="/loop ${interval} ${p}"
+    printf '%s\n' "$cmd"
+    if command -v pbcopy >/dev/null 2>&1; then
+      printf '%s' "$cmd" | pbcopy && printf 'mc: ↑ /loop start command copied — paste into the loop-pane agent.\n'
+    fi
+    return 0
+  fi
+
+  # Launch the dashboard (the glance surface) in this pane — so you never hand-type the
+  # path. Foreground/blocking: it's a full-screen TUI that clears + refreshes until you
+  # quit it (Ctrl-C). Honors dash.sh's own env (MC_STATE / MC_INTERVAL); extra args pass
+  # through. Local action, never queued.
+  if [[ "$1" == "dash" || "$1" == "board" ]]; then
+    local dashscript="${MC_DASH_SCRIPT:-$HOME/.claude/mission-control/dash.sh}"
+    if [[ -x "$dashscript" ]]; then
+      "$dashscript" "${@:2}"
+    else
+      printf 'mc: no dash.sh at %s\n' "$dashscript" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  # Read-only: probe credential/reachability health (GitHub + the tracker) on demand. Same
+  # check the loop runs each tick; prints the health JSON. Local action, no queue.
+  if [[ "$1" == "health" || "$1" == "creds" ]]; then
+    local hs="${MC_HEALTH_SCRIPT:-$HOME/.claude/mission-control/mc-health.sh}"
+    if [[ -x "$hs" ]]; then
+      "$hs"
+    else
+      printf 'mc: no mc-health.sh at %s\n' "$hs" >&2; return 1
+    fi
+    return 0
+  fi
+
+  # Gate-1 auto-approve switch — direct side effect (NOT queued). AUTO (flag present) → the loop
+  # approves a plan-review row itself when the plan has zero open questions, the pre-plan critic
+  # said ready, and the row is inside the profile's cycle/type/points/path fences (and coder-spawn
+  # is armed). MANUAL (default, flag absent) → the loop only prints + logs "would auto-approve", which
+  # is the soak you compare against your own approvals before arming. Effective next tick.
+  if [[ "$1" == "gate1" ]]; then
+    local g1f="${MC_GATE1_FILE:-$HOME/.claude/mission-control/GATE1_AUTO}"
+    case "$2" in
+      auto|on|arm)
+        printf 'GATE1_AUTO %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$g1f"
+        printf 'mc: 🟢 Gate-1 AUTO (%s) — the loop approves fenced, question-free plans itself. `mc gate1 manual` to return to propose-only.\n' "$g1f" ;;
+      manual|off|propose)
+        rm -f "$g1f"
+        printf 'mc: ⚪ Gate-1 MANUAL — the loop only proposes "would auto-approve"; approvals wait for you.\n' ;;
+      ""|status|show)
+        if [[ -f "$g1f" ]]; then
+          printf 'mc: 🟢 Gate-1 AUTO (%s) — fenced, question-free plans are approved by the loop.\n' "$g1f"
+        else
+          printf 'mc: ⚪ Gate-1 MANUAL (default) — loop proposes only. `mc gate1 auto` to arm.\n'
+        fi ;;
+      *) printf 'mc: usage: mc gate1 [auto|manual|status]\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
+  # Kickback-address switch — direct side effect (NOT queued). ON (flag present) → on a triaged
+  # review kickback the loop runs a coder address round for the mechanical + clear items, pushes to
+  # the PR branch, and drafts each reply as a PRIVATE pending review comment (visible only to you until
+  # you submit). Judgment items stay yours. OFF (default) → the loop only prints + logs "would address
+  # N/M". Needs `mc coder on` too (it is code-writing). Effective next tick.
+  if [[ "$1" == "address" || "$1" == "kickback" ]]; then
+    local adf="${MC_ADDRESS_FILE:-$HOME/.claude/mission-control/KICKBACK_AUTO}"
+    case "$2" in
+      on|arm|auto)
+        printf 'KICKBACK_AUTO %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$adf"
+        printf 'mc: 🟢 kickback-address ON (%s) — clear review items get fixed + pushed, replies drafted for you to publish. `mc address off` to disarm.\n' "$adf" ;;
+      off|disarm|propose|manual)
+        rm -f "$adf"
+        printf 'mc: ⚪ kickback-address OFF — the loop only proposes "would address N/M"; you apply via the triage doc.\n' ;;
+      ""|status|show)
+        if [[ -f "$adf" ]]; then
+          printf 'mc: 🟢 kickback-address ON (%s) — clear items fixed + pushed, replies drafted privately.\n' "$adf"
+        else
+          printf 'mc: ⚪ kickback-address OFF (default) — loop proposes only. `mc address on` to arm.\n'
+        fi ;;
+      *) printf 'mc: usage: mc address [on|off|status]\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
+  # Read-only: the work log — today's entries, or the last N days. Every queued verb lands
+  # here (source `mc`), as do the drain, the wrappers and the loop's lane changes.
+  if [[ "$1" == "log" || "$1" == "worklog" ]]; then
+    local wls="${MC_WORKLOG_SH:-$HOME/.claude/mission-control/worklog.sh}"
+    if [[ -x "$wls" ]]; then
+      if [[ -n "${2:-}" ]]; then "$wls" show --days "$2"; else "$wls" today; fi
+    else
+      printf 'mc: no worklog.sh at %s\n' "$wls" >&2; return 1
+    fi
+    return 0
+  fi
+
+  # Read-only: who holds the single-writer lock right now (owner + age + TTL). Safe to
+  # run from ANY window — it just reads the lock file. Useful when a manual session
+  # seems blocked, or to confirm the loop yielded to you.
+  if [[ "$1" == "lock" || "$1" == "who" ]]; then
+    local lockscript="${MC_LOCK_SCRIPT:-$HOME/.claude/mission-control/mc-lock.sh}"
+    if [[ -x "$lockscript" ]]; then
+      printf 'mc: writer-lock — %s\n' "$("$lockscript" status)"
+    else
+      printf 'mc: no mc-lock.sh at %s\n' "$lockscript" >&2
+    fi
+    return 0
+  fi
+
+  # Full help — every verb, its effect, and (critically) whether it's BOARD-ONLY (just
+  # annotates state.json) or OUTWARD (moves the tracker / spawns an agent / merges). Intercepted
+  # before the append so `help` never queues itself.
+  if [[ "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]]; then
+    cat <<'HELP'
+mc — queue a control command for the orchestrator (drained each interaction / loop tick).
+Format: mc <verb> ABC-XXXX[: note]   ·   the note after `:` is optional context.
+
+CONTROL VERBS (queued → orchestrator acts)
+  board-only (just annotates the board — a state.json write, no outward effect):
+    hold   ABC-X: <reason>   park the ticket (blocked:true) + set its note; no lane change
+    note   ABC-X: <text>     set the ticket's one-line note; no lane change
+    unblock ABC-X           lift a hold (blocked:false) + clear the block note; no lane change
+                            ⚠ note/hold write the SAME single `question`/`result` line the
+                              agent uses — your text REPLACES what's there (last writer wins).
+  outward / gated (moves the tracker, spawns an agent, or merges — the human-decision verbs):
+    approve ABC-X            Gate 1: approve the plan → implement + spawn coder
+    ready   ABC-X            Gate 2: mark the draft PR ready for review
+    merge   ABC-X            authorize the merge → orchestrator runs merge.sh (APPROVED+green+
+                            mergeable checks) + post-merge flow
+    qa      ABC-X            alpha smoke passed → hand to QA (testing notes + the tracker QA status)
+    changes ABC-X: <note>    work an OPEN PR's review comments → kickback + triage flow
+    plan    ABC-X            pull a refined backlog ticket into planning → spawn planner
+
+LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
+    dash | board            launch the dashboard in this pane (full-screen; Ctrl-C to quit)
+    prompt | loop [10m]     print + copy the canonical `/loop` START command (paste into the loop agent)
+    ls | queue | show       show what's queued
+    pause [--drain]|resume  ⏸/▶️ the loop; immediate, not queued. bare = full freeze (no-op tick);
+                            --drain = stop NEW intake only, in-flight finishes to its next human gate
+    coder on|off|status     🟢/⚪ arm/disarm the loop's autonomous coder-spawn (default off);
+                            off = loop only proposes "would spawn coder". Halts only code-writing,
+                            unlike `mc pause` (whole loop). Takes effect next tick.
+    gate1 auto|manual|status 🟢/⚪ let the loop approve Gate 1 itself for a plan with no open questions
+                            that passed the pre-plan critic and the profile's size/type fences (default
+                            manual = the loop only says "would auto-approve"). Gate 2 + merge unchanged.
+    address on|off|status   🟢/⚪ let the loop fix the mechanical + clear review-comment items in code,
+                            push to the PR branch, and draft each reply as a PRIVATE pending comment you
+                            publish. Judgment items stay yours. Default off = "would address N/M".
+    guard on|off [wrapper…] loop guard: manual-only wrappers (merge, qa, done, …) refuse with exit 4
+    guard status            while the loop holds the writer lock. `off` is your per-wrapper override
+                            (all if no name); `on` re-arms. Default ON. Never silent when off.
+                            `guard off merge` also lets the loop EXECUTE a queued `mc merge`.
+    lock | who              show the single-writer lock owner
+    log [N]                 today's work log (or the last N days); queued verbs are logged automatically
+    health | creds          probe GitHub + the tracker credential/reachability health
+    help | -h | --help      this text
+    mc                      (no args) queue + pause state + one-line usage
+
+FLAGS live on the scripts, NOT on mc. `mc merge` takes no flags — it just queues "merge ABC-X".
+To merge past a freeze or a clean rebase-only stale approval, say so conversationally and the
+orchestrator passes --allow-freeze / --allow-rebase-stale to merge.sh for you.
+HELP
+    return 0
+  fi
+
+  # Read-only views: `mc` (no args) and `mc ls` both print the queue + kill state. `ls`
+  # is a reserved non-verb intercepted BEFORE the append below, so it never queues itself;
+  # the no-arg form additionally prints the usage footer.
+  if [[ $# -eq 0 || "$1" == "ls" || "$1" == "queue" || "$1" == "show" ]]; then
+    [[ -f "$pausef" ]] && printf 'mc: ⏸ LOOP PAUSED (`mc resume` to unpause)\n'
+    if [[ -f "$inbox" ]]; then
+      local pending
+      pending=$(grep -vE '^[[:space:]]*#' "$inbox" | grep -vE '^[[:space:]]*$')
+      if [[ -n "$pending" ]]; then
+        printf 'mc: queued for the orchestrator:\n'
+        printf '%s\n' "$pending" | sed 's/^/  • /'
+      else
+        printf 'mc: inbox empty (nothing queued).\n'
+      fi
+    else
+      printf 'mc: no inbox at %s\n' "$inbox"
+    fi
+    [[ $# -eq 0 ]] && printf 'usage: mc <approve|ready|merge|qa|changes|plan|hold|unblock|note> ABC-XXXX [: note]  ·  mc dash = open board  ·  mc ls = queue  ·  mc pause|resume = pause loop  ·  mc lock = writer-lock owner  ·  mc help = full reference\n'
+    return 0
+  fi
+
+  if [[ ! -f "$inbox" ]]; then
+    printf 'mc: no inbox at %s — create it first (mission-control setup).\n' "$inbox" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$*" >> "$inbox"
+  printf 'mc: queued -> %s\n' "$*"
+  # Work log: the queued verb is an operator decision (approve/ready/merge/qa/plan…) — the
+  # journal skills read this stream. Optional: silent no-op when worklog.sh is absent.
+  local wl="${MC_WORKLOG_SH:-$HOME/.claude/mission-control/worklog.sh}"
+  [[ -x "$wl" ]] && "$wl" add --source mc "queued: $*" >/dev/null 2>&1 || true
+}

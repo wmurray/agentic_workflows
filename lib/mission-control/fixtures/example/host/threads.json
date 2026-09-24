@@ -1,0 +1,35 @@
+{
+  "example-org/app#202": {
+    "reviewDecision": "CHANGES_REQUESTED",
+    "threads": [
+      {"isResolved": false, "isOutdated": false, "path": "app/controllers/members_controller.rb",
+       "line": 34, "author": "teammate",
+       "body": "This will N+1 once the page size grows. Preload the org here.",
+       "latest": "2026-08-24T09:12:00Z"},
+      {"isResolved": true, "isOutdated": false, "path": "app/views/members/index.html.erb",
+       "line": 12, "author": "teammate", "body": "Nit: stray whitespace.",
+       "latest": "2026-08-24T09:05:00Z"},
+      {"isResolved": false, "isOutdated": true, "path": "app/models/member.rb",
+       "line": 88, "author": "teammate", "body": "Superseded by the scope you added.",
+       "latest": "2026-08-23T16:40:00Z"},
+      {"isResolved": false, "isOutdated": false, "path": "Gemfile.lock",
+       "line": 0, "author": "dependabot",
+       "body": "Automated dependency note.", "latest": "2026-08-24T09:20:00Z"}
+    ],
+    "reviews": [
+      {"state": "CHANGES_REQUESTED", "author": "teammate",
+       "body": "One real issue on the members query, rest is nits.",
+       "submittedAt": "2026-08-24T09:15:00Z"},
+      {"state": "COMMENTED", "author": "github-actions",
+       "body": "Coverage dropped 0.1%.", "submittedAt": "2026-08-24T09:21:00Z"}
+    ]
+  },
+  "example-org/app#203": {
+    "reviewDecision": "APPROVED",
+    "threads": [],
+    "reviews": [
+      {"state": "APPROVED", "author": "teammate", "body": "Ship it.",
+       "submittedAt": "2026-08-25T08:30:00Z"}
+    ]
+  }
+}

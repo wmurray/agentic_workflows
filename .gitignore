@@ -11,6 +11,10 @@ skills/sprint-retro/__pycache__/
 commands/.write-test
 
 # Personal config (never commit)
+lib/mission-control/profiles/local.env
+# defensive: the driver overlay belongs in the runtime dir, never here
+lib/mission-control/profiles/local.loop-driver.md
+lib/mission-control/profiles/*.local.md
 settings.json
 settings.local.json
 settings.json.bak
@@ -25,3 +29,6 @@ plugins/
 session-env/
 projects/
 rules/
+
+# jira-toolkit: your org values (never commit)
+lib/jira-toolkit/jira.env
