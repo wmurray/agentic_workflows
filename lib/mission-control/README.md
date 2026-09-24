@@ -18,6 +18,7 @@ worklog.sh           append-only per-day work log (JSONL); fed by mc, the drain 
                      field writers — org values in its own gitignored jira.env
 dash.sh              the renderer (a pure function of state.json)
 loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
+HISTORY.md           how the loop's write grants were earned, moved out of the driver so a tick never reads it
 adapters/
   CONTRACT.md        the two adapter contracts, and the decisions behind them
   mc                 the operator's shell function: inbox verbs (approve/ready/merge…), pause,

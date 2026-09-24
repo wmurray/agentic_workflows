@@ -65,13 +65,13 @@ Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
 - **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock. An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
 - **Destructive git under the loop → always via `mc-gitop.sh`, never raw.** When you (or a coder/worktree step) clean up a branch or reset a worktree, use `mc-gitop.sh` — `branch-del <branch>` / `reset-hard <ref>` / `restore-path <path>...` / `checkout-path <ref> -- <path>...`. Raw `git branch -D` / `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` trip the ask-only destructive-safety guard, which has no human to answer under the unattended loop and HANGS the tick (observed: `git branch -D <branch-prefix>-ABC-2006` froze a live tick). The wrapper runs the identical op in the cwd; it is deliberately named so its own invocation matches none of the guard's patterns.
 
-**The line (the operator's framing, 2026-06-30; grants widened 07-01 + 07-09): INTERNAL writes OK; OUTWARD writes gated — with THREE earned exceptions (tracker status-sync, assignee-fix, and flag-gated coder-spawn).**
+**The line: INTERNAL writes OK; OUTWARD writes gated, with these exceptions: tracker status-sync, assignee-fix, the operator's queued `ready` and `merge`, and the flag-gated rungs (coder-spawn, Gate-1 auto-approve, kickback address).**
 - **INTERNAL = the board (`state.json`) + internal artifacts (plan / triage docs in the notes vault).** No
   one else sees these; they're reversible; a bug shows a wrong lane on the dash that the operator corrects.
   This is what *interpreting* current state and reflecting it onto the board amounts to — safe.
 - **OUTWARD = anything the world sees: tracker field writes, `gh pr ready`/merge/comment/resolve,
   `git` push/commit.** *Changing* state, not reflecting it. **Gated/manual.**
-- **The FIRST earned outward exception (2026-07-01 rung): deterministic tracker status SYNC** — moving a
+- **Outward exception: deterministic tracker status SYNC** — moving a
   ticket's tracker status to match a board lane a human already drove through the gates (via
   the **status-sync wrapper**). It sits on the *reflecting* side of the line, not the *changing* side: it never
   originates a decision, only makes the tracker catch up to one already made. That's the whole reason it's the
@@ -114,7 +114,7 @@ The FIVE internal writes you hold today:
    **Inbox verb `ready`** below. Otherwise this is the only case where you may write the inbox file,
    and only to remove a `note`/`hold`/`unblock` line you just applied.
 
-5b. **Inbox verb `ready` → Gate 2 executed on the operator's word (2026-09-11 rung).** `mc ready <KEY>`
+5b. **Inbox verb `ready` → Gate 2 executed on the operator's word.** `mc ready <KEY>`
    is the operator's explicit Gate-2 decision, so draining it is carrying out a human choice, not making
    one. Preconditions, all checked from the poller row: the ticket is on the board with a `pr`, and the
    PR is open and still a draft. If any fails, read-but-leave the line and FLAG (`⛔ ready <KEY>: <why>`).
@@ -126,17 +126,17 @@ The FIVE internal writes you hold today:
    say so in the tick line. Reviewer team comes from the overlay's default; the loop never picks one.
 
 Plus the earned OUTWARD writes:
-6. **tracker status SYNC → mirror the board lane** (2026-07-01 rung) — when a ticket's tracker status lags its
+6. **tracker status SYNC → mirror the board lane** — when a ticket's tracker status lags its
    board lane, run the overlay's **status-sync wrapper** `<KEY> <lane>` (BARE) to bring the tracker into line.
    Reflecting an already-human-decided board state, not originating one; excludes `qa`/`done` (wrapper
    refuses → FLAG). Detailed in the reconcile step.
-7. **Assignee-fix → claim an UNASSIGNED ticket for the operator** (2026-07-09 rung) — when a board ticket in an
+7. **Assignee-fix → claim an UNASSIGNED ticket for the operator** — when a board ticket in an
    our-turn lane is UNASSIGNED in the tracker, run the overlay's **assign wrapper** `<KEY> --lane <lane>` (BARE)
    to claim it. Excludes `qa`/`product-review`/`done` (wrapper refuses → FLAG); a **colleague**-held
    ticket → wrapper exits 5 → FLAG (never reassign away from a person). Reflects the board's ownership.
 
 And the flag-gated code-writing grant:
-8. **Coder-spawn → Gate-1-approved plan to draft PR** (2026-07-09, OFF by default) — ONLY while
+8. **Coder-spawn → Gate-1-approved plan to draft PR** (OFF by default) — ONLY while
    `CODER_SPAWN_LIVE` is armed (`mc coder on`): drain `mc approve ABC-N`, drive coder → bounded review →
    draft PR, park at Gate 2. ≤1 coder in flight. Full spec in Prep-write 4. Disarmed → propose-only.
 
@@ -148,7 +148,7 @@ so it's flag-gated, runs only on a human-approved plan, and parks at Gate 2 (not
 without an operator-queued `mc ready` / `mc merge`). Treat the boundary as sacred: **beyond status-sync, assignee-fix, and (when armed)
 coder-spawn, if a write would touch tracker fields / other host writes / merge, you do NOT make it — you flag it.**
 
-## The contract (Step 3 — coder-spawn is flag-gated; do NOT cross)
+## The contract (coder-spawn is flag-gated; do NOT cross)
 
 - **You may write `state.json` (board lanes, `ci`, `reconcile`) + internal plan/triage docs, make the
   earned outward writes — tracker status SYNC (**status-sync wrapper**) + assignee-fix (**assign wrapper**, unassigned-only)
@@ -171,9 +171,8 @@ coder-spawn, if a write would touch tracker fields / other host writes / merge, 
   made it** *unless you actually made it via one of your internal writes (ingest / triage / reconcile).*
   If the board advanced some OTHER way between
   ticks, the orchestrator did it — say so ("orchestrator advanced ABC-2001 → alpha-verify"), never
-  "advanced … (state updated)" phrasing that falsely implies self-action. (Observed 2026-06-25: a
-  tick narrated "ABC-2001 advanced to alpha-verify (state updated)" when it had NOT acted — alarming
-  because a real breach reads identically. Now that you DO make prep-class writes, be scrupulous:
+  "advanced … (state updated)" phrasing that falsely implies self-action. A narrated non-action reads
+  identically to a real breach. Since you DO make prep-class writes, be scrupulous:
   narrate a write only when it was a prep-class write you actually performed.)
 - **You are a writer, so the single-writer lock is mandatory and you must NOT run a writing tick
   concurrently with a manual session.** Wrap EVERY write-phase in `mc-lock.sh` (see below): if a
@@ -221,10 +220,10 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      ticket is tick-driven (completion-handling spawns the reviewer; Trigger B picks up a stuck
      `implement` row). Because full pause ends the tick before any of that, **a worker that returns while
      fully paused does NOT advance** — its result is recorded but the next phase waits for a post-resume
-     tick. Nothing is lost (state is durable; resume recovers it), nothing progresses. Observed
-     2026-07-10: ABC-2009's R1 blocker sat un-actioned overnight; the R2 coder spawned only on the tick
-     after `mc resume`. **`mc pause --drain` is the escape hatch** for exactly that case — pause intake
-     overnight while letting a mid-review ticket finish to its draft PR.
+     tick. Nothing is lost (state is durable; resume recovers it), nothing progresses. A review
+     blocker left un-actioned across a full pause waits until the tick after `mc resume`.
+     **`mc pause --drain` is the escape hatch** for exactly that case: pause intake overnight while a
+     mid-review ticket finishes to its draft PR.
    - (This is PAUSE, not un-scheduling — removing the trigger entirely is a separate agent action; see
      "Scheduling lifecycle" — find it by its `[mc-loop]` marker and `CronDelete` its id. Cron jobs have
      no name field, so the marker is the only stable handle.)
@@ -233,8 +232,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    `state.json` fresh every call (so the durable-memory rule still holds — your reasoning is
    from canonical state, just projected), and prints the ACTIVE board + a parked/done footer.
    **Do NOT `cat` the full `state.json`** — it carries ~3.7k tokens of `result`/`question` prose
-   plus all the `done` tickets, and reading it whole every tick was burning ~30% of context per
-   tick (observed 2026-06-25). The poller is the projection; the raw file is only for a one-off
+   plus all the `done` tickets; read whole every tick it costs about 30% of context. The poller is the projection; the raw file is only for a one-off
    deep look at a specific ticket. *(Spike board: if you happen to be pointed at a `_scratch`
    state — `MC_STATE=…state.scratch.json` — the `ABC-900x` rows aren't real tracker/host issues, so the
    poller's tracker/host columns will be misses; just exercise steps 3–4's propose + no-write contract.)*
@@ -260,8 +258,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      reconcile could run) → `health.tracker = "ok"`. Only if **every** tracker column is `?(tracker-miss)` across
      ≥3 board tickets → the tracker is blind → `"unreachable"` (or `"auth"` only if you can positively tell
      it's a credential rejection, not a blip). **Do NOT flag the tracker from any separate probe** — a healthy
-     poll always wins (this is the 2026-07-01 fix: a synthetic tracker query false-flagged `unreachable`
-     while `reconcile` was simultaneously `clean`, which is a contradiction — the poll is authoritative).
+     poll always wins: a separate probe can report `unreachable` while the poll reconciles `clean`, and
+     the poll is authoritative.
    - **Write `state.json.health`** = `{tracker, host, checked_at, detail}` (merge the field, atomic
      tmp+mv) so the dash renders the banner.
    - **Stamp the heartbeat SIDECAR — every tick, OUTSIDE the lock, unconditionally:**
@@ -282,8 +280,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      If the tracker is `auth`/`unreachable`, skip tracker-dependent writes (reconcile's tracker-side, ingest,
      review-triage) — a blind poll must not drive board changes. But the **`note`/`hold` inbox drain
      is board-only** (pure `state.json`, needs NO tracker/host) → **always drain it, even when a service
-     is down.** (This is the 2026-07-01 fix: a false tracker-unreachable was wrongly blocking a queued
-     `mc hold`.) Still write health + heartbeat, still emit your one-line tick. Health self-clears when
+     is down;** a tracker outage must never block a board-only verb. Still write health + heartbeat, still emit your one-line tick. Health self-clears when
      the next poll succeeds.
 2. **Reconcile (detect → apply BOARD-INTERNAL fixes + tracker status-sync; FLAG other outward).** Using the SAME poll from step 1
    (one batched call; never per-ticket tracker/host detail reads), compare each row to its board
@@ -297,15 +294,15 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - `standing[]` — **pass-level meta ONLY, never a per-ticket echo of the board table.** The dash
        already shows every lane + whose-turn in the table right above this, and each held ticket's reason
        lives in its own `question` (surfaced in NEEDS YOU) — re-listing "ABC-N qa — awaiting QA" adds zero
-       information AND rots the instant a ticket moves (observed 2026-07-01: a stale standing block still
-       said "ABC-2010 ready-to-merge" after it had merged). Put here ONLY facts with no per-ticket home:
+       information AND rots the instant a ticket moves. Put here ONLY facts with no per-ticket home:
        "board unchanged for N ticks", "inbox empty", "archive up-to-date", "ingest none", a health note.
        **A held/blocked ticket is NOT re-listed here** — leaving it out of `drift` is the whole point, not
        moving it into `standing`; its state is already in the table + its `question`. Keep standing to
        ≤~3 terse lines. Narration, dash renders it dim, never an alarm.
      Write BOTH keys every reconcile pass (an empty array, not a missing key). Never put a held/quiet
-     item in `drift`, and never bloat `standing` into a table echo — both are the 2026-07-01 fixes.
-   - **WORKER-LIVENESS — check this FIRST, before lane drift (fixes the 2026-07-10 stall).** For every
+     item in `drift`, and never bloat `standing` into a table echo.
+   - **WORKER-LIVENESS — check this FIRST, before lane drift.** A finished worker whose completion went
+     unnoticed stalls its ticket for as long as no one checks, so this runs before anything else. For every
      ticket with `worker != null and phase_done == false`, confirm that worker — against the `●role@impl:status`
      column mc-poll prints when the row carries `runner` (see "Runner seam", Prep-write 4), else against **`TaskList`** —
      never trust the `state.json` `worker:` marker alone (it's exactly what goes stale when a finish
@@ -320,9 +317,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      green/frozen + MERGEABLE but lane still `in-review` → advance to `ready-to-merge` **ONLY if
      `mc-review-check.sh <repo> <pr#>` prints verdict `CLEAN`** (no reviewer feedback at all).
      **`reviewDecision==APPROVED` is NOT sufficient on its own** — an APPROVED aggregate can hide a
-     reviewer's `COMMENTED`/`CHANGES_REQUESTED` note or an unresolved thread (the ABC-2002 miss,
-     2026-07-02: one reviewer APPROVED while another left a COMMENTED review with two questions; the loop
-     advanced to ready-to-merge and buried them). Route by verdict (all three, not the exit code —
+     reviewer's `COMMENTED`/`CHANGES_REQUESTED` note or an unresolved thread: one reviewer's APPROVED does
+     not cancel another reviewer's open questions. Route by verdict (all three, not the exit code —
      `CLEAN` and `NO-NEW` both exit 0):
      - **`NEEDS-TRIAGE`** → do NOT advance; route to **review-triage prep** (`kickback`, the prep-class
        write below) and set `review_seen` to the returned signature, even when the aggregate is APPROVED.
@@ -349,19 +345,19 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      `done` tickets to the cycle (so "in the active cycle" is a noisy signal you may only PROMOTE on,
      never demote on). Skip the query entirely when there are no `background` tickets (zero cost). This
      is a pure `state.json` write — board-internal, within grant.
-   - **OUTWARD status SYNC — you now APPLY this (the FIRST earned outward write, 2026-07-01 rung; assignee-fix below is the second):**
+   - **OUTWARD status SYNC — you APPLY this:**
      when a ticket's tracker status lags its board lane, bring the tracker into line via
      **the overlay's status-sync wrapper, `<KEY> <lane>`**. This only MIRRORS an already-human-decided
      board state onto the tracker (the board lane was set by a gated human action); it never *originates* a
      decision — which is why it's the safest possible outward write. **Run it BARE** (no `2>&1` / `; echo`
-     / pipe — a compound command misses the allow-prefix and gets denied; observed 2026-07-01). **This
+     / pipe: a compound command misses the allow-prefix and gets denied). **This
      holds for EVERY pipeline wrapper, not just this one: invoke each as its OWN Bash call, bundled at
      most with read-only helpers (`tail`/`echo`). Bundling a wrapper in the same call as a
      NON-allow-listed MUTATION (e.g. a `printf … >> notes.md` stamp-append) breaks the allow-prefix
      match, so the whole call escalates to the auto-mode classifier — which denies an outward write it
      can't tie to an in-chat authorization (and a headless loop has none: `mc qa`/`mc merge` live in the
-     inbox file, invisible to the classifier). Observed 2026-07-08: a qa-transition wrapper bundled with a
-     Testing-Notes stamp-append was denied despite the allow-rule already existing.** Guards:
+     inbox file, invisible to the classifier); a wrapper bundled with any other mutating command is
+     denied even when its own allow-rule exists.** Guards:
      - **Order matters: board-internal reconcile FIRST, then status-sync** — sync the tracker to the board lane
        only after this same tick has already pulled the board to observed reality, so you never sync the tracker
        to a stale lane.
@@ -370,7 +366,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
        MANUAL: if the wrapper refuses, FLAG it, never hand-roll a raw tracker transition.
      - **Never touch a `blocked`/held ticket's status.**
      - Record each as an APPLIED `drift[]` line: `"ABC-N the tracker <old>→<new> (synced to board lane)"`.
-   - **OUTWARD — assignee-fix (GRANTED 2026-07-09, UNASSIGNED-only):** an **unassigned** ticket in an
+   - **OUTWARD — assignee-fix (UNASSIGNED-only):** an **unassigned** ticket in an
      our-turn lane → **run the overlay's **assign wrapper** `<KEY> --lane <lane>` (BARE — no pipe/compound,
      or the allow-prefix is missed)**. The wrapper claims it for the operator ONLY if currently unassigned; its
      `--lane` guard refuses `qa`/`product-review`/`done` (exit 4 → leave it, QA/product legitimately owns
@@ -383,8 +379,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      (board `done` but the tracker ≠ Done — judgment); orphan PRs.
    - **Never auto-advance a `blocked`/held ticket** — a block needs eyes; reflect reality around it but leave the lane.
    - **Draft-ness comes only from the poller's `DRAFT` column (`isDraft`), never from PR `state`.**
-     A draft PR is also `state: OPEN` (observed 2026-06-25: a `state=OPEN` read on a real PR
-     was falsely reported "not draft" when `isDraft` was still `true`).
+     A draft PR is also `state: OPEN`, so `state` alone says nothing about draft-ness.
    - **A `(host-miss)` / `?(tracker-miss)` marker means the poller couldn't find that PR/ticket**
      (e.g. a merged PR older than the `gh pr list -L` window) — treat it as "unknown, don't
      conclude," not as clean.
@@ -395,16 +390,15 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    detector). For everything except your granted writes (ingest; review-triage prep; `note`/`hold`
    drain), print a terse proposal line of what you *would* do once granted authority. For the granted
    ones, execute the bounded write-path below.
-   - **`mc-archive --check` says DUE** (the active cycle ≠ the cycle marker) → **GRANTED internal
-     write (2026-07-01): run `$MC_HOME/mc-archive.sh --commit`** (lock-wrapped, like
+   - **`mc-archive --check` says DUE** (the active cycle ≠ the cycle marker) → **internal
+     write: run `$MC_HOME/mc-archive.sh --commit`** (lock-wrapped, like
      every other write), then report `"cycle rolled C→C' — archived N done → state.archive.json"`.
      This is **INTERNAL, not outward** — it touches only local files (`state.json` trimmed of `done`
      tickets, `state.archive.json` appended, the cycle marker (`$MC_CYCLE_MARKER`) stamped); no `git`,
      no tracker, no `gh`. Fully reversible (archived tickets are preserved with `archivedAtSprint`
      stamps). It fires at most once per rollover (the marker guards re-fire); never `--force` on your
-     own. Granted separately from the outward ladder because it's time-gated — it can only be
-     validated by a real rollover, not tick-soak. **First-rollover audit pending** (verify: fired
-     once on the true boundary; archived exactly the `done` set, nothing in-flight; marker advanced).
+     own. It is time-gated, so it is validated by a real rollover: fired once on the true boundary,
+     archived exactly the `done` set, nothing in-flight, marker advanced.
    - **`mc-inbound` lists a ticket** in either tier — **this is a thing you now ACT on.** It's the operator's
      **tracker-native start signal**: **`inbound (sprint)`** (assigned + in the active cycle +
      the ready status (`$MC_READY_STATUS`) + off-board) → ingest + spawn a planner EAGERLY, tag `cycle:"sprint"`;
@@ -413,11 +407,11 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      opportunistically (one at a time, only when no in-cycle ticket is awaiting planning + a slot is free).
      **Execute per Prep-write 1 (lock-wrapped, hard stop at plan-review).** The point-value on the
      background tier is the vetting gate — trust the detector, don't second-guess which tier a ticket is in.
-   - **`mc-promote.sh` lists a ticket → GRANTED internal write: promote it AND report it.** Run
+   - **`mc-promote.sh` lists a ticket → internal write: promote it AND report it.** Run
      `$MC_HOME/mc-promote.sh` EVERY tick alongside `mc-inbound`/`mc-archive --check`. It
      finds on-board rows with ANY non-in-cycle `cycle` stamp (`background` = OUT OF CYCLE, `backlog` = parked;
-     widened 2026-08-10 after a `backlog`-stamped in-cycle ticket slipped the old background-only scan and got
-     its PR mislabeled) that the tracker NOW places in the active cycle — the
+     a `backlog`-stamped ticket pulled into the cycle must be caught too, or its PR gets mislabeled) that the
+     tracker NOW places in the active cycle — the
      re-classification `mc-inbound` structurally can't do (it only tiers *off-board* tickets at ingest and
      never re-evaluates an on-board row, so a background ticket later pulled into the active cycle stays OUT OF
      CYCLE forever). A ticket committed to the CURRENT active cycle IS in-cycle work (tier-1 semantics), so for
@@ -432,7 +426,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      `mc-archive --commit` reported a `⚠ HELD` ticket (board `done` but the tracker not at a terminal Done status),
      NAME it in the tick line so a backward the tracker move never rots silently (the ABC-2006 lesson). Report it;
      never auto-move a lane backward.
-   - **Background opportunistic planning — EVERY TICK, independent of `mc-inbound` (GRANTED internal write).**
+   - **Background opportunistic planning — EVERY TICK, independent of `mc-inbound` (internal write).**
      This is a **first-class per-tick step, NOT gated on an `inbound` hit** — `mc-inbound` only returns
      *off-board* tickets, so an already-on-board `cycle:"background"` `refined` row (captured on a prior tick,
      or unblocked via `mc unblock`) would otherwise NEVER be re-evaluated for planning. (This was the live
@@ -483,8 +477,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - `in-review` (PR already readied + reviewers requested, `reviewDecision REVIEW_REQUIRED`) →
      **WAITING ON OTHERS — not your turn. Track only, NEVER flag ⛔.** `REVIEW_REQUIRED` means the
      requested colleague reviewers haven't approved yet (the ball is in THEIR court); it is NOT a
-     human-gate signal (observed 2026-06-26: ABC-2004/#103 + ABC-2007/#104 were both reported "⛔
-     your turn: REVIEW_REQUIRED" when they were simply awaiting their assigned reviewers). An
+     human-gate signal; reporting it as "⛔ your turn" is wrong. An
      in-review PR only becomes your turn when it turns `CHANGES_REQUESTED` / gets new comments
      (→ **review-triage prep**, a prep-class write — see below) or reaches APPROVED+green+mergeable
      (→ ready-to-merge, your merge).
@@ -500,16 +493,14 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      landed AFTER the approval and re-review was re-requested. The PR host keeps `reviewDecision==APPROVED`
      sticky across new commits, so APPROVED alone never means merge-ready. Treat `re-review` exactly
      like REVIEW_REQUIRED — track only, NEVER ⛔, NEVER propose merge. **A `ready-to-merge` lane whose
-     REVIEW is `re-review` is DRIFT** (the PR regressed after being marked ready — observed 2026-06-26:
-     ABC-2005/#105 was advanced to `ready-to-merge`, then a new commit + re-review request landed):
-     report it as drift (reconcile should send it back to in-review), do **not** propose the merge.
+     REVIEW is `re-review` is DRIFT** (a new commit and a re-review request landed after it was marked
+     ready): report it as drift (reconcile should send it back to in-review), do **not** propose the merge.
    - **CI column `frozen` is NOT a build failure** — it means the ONLY red check is the release-freeze guard
      named by `$MC_FREEZE_CHECK_PATTERN` (a check your org turns red on purpose during a freeze
      window, so work clears QA before merging — the overlay documents your window). **Never report it
      as "CI failing" / propose "fix CI."** A `frozen` PR that's otherwise APPROVED + green +
      mergeable is "⛔ ready-to-merge but ❄ release-frozen — clear with QA, then `mc merge`," not a
-     broken build. (observed 2026-06-26: a PR reported "CI failing" when the build was
-     fully green and only the freeze guard was red.) Only `ci=fail` (a real non-freeze failure)
+     broken build; a red freeze guard on a green build is not "CI failing". Only `ci=fail` (a real non-freeze failure)
      is a build problem worth flagging.
    - gate lanes (`plan-review`/`awaiting-review`/`ready-to-merge`/`kickback`/`alpha-verify`
      — note: `in-review` is deliberately NOT a gate lane, per the rule just above)
@@ -521,9 +512,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    Frame all of these as proposals, never actions — **the ingest path is the sole exception you act on.**
 
    **Derive every proposal from your own step-2 poll — NEVER echo the board's `question`/`result`
-   prose.** Those fields are written at a past transition and lag the lane (observed 2026-06-25:
-   ABC-2001 / PR #102 sat at `in-review` with a stale Gate-2 `question` — "your diff walk → mark
-   ready" — while the PR was already APPROVED + green + MERGEABLE, i.e. truly `ready-to-merge`. A
+   prose.** Those fields are written at a past transition and lag the lane: a stale Gate-2 `question`
+   can sit on a PR that is already APPROVED + green + MERGEABLE. A
    loop that parrots `question` reports "diff walk → ready" instead of "⛔ merge"). So when your
    poll disagrees with the board (e.g. APPROVED + CI green + MERGEABLE but lane still `in-review`),
    propose from **what the PR/the tracker actually say** and call out the lag as drift — do not restate
@@ -532,11 +522,10 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    → planner spawned · prepped triage ABC-2003 (3 items → 📝) · 1 ⛔ gate · would spawn coder ABC-9002`)
    and **stop until the next tick.** When you took a prep-class write this tick, say so plainly and
    truthfully ("ingested ABC-N → planner spawned" / "prepped triage ABC-N → 📝 N items"); when you only
-   proposed, keep the "would …" framing. Silence is the product: never paste detail, never ask for a
-   routing decision.
+   proposed, keep the "would …" framing. Emit one terse tick line; detail goes on the board. Anything
+   that blocked the tick goes in that line. Never paste detail and never ask for a routing decision.
    **The `HH:MM` MUST come from a real `date '+%H:%M'` call — NEVER write a time from your head.**
-   You have no internal clock; a guessed timestamp confabulates (observed 2026-06-25: emitted
-   `tick @ 09:38` when the wall clock was 09:35, i.e. a fabricated future time). Append `date`
+   You have no internal clock; a guessed timestamp is a fabrication. Append `date`
    to one of the Bash calls you already make this tick and use its output verbatim. (The harness
    also prints the true fire time on its own "Running scheduled task (…)" line above your output —
    if you ever can't run `date`, drop the `@ HH:MM` entirely and rely on that, rather than guess.)
@@ -556,7 +545,7 @@ behavior.
 ### Prep-write 1 — Ingest → plan-review (TWO tiers: sprint eager · background opportunistic)
 
 Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you reject at Gate 1.
-`mc-inbound.sh` now returns TWO tiers (2026-07-02) — treat them differently:
+`mc-inbound.sh` returns TWO tiers; treat them differently:
 - **`inbound (sprint)`** = assigned + the ready status (`$MC_READY_STATUS`) + in the active cycle, off-board.
   Committed = urgent → **ingest + spawn a planner EAGERLY** (as before), tag the row `cycle: "sprint"`.
 - **`inbound (background)`** = assigned + the ready status (`$MC_READY_STATUS`) + **NOT** in the active cycle + **has a
@@ -653,8 +642,8 @@ Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you
 planning** — meaning a `cycle: "sprint"` `refined` row that is unblocked and has no planner yet (or whose
 planner is mid-run). **Parked rows (`cycle: "backlog"` OR untagged/absent — absent now means backlog, NOT
 sprint) and `blocked` rows do NOT count toward (a)** — they are not in the planning pipeline and must never
-gate background planning. (This is the 2026-07-08 starvation fix: previously untagged backlog rows defaulted
-to in-cycle and permanently tripped (a), so a live loop never planned its background queue.) **(b)** a planner
+gate background planning; an untagged backlog row counted as in-cycle would trip (a) forever and starve
+the background queue. **(b)** a planner
 slot is free (respect concurrency 2–3), and **(c)** you are not already running a background planner. One at a
 time — idle capacity, not a batch.
 **Ordering when several background tickets are eligible:** prefer (1) a future-cycle-committed ticket over
@@ -722,8 +711,7 @@ grant: leave it in the queue and propose.)
    `mc-inbox-drain.sh "note ABC-N: …"` (the FULL command line, verbatim). It removes only the first
    exact-match non-comment line and preserves every other queued line + the header. **NEVER improvise an
    in-place edit (sed/awk/redirect) on the inbox** — a raw file-mutating shell command is what the
-   headless loop's auto-mode permission classifier flags as a "bypass" (observed 2026-07-09, ABC-2009);
-   the wrapper is allow-listed precisely so a cron tick never hits that prompt.
+   headless loop's auto-mode permission classifier flags as a "bypass"; the wrapper is allow-listed precisely so a cron tick never hits that prompt.
 5. **`mc-lock.sh release loop`.** Report truthfully (`drained note ABC-N`). No gate here — a `note`/
    `hold` is terminal board state, not a step in the pipeline.
 
@@ -814,7 +802,7 @@ goes through `adapters/dispatch.sh`'s third dispatcher (contract: `adapters/CONT
      teammate exactly that handle's first field.
    - `herdr` → `handle=$(runner herdr spawn <role> <KEY> <worktree> <brief> <result> [--reuse <prev>])`
      starts (or re-prompts) a visible pane. **`<worktree>` is the ticket's worktree, never the checkout
-     it was cut from** — a pane started at the repo root did its work in the main checkout (2026-09-09).
+     it was cut from**; a pane started at the repo root does its work in the main checkout.
      Env files are NOT copied in by anyone but the operator; if the brief needs one, flag it.
    - Lock-wrapped either way: acquire → set `worker`, `runner:{impl,handle,result}` → release BEFORE
      the worker runs.
@@ -899,7 +887,7 @@ wrapper in the harness settings; `mc coder on` (the round is code-writing); then
 The coder's push uses the same permissions the Gate-2 draft-PR push already does.
 
 **⚠ Worker completion DETECTION — how you know a background worker finished (coder / reviewer /
-planner / bug-investigator). This fixes the 2026-07-10 stall; read it before the routing rules.
+planner / bug-investigator). A missed completion stalls the ticket; read this before the routing rules.
 (For a row that carries `runner`, the Runner seam above is the detection path; what follows is the
 in-process path.)**
 A background worker is a NAMED teammate. **Always spawn it with a name that embeds the ticket +
@@ -1051,67 +1039,25 @@ run the start procedure again rather than assuming it's still scheduled.
 "unschedule / shut down the loop," and it is distinct from `mc pause` (which leaves the trigger
 firing and no-ops the tick). Pause = sleep; unschedule = remove.
 
-## Step 3 — coder-spawn BUILT (flag-gated 2026-07-09) + the outward ladder
+## What you may write (current grants)
 
-You now hold FIVE internal writes (ingest → plan-review; review-triage prep → kickback; board
-reconcile → mirror reality; cycle archive → trim the board on rollover; `note`/`hold` inbox drain →
-apply board annotations) **PLUS TWO earned OUTWARD writes — tracker status SYNC** (the **status-sync wrapper**,
-mirroring a board lane onto the tracker) **and assignee-fix** (the **assign wrapper**, claiming an UNASSIGNED our-turn
-ticket for the operator) **PLUS the flag-gated coder-spawn** (Prep-write 4 — OFF by default behind
-`CODER_SPAWN_LIVE` / `mc coder on`). The remaining ungranted OUTWARD writes (the tracker **field** writes,
-`gh pr ready`/request-review/comment/resolve, `qa`/`done` transitions, pushing an approved review fix,
->1 concurrent coder) stay gated, and **merge stays human-AUTHORIZED** (`mc merge` only). The order
-writes get earned, safest first — the dividing line is **internal (earned) vs outward (mostly gated):**
-**ingest (✅) → review-triage prep (✅) → board-internal reconcile (✅) → cycle-archive `--commit` (✅,
-audit pending) → board-only inbox drains `note`/`hold` (✅) → OUTWARD tracker status-sync (✅ GRANTED
-2026-07-01) → OUTWARD assignee-fix (✅ GRANTED 2026-07-09, unassigned-only, `assign.sh`) → coder-spawn
-at Gate-1 approval (✅ BUILT 2026-07-09, flag-gated `CODER_SPAWN_LIVE`, ≤1 coder in flight).** Each
-waited for the prior to soak clean. **Coder-spawn inherits the SKILL's mandatory bounded review** —
-coder → reviewer R1 (→ address → R2) → draft PR, capped at two automated rounds with an empty-address-diff
-killswitch and a round-2 human gate (see SKILL "Review (implement lane)" + Prep-write 4). The loop NEVER
-opens a PR on an un-reviewed or blocker-carrying diff, and NEVER auto-loops implement↔review past round 2.
-(The five internal grants — board + notes-vault artifacts + a two-verb inbox drain — are reversible and no
-one else sees a bug, which is why they were earned first. Archive is internal despite the "outward"
-ladder position: sequenced here because it's destructive-ish (trims the live board), not because it
-crosses the wall. Status-sync is the first write that crosses the wall, earned because it only *reflects*
-a human-decided board lane onto the tracker. Assignee-fix crosses next: unassigned-only + our-turn-lane guard
-in the **assign wrapper** keep it reversible + colleague-silent; a **colleague**-held ticket stays a FLAG.)
-**Coder-spawn is the threshold rung** — the loop's first CODE write — so it is **flag-gated + supervised-
-first**: build shipped OFF; the operator arms it (`mc coder on`) and watches one full Gate-1→coder→review→draft-PR
-cycle before trusting it unattended; `mc coder off` reverts to propose-only next tick. It's bounded by a
-Gate-1-approved plan (the operator's decision), the mandatory review, the ≤1-coder cap, and Gate 2 (nothing
-readies or merges without an operator-queued `mc ready` / `mc merge`). **Still FLAG-only after this rung** (ungranted): the tracker **field** writes,
-all `gh` outward except the queued-`ready` drain and a queued `merge` while `mc guard off merge` is set
-(comment/resolve stay flag-only), `qa`/`done` transitions, pushing an approved
-review fix, and >1 concurrent coder. **Next: soak assignee-fix + the supervised coder-spawn arm clean,
-then consider widening the coder cap to 2 and draining more outward verbs.** Shared prerequisites (all BUILT):
-- **Single-writer lock — BUILT + NOW IN USE (`$MC_HOME/mc-lock.sh`).** Both prep
-  write-phases wrap in it (check `loop` → yield if a manual session holds it, else acquire → write →
-  release). The human always wins (a `/mission-control` session holds the lock while active; a
-  heartbeat older than the 15-min TTL is stale and takeable). This is what lets the loop and a manual
-  session coexist; the same wrapper extends to every future write.
-- **Pause switch — BUILT** (the tick-0 `PAUSED`-file check above; `mc pause`/`mc resume`). Already live.
-- **Coder-spawn arm switch — BUILT** (`CODER_SPAWN_LIVE` flag; `mc coder on`/`off`/`status`). Checked at
-  the coder spawn point (Prep-write 4), NOT tick-0 (it gates code-writing only, not the whole loop).
-  Default OFF → the loop proposes "would spawn a coder" until the operator arms it. Toggle effective next tick.
-- **Permission allow-list — DONE** (the `pipeline/` wrappers are allow-listed; a cron tick can't
-  answer an interactive prompt — `mc merge` + preconditions stay the authorization gate, the
-  allow-rule only drops the redundant prompt).
-- **Cron-cleanup — DONE** (see "Scheduling lifecycle" above): the `[mc-loop]` prompt marker is the
-  stable handle, the start procedure de-dups (CronList → delete every `[mc-loop]` → create one →
-  verify exactly one) so restarts/re-arms never stack duplicate triggers, and "unschedule" is the
-  documented clean teardown (delete every `[mc-loop]`, verify none remain).
-- **The five internal writes soak clean** — confirm over real ticks that ingest fires only on true
-  off-board cycle-committed tickets, triage-prep only on open PRs with genuinely-new feedback,
-  **board reconcile advances/demotes lanes only on a correct read** (the catch-rules in steps 2–3 are
-  what protect it — a misread lane is the one failure mode, and it's board-only/reversible),
-  **cycle archive fires once on a true rollover and moves exactly the `done` set** (validated by the
-  first-rollover audit, since it's time-gated and can't tick-soak), and **the `note`/`hold` drain
-  applies exactly the right annotation and removes exactly that one inbox line** (never touches
-  another verb, never drops a sibling line); that all yield to manual sessions, never double-write,
-  never produce an OUTWARD action, and never cross a human gate. This is the gating evidence for the
-  first OUTWARD grant.
+Stated as facts. The mechanics for each live in the tick steps and Prep-writes above.
 
-Full checklist: **Blueprint "Phase-2 build sequence" step 3.** Grants earned so far: five internal +
-tracker status-sync + assignee-fix + flag-gated coder-spawn (`CODER_SPAWN_LIVE`). Everything else outward
-(tracker field writes, other host writes, `qa`/`done`, merge, colleague reassignment) stays flag/propose.
+- **Board-internal:** `state.json` (lanes, `ci`, `reconcile`, `health`, heartbeat); plan and triage docs in the
+  notes vault; the cycle archive on a true rollover (`mc-archive.sh --commit`, lock-wrapped); the
+  `note` / `hold` / `unblock` inbox drain. Every write is lock-wrapped and yields to a live manual session.
+- **Outward, unconditional:** tracker status-sync (the status-sync wrapper; excludes `qa`/`done`);
+  assignee-fix for an UNASSIGNED ticket in an our-turn lane (the assign wrapper; a colleague-held ticket
+  is a flag).
+- **Outward, on the operator's queued word:** `mc ready` (the request-review wrapper); `mc merge`, drained
+  only while `mc-guard.sh check merge` passes (the operator set `mc guard off merge`), run with no flags.
+- **Flag-gated, propose-only when the flag is absent:** coder-spawn (`CODER_SPAWN_LIVE`, ≤1 coder in flight,
+  Prep-write 4); Gate-1 auto-approve (`GATE1_AUTO`, Trigger C); kickback address (`KICKBACK_AUTO`,
+  Prep-write 5).
+- **Never:** tracker field writes; `qa`/`done` transitions; posting or resolving a review thread; reassigning
+  a colleague-held ticket; originating a merge, a ready, or a review request; more than one coder in flight.
+  Those stay human-gated; flag them.
+
+Shared mechanics: the single-writer lock (`mc-lock.sh`), the pause switch (`PAUSED`), the arm switches
+above, the loop guard (`mc-guard.sh`), the allow-listed pipeline wrappers invoked BARE, and the `[mc-loop]`
+cron marker with its de-duplicating start procedure (see "Scheduling lifecycle").
