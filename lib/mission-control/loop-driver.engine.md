@@ -79,7 +79,9 @@ Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
   (the **assign wrapper** — claim an UNASSIGNED our-turn ticket for the operator; reflects the board's ownership, never
   reassigns a colleague) and, **flag-gated + OFF by default** behind `CODER_SPAWN_LIVE`, **coder-spawn**
   (Prep-write 4). Even status-sync excludes `qa`/`done` (field-bearing wrappers + human judgment).
-  **Everything else outward stays NEVER** (tracker field writes, all other `gh`/git, `qa`/`done`, merge).
+  **Everything else outward stays NEVER** (tracker field writes, all other `gh`/git, `qa`/`done`). **Merge:**
+  only by draining an operator-queued `mc merge` while `mc-guard.sh check merge` passes (the operator set
+  `mc guard off merge`); never on your own initiative.
 
 The FIVE internal writes you hold today:
 1. **Ingest + background planning → plan-review** — TWO distinct planner-spawn paths, BOTH run every
@@ -142,8 +144,8 @@ The shared safety property: an INTERNAL bug can, at worst, write a wrong board s
 throwaway plan/triage) that the operator sees on the dash and fixes. The outward writes are bounded to the same
 low-stakes shape: a wrong tracker status/assignment is trivially reversible + colleague-silent and only
 mirrors a board state a human drove. Coder-spawn is the one that produces colleague-visible artifacts —
-so it's flag-gated, runs only on a human-approved plan, and parks at Gate 2 (nothing readies/merges
-without the operator). Treat the boundary as sacred: **beyond status-sync, assignee-fix, and (when armed)
+so it's flag-gated, runs only on a human-approved plan, and parks at Gate 2 (nothing readies or merges
+without an operator-queued `mc ready` / `mc merge`). Treat the boundary as sacred: **beyond status-sync, assignee-fix, and (when armed)
 coder-spawn, if a write would touch tracker fields / other host writes / merge, you do NOT make it — you flag it.**
 
 ## The contract (Step 3 — coder-spawn is flag-gated; do NOT cross)
@@ -960,8 +962,8 @@ against `TaskList`; that marker is exactly what goes stale when a finish signal 
 
 **Gate 2 stays a human decision; its execution is granted.** The draft PR parks until the operator reads it
 and queues `mc ready`; the loop then runs the request-review wrapper (draft → ready, default reviewer team,
-tracker → Code Review) per step 5b. It never readies a PR on its own judgment. Merge is `mc merge` only and
-stays FLAG-only.
+tracker → Code Review) per step 5b. It never readies a PR on its own judgment. Merge is `mc merge` only: drain it while the guard
+shows `off` for merge, propose it otherwise; never on your own initiative.
 
 **The wall (memorize):** you may write **`state.json` (lanes / `ci` / `reconcile`) and internal
 plan/triage docs** — via the two prep segments (**`refined` → `plan-review`** ingest; **`in-review`
@@ -1001,8 +1003,10 @@ STOP. That's a contract breach; flag it instead.
 - Cycle-committed tickets appear at `plan-review` and review feedback as a 📝 triage in the notes vault
   without prompting; when coder-spawn is armed, an approved plan reaches a parked **draft PR at Gate 2**
   on its own — all sane enough that the operator acts on them as-is.
-- **The loop still NEVER merges, readies a PR, requests review, posts/resolves a thread, writes a tracker
-  field, transitions `qa`/`done`, or reassigns a colleague** — those stay human/`mc`-gated.
+- **The loop never originates a merge, a ready, or a review request**; it executes them only by draining an
+  operator-queued `mc merge` (while the guard shows `off` for merge) or `mc ready`. **It still NEVER
+  posts/resolves a thread, writes a tracker field, transitions `qa`/`done`, or reassigns a colleague** —
+  those stay human-gated.
 - The drift it reports matches reality; kill + restart mid-run rehydrates from `state.json`, no lost work.
 
 ## Scheduling lifecycle (start / restart / stop)
