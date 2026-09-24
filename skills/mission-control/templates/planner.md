@@ -27,7 +27,7 @@ You are planning ticket **{TICKET}** for the **{REPO}** repo at `{REPO_PATH}`. R
    - **d. Otherwise** → the folder is the **epic's summary** (the name, not the key — e.g. `Payments Platform Migration/`). `ls -d {VAULT_PROJECTS_DIR}/*/` first; if a folder matching that name already exists (case-insensitive) use it **exactly as it exists on disk**, else **create it with `mkdir -p`**.
    - **e. NEVER name a folder after the repo** — a bare `<repo name>/` folder is the wrong outcome; the `{REPO}` is not the project group. If you cannot determine an epic name and no existing folder matches, fall back to `{CATCH_ALL_GROUP}`, never the repo. The `{PROJECT_GROUP}` value passed to you is only a HINT — the epic wins; use the hint only to disambiguate a folder-name match.
 
-   Then save to `{VAULT_PROJECTS_DIR}/<chosen group>/{TICKET} {Short Title} Plan.md` and tell me the exact path.
+   Then save to `{VAULT_PROJECTS_DIR}/<chosen group>/{TICKET} {Short Title} Plan.md` and tell me the exact path. **If the chosen group has a `Plans/` subfolder, save there instead** (`ls -d "<group dir>/Plans"`): `.../<chosen group>/Plans/...`. Never create `Plans/` in a group that lacks one; the folder's owner decides its layout.
 
 ## Return (structured data, NOT a human message)
 

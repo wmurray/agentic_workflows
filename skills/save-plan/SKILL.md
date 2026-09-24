@@ -19,6 +19,8 @@ Save the current feature plan to the Obsidian vault at `$VAULT/Projects/`.
    ```
    Example: `$VAULT/Projects/Onboarding Improvements/PROJ-652 Add new feature to improve onboarding Plan.md`
 
+   **If the project group has a `Plans/` subdirectory, save there instead:** `.../Projects/<Project Group>/Plans/<Ticket Number> <Ticket Title> Plan.md`. Check with `ls -d "<group dir>/Plans"`. Don't create `Plans/` in a folder that lacks one; the folder's owner decides its layout. `/execute-plan` finds plans in either place because it searches `Projects/**/`.
+
 3. **Create the project group directory if it doesn't exist** using `mkdir -p`.
 
 4. **Write the plan file** using this template — populate every section from the plan discussed in the conversation. Omit sections that don't apply (e.g. no Data Model Changes for a frontend-only task).

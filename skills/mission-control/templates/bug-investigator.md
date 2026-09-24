@@ -18,7 +18,7 @@ Investigate ticket **{TICKET}** for the **{REPO}** repo at `{REPO_PATH}` and pro
 2. **Enumerate EVERY observed symptom**, not just the one the title names — a real repro surfaces symptoms the ticket under-describes.
 3. **Root-cause each symptom** with `file:line` anchors and a **Confirmed / Inferred / Assumed** label plus the evidence (repro observation, red→green demonstration, or the telemetry signature it predicts). A plausible mechanism is not a reproduced cause.
 4. **Audit the existing tests for seams** — do they exercise the real path, or stub the layer the bug lives in (a mock that ignores the real server filter, a read policy replacing the network, etc.)? A test that passes on the unfixed code proves nothing.
-5. **Save** the summary to `{VAULT_PROJECTS_DIR}/<group>/{TICKET} Investigation.md` (match the EXISTING project-group folder the plan will use, or `{CATCH_ALL_GROUP}`) and return its path.
+5. **Save** the summary to `{VAULT_PROJECTS_DIR}/<group>/{TICKET} Investigation.md` (match the EXISTING project-group folder the plan will use, or `{CATCH_ALL_GROUP}`) and return its path. If that group has a `Plans/` subfolder (`ls -d "<group dir>/Plans"`), save inside it so the note sits next to the plan; never create `Plans/` yourself.
 
 ## Hard stop
 
