@@ -114,6 +114,10 @@ expect "install-script-config: usage"  2 "$SK/scripts/install-script-config.sh"
 expect "install-script-diff: usage"    2 "$SK/scripts/install-script-diff.sh" o/r
 expect "install-script-diff: bad pr"   2 "$SK/scripts/install-script-diff.sh" o/r abc
 expect "changelog-since: usage"        2 "$SK/scripts/changelog-since.sh" o/r
+expect "compat-score: usage"           2 "$SK/scripts/compat-score.sh" o/r
+expect "upstream-repo: usage"          2 "$SK/scripts/upstream-repo.sh"
+rt=$(bash "$SK/scripts/test/release-tools.test.sh" 2>&1)
+[ $? -eq 0 ] && ok "release-tools test ($(printf '%s' "$rt" | tail -1))" || bad "release-tools test: $(printf '%s' "$rt" | grep -m1 FAIL)"
 
 echo "config validation"
 says "qa-transition names the missing token" 'missing config:.*JIRA_API_TOKEN' "$T/qa-transition.sh" ABC-1
