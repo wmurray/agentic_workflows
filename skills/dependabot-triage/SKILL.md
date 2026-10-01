@@ -123,14 +123,26 @@ Not `time.modified`: that's when the package as a whole last changed, which only
 - `deprecated` is set → flag; don't merge onto a deprecated version.
 
 **c) Deeper scanning (optional, stronger — check `command -v osv-scanner`):**
-- `osv-scanner` (`brew install osv-scanner`, no account) — scans the lockfile against OSV *including the malicious-packages dataset*. **Recommended low-friction add.** Fetch the PR branch's lockfile without checking the branch out, keeping its real filename (the parser is picked from the name):
+- `osv-scanner` (`brew install osv-scanner`, no account) — scans the lockfile against OSV *including the malicious-packages dataset*. **Recommended low-friction add.** A raw scan is mostly noise (a JS lockfile typically carries 50+ pre-existing advisories), so scan the PR branch and the default branch and compare. Lockfiles are fetched, not checked out, keep their real filename (the parser is picked from the name), and live in a `mktemp` dir cleaned up by name:
   ```bash
-  ref=$(gh pr view <n> --json headRefName --jq .headRefName)
+  lock=yarn.lock    # package-lock.json or Gemfile.lock as the repo uses
+  head=$(gh pr view <n> --json headRefName --jq .headRefName)
+  base=$(gh pr view <n> --json baseRefName --jq .baseRefName)
   dir=$(mktemp -d)
-  gh api "repos/{owner}/{repo}/contents/yarn.lock?ref=$ref" -H "Accept: application/vnd.github.raw" > "$dir/yarn.lock"
-  osv-scanner scan -L "$dir/yarn.lock"
+  for side in base head; do
+    if [ "$side" = base ]; then ref=$base; else ref=$head; fi
+    mkdir "$dir/$side"
+    gh api "repos/{owner}/{repo}/contents/$lock?ref=$ref" -H "Accept: application/vnd.github.raw" > "$dir/$side/$lock"
+    osv-scanner scan source --format json --verbosity error -L "$dir/$side/$lock" > "$dir/$side.json"
+    jq -r '.results[]?.packages[]? | .package as $p | .vulnerabilities[]? | "\(.id) \($p.name)@\($p.version)"' "$dir/$side.json" | LC_ALL=C sort -u > "$dir/$side.ids"
+  done
+  echo "Malicious on the PR branch (blocking):"; grep '^MAL-' "$dir/head.ids" || echo "  none"
+  echo "New versus $base:"; LC_ALL=C comm -13 "$dir/base.ids" "$dir/head.ids"
+  echo "Fixed versus $base:"; LC_ALL=C comm -23 "$dir/base.ids" "$dir/head.ids"
+  for side in base head; do rm -f "$dir/$side/$lock" "$dir/$side.json" "$dir/$side.ids"; rmdir "$dir/$side"; done
+  rmdir "$dir"
   ```
-  Swap in `package-lock.json` or `Gemfile.lock` as the repo uses.
+  Reading it: any `MAL-` ID → ⚠️ block. A **new** ID on a package the PR bumps (or pulls in) → a finding against the bump, same as a target inside a `vulnerableVersionRange`. A new ID on a package the PR doesn't touch usually means the branch is behind the default branch, which already has the fix → a rebase signal, not a finding. IDs on both sides are pre-existing and out of scope; fixed IDs support a 🛡️.
 - Socket.dev (`socket` CLI / GitHub app) — purpose-built for malicious-package, install-script, and typosquat detection.
 If either is present, fold its results in; if neither is, say in the report that the gate ran without a lockfile scan.
 
@@ -147,7 +159,7 @@ Surface security findings at the **top** of the report — a 🛡️ fix or ⚠�
 | ⏳ **Awaiting CI or rebase** | checks pending or absent, or `DIRTY` with no companion commits | re-check later, or offer `@dependabot rebase`; don't merge |
 
 Apply the rules in this order and stop at the first match, so each PR lands in exactly one bucket:
-1. A ⚠️ / 🛡️ finding from step 3.5.
+1. A finding from step 3.5. ⚠️ blocks the merge. A 🛡️ security fix goes to the top of ✅ if CI is green and it isn't `DIRTY`; otherwise it stays where CI and merge state put it, tagged 🛡️ and listed first there.
 2. 🗑️ — superseded, coupled to a parked major, or an abandoned major.
 3. ⏳ — checks pending or absent, or `DIRTY` with no companion commits.
 4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it.
