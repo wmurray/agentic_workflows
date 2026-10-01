@@ -214,7 +214,7 @@ Apply the rules in this order and stop at the first match, so each PR lands in e
 3. ⏳ — checks pending or absent, or `DIRTY` with no companion commits.
 4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it, including the snapshot check below.
 5. 🔧 — any other major, or CI red.
-6. ✅ / 👀 from the table. A PR that would land in ✅ but is low-confidence (below) goes to 👀 until the changelog read is done. A PR still at its heuristic default counts as low-confidence, so in practice the read runs on every ✅ candidate before it's reported as ✅.
+6. ✅ / 👀 from the table. A PR that would land in ✅ but is low-confidence (below) goes to 👀 until the changelog read is done.
 
 Note: a **major** bump with no companion commits lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none. It leaves 🔧 only through the verification below, marked in the report.
 
@@ -250,9 +250,9 @@ Use the REST files endpoint: `gh pr view --json files` stops at 100 files.
 
 **The changelog read** — for 🛡️ PRs, minor bumps of prod deps, and low-confidence PRs. Read the notes between the current and target versions for two things only: security notes or advisories, and changes touching high-risk surfaces (auth, sessions/cookies, tokens, crypto, payments, permissions, request handling/CSP). Anything found keeps the PR in 👀 with the finding named; nothing found lets it move to ✅.
 
-A PR is **low-confidence** if any of: compatibility score low or unknown; no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); an added or changed install script (step 3.5d); bucket still at the heuristic default. A low-confidence PR is never in ✅ without the read.
+A PR is **low-confidence** if any of: compatibility score low or unknown; no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); an added or changed install script (step 3.5d). A low-confidence PR is never in ✅ without the read.
 
-Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine for 🔧, 🗑️ and ⏳; nothing is reported as ✅ without the changelog read.)
+Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine, except that a low-confidence PR doesn't reach ✅ without the changelog read.)
 
 ## 5. Report (lead with the punchline)
 
