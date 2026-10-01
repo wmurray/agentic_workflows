@@ -123,26 +123,35 @@ Not `time.modified`: that's when the package as a whole last changed, which only
 - `deprecated` is set → flag; don't merge onto a deprecated version.
 
 **c) Deeper scanning (optional, stronger — check `command -v osv-scanner`):**
-- `osv-scanner` (`brew install osv-scanner`, no account) — scans the lockfile against OSV *including the malicious-packages dataset*. **Recommended low-friction add.** A raw scan is mostly noise (a JS lockfile typically carries 50+ pre-existing advisories), so scan the PR branch and the default branch and compare. Lockfiles are fetched, not checked out, keep their real filename (the parser is picked from the name), and live in a `mktemp` dir cleaned up by name:
+- `osv-scanner` (`brew install osv-scanner`, no account) — scans the lockfile against OSV *including the malicious-packages dataset*. **Recommended low-friction add.** A raw scan is mostly noise (a JS lockfile typically carries 50+ pre-existing advisories), so compare each PR's head against its **merge-base** with the default branch: a branch that's merely behind then doesn't show the default branch's later fixes as new findings. Lockfiles are fetched by SHA, not checked out, keep their real filename (the parser is picked from the name), and scans are cached by SHA in one `mktemp` dir per run, so PRs sharing a merge-base scan it once.
+  Once per run:
   ```bash
   lock=yarn.lock    # package-lock.json or Gemfile.lock as the repo uses
-  head=$(gh pr view <n> --json headRefName --jq .headRefName)
-  base=$(gh pr view <n> --json baseRefName --jq .baseRefName)
-  dir=$(mktemp -d)
-  for side in base head; do
-    if [ "$side" = base ]; then ref=$base; else ref=$head; fi
-    mkdir "$dir/$side"
-    gh api "repos/{owner}/{repo}/contents/$lock?ref=$ref" -H "Accept: application/vnd.github.raw" > "$dir/$side/$lock"
-    osv-scanner scan source --format json --verbosity error -L "$dir/$side/$lock" > "$dir/$side.json"
-    jq -r '.results[]?.packages[]? | .package as $p | .vulnerabilities[]? | "\(.id) \($p.name)@\($p.version)"' "$dir/$side.json" | LC_ALL=C sort -u > "$dir/$side.ids"
-  done
-  echo "Malicious on the PR branch (blocking):"; grep '^MAL-' "$dir/head.ids" || echo "  none"
-  echo "New versus $base:"; LC_ALL=C comm -13 "$dir/base.ids" "$dir/head.ids"
-  echo "Fixed versus $base:"; LC_ALL=C comm -23 "$dir/base.ids" "$dir/head.ids"
-  for side in base head; do rm -f "${dir:?}/${side:?}/${lock:?}" "${dir:?}/${side:?}.json" "${dir:?}/${side:?}.ids"; rmdir "${dir:?}/${side:?}"; done
-  rmdir "${dir:?}"
+  cache=$(mktemp -d)
   ```
-  Reading it: any `MAL-` ID → ⚠️ block. A **new** ID on a package the PR bumps (or pulls in) → a finding against the bump, same as a target inside a `vulnerableVersionRange`. A new ID on a package the PR doesn't touch usually means the branch is behind the default branch, which already has the fix → a rebase signal, not a finding. IDs on both sides are pre-existing and out of scope; fixed IDs support a 🛡️.
+  Per PR:
+  ```bash
+  head=$(gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha)
+  base=$(gh api repos/{owner}/{repo}/pulls/<n> --jq .base.ref)
+  mb=$(gh api "repos/{owner}/{repo}/compare/$base...$head" --jq .merge_base_commit.sha)
+  for sha in "$mb" "$head"; do
+    [ -f "${cache:?}/$sha.ids" ] && continue
+    mkdir "${cache:?}/$sha"
+    gh api "repos/{owner}/{repo}/contents/$lock?ref=$sha" -H "Accept: application/vnd.github.raw" > "${cache:?}/$sha/$lock"
+    osv-scanner scan source --format json --verbosity error -L "${cache:?}/$sha/$lock" > "${cache:?}/$sha.json"
+    jq -r '.results[]?.packages[]? | .package as $p | .vulnerabilities[]? | "\(.id) \($p.name)@\($p.version)"' "${cache:?}/$sha.json" | LC_ALL=C sort -u > "${cache:?}/$sha.ids"
+    rm -f "${cache:?}/${sha:?}/${lock:?}" "${cache:?}/${sha:?}.json"; rmdir "${cache:?}/${sha:?}"
+  done
+  echo "#<n> triaged head $head, merge-base $mb"
+  echo "Malicious on the PR head (blocking):"; grep '^MAL-' "${cache:?}/$head.ids" || echo "  none"
+  echo "New versus merge-base:"; LC_ALL=C comm -13 "${cache:?}/$mb.ids" "${cache:?}/$head.ids"
+  echo "Fixed versus merge-base:"; LC_ALL=C comm -23 "${cache:?}/$mb.ids" "${cache:?}/$head.ids"
+  ```
+  At the end of the run:
+  ```bash
+  rm -f "${cache:?}"/*.ids; rmdir "${cache:?}"
+  ```
+  Reading it: any `MAL-` ID → ⚠️ block. A **new** ID is something this PR's lockfile introduced, on a package it bumps or pulls in → a finding against the bump, same as a target inside a `vulnerableVersionRange`. IDs on both sides are pre-existing and out of scope; fixed IDs support a 🛡️.
 - Socket.dev (`socket` CLI / GitHub app) — purpose-built for malicious-package, install-script, and typosquat detection.
 If either is present, fold its results in; if neither is, say in the report that the gate ran without a lockfile scan.
 
