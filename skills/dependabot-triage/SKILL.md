@@ -113,7 +113,7 @@ gh api graphql -f query='{ securityVulnerabilities(ecosystem: NPM, package: "<pk
 ```
 (Ruby gems: `ecosystem: RUBYGEMS`. GitHub Actions bumps: `ecosystem: ACTIONS`, package = the action's `owner/name`, e.g. `actions/checkout`.) If `totalCount` exceeds the nodes returned, raise `first` until it doesn't; long-lived packages can carry more advisories than one page. Interpret against the bump's from→to:
 - Target version falls **inside** a `vulnerableVersionRange` → ⚠️ **do not merge**; the bump lands on a still-vulnerable version. → 🔧/hold.
-- Current version is vulnerable and target ≥ `firstPatchedVersion` → 🛡️ **security fix — prioritize** (jump it to the top of the merge list).
+- Current version is vulnerable and target ≥ `firstPatchedVersion` → 🛡️ **security fix — prioritize** (top of 👀; see step 4).
 - Any advisory with identifier type **`MALWARE`** or summary mentioning malicious/compromised → ⚠️ **block and flag loudly**.
 
 **b) Freshness / yank heuristic — `npm view`:** supply-chain payloads ride brand-new or quickly-pulled versions.
@@ -164,19 +164,19 @@ Surface security findings at the **top** of the report — a 🛡️ fix or ⚠�
 
 | Bucket | Rule | Recommended action |
 |--------|------|--------------------|
-| ✅ **Safe to merge** | CI green, not `DIRTY`, not superseded, **and** (patch bump of any dep **or** minor bump of a **dev** dep) | batch-merge |
-| 👀 **Review then merge** | CI green, not `DIRTY`, **and** minor bump of a **prod** dep | eyeball changelog, then merge |
+| ✅ **Safe to merge** | CI green, not `DIRTY`, not superseded, **and** (patch bump of any dep **or** minor bump of a **dev** dep), with the changelog read done if low-confidence | batch-merge |
+| 👀 **Review then merge** | CI green, not `DIRTY`, **and** a minor bump of a **prod** dep, a 🛡️ security fix, or a low-confidence ✅ candidate not yet read | do the changelog read, then merge |
 | 🔧 **Needs code work** | **major** bump (even if CI is green), CI red, **or** `DIRTY` with companion commits | draft a ticket — likely needs companion changes (e.g. codegen updates, API migration) |
 | 🗑️ **Close** | superseded by a chosen vehicle (any age, see step 3), a major coupled to a parked major, or an abandoned major not worth pursuing | close with a one-line reason |
 | ⏳ **Awaiting CI or rebase** | checks pending or absent, or `DIRTY` with no companion commits | re-check later, or offer `@dependabot rebase`; don't merge |
 
 Apply the rules in this order and stop at the first match, so each PR lands in exactly one bucket:
-1. A finding from step 3.5. ⚠️ blocks the merge. A 🛡️ security fix goes to the top of ✅ if CI is green and it isn't `DIRTY`; otherwise it stays where CI and merge state put it, tagged 🛡️ and listed first there.
+1. A finding from step 3.5. ⚠️ blocks the merge. A 🛡️ security fix goes to the top of 👀, tagged 🛡️, whatever its bump type, and needs the changelog read before it merges; it moves to ✅ only after that read finds nothing concerning. If CI is red or pending, or it's `DIRTY`, it stays where CI and merge state put it, still tagged 🛡️ and listed first there.
 2. 🗑️ — superseded, coupled to a parked major, or an abandoned major.
 3. ⏳ — checks pending or absent, or `DIRTY` with no companion commits.
 4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it, including the snapshot check below.
 5. 🔧 — any other major, or CI red.
-6. ✅ / 👀 from the table.
+6. ✅ / 👀 from the table. A PR that would land in ✅ but is low-confidence (below) goes to 👀 until the changelog read is done. A PR still at its heuristic default counts as low-confidence, so in practice the read runs on every ✅ candidate before it's reported as ✅.
 
 Note: a **major** bump with no companion commits lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none. It leaves 🔧 only through the verification below, marked in the report.
 
@@ -201,9 +201,20 @@ gh api repos/{owner}/{repo}/pulls/<n>/files --paginate --jq '.[].filename'
 ```
 Use the REST files endpoint: `gh pr view --json files` stops at 100 files.
 - Dependabot's `body` carries release notes / changelog / commit list. The **compatibility score** (% of public repos whose CI passed on this update) is not text in the body, only a badge image (URL starts `https://dependabot-badges.githubapp.com/badges/compatibility_score`). To read it, fetch the SVG and pull its text: `curl -sL "<badge url>" | grep -o '<text[^>]*>[^<]*</text>' | sed 's/<[^>]*>//g'`; it may read `unknown`. One input, never a gate: high score + lockfile-only diff can support promoting a 👀 to ✅; a low or unknown score proves nothing alone.
+- No release notes or changelog in the body → fetch them upstream. Resolve the upstream repo from the registry, look for a GitHub release for the target version, and fall back to the repo's `CHANGELOG.md` (printed from the top down to the current version's entry):
+  ```bash
+  up=$(npm view <pkg> repository.url | sed -E 's#^(git\+)?(https?|git|ssh)://(git@)?github\.com/##; s#\.git$##')
+  gh api "repos/$up/releases?per_page=100" --jq '.[] | select(.tag_name | test("(^|[@v])<target>$")) | .tag_name, .body'
+  gh api "repos/$up/contents/CHANGELOG.md" -H "Accept: application/vnd.github.raw" | awk -v from=<current> '/^## /{ h=$0; sub(/^## \[?v?/, "", h); if (index(h, from) == 1) exit; p=1 } p'
+  ```
+  For a gem, take `owner/repo` from `curl -s https://rubygems.org/api/v1/gems/<gem>.json | jq -r '.source_code_uri // .homepage_uri'`. Use what you find for the breaking-change read and the changelog read below.
 - For a 🔧 **major**: scan the release notes / changelog for `BREAKING`. If nothing breaking touches our usage, it may demote to 👀; if the diff also edits the manifest and many files, 🔧 is confirmed.
 
-Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine; before a batch-merge, verify the ✅ candidates.)
+**The changelog read** — for 🛡️ PRs, minor bumps of prod deps, and low-confidence PRs. Read the notes between the current and target versions for two things only: security notes or advisories, and changes touching high-risk surfaces (auth, sessions/cookies, tokens, crypto, payments, permissions, request handling/CSP). Anything found keeps the PR in 👀 with the finding named; nothing found lets it move to ✅.
+
+A PR is **low-confidence** if any of: compatibility score low or unknown; no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); bucket still at the heuristic default. A low-confidence PR is never in ✅ without the read.
+
+Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine for 🔧, 🗑️ and ⏳; nothing is reported as ✅ without the changelog read.)
 
 ## 5. Report (lead with the punchline)
 
