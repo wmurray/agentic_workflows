@@ -121,12 +121,23 @@ Surface security findings at the **top** of the report — a 🛡️ fix or ⚠�
 
 | Bucket | Rule | Recommended action |
 |--------|------|--------------------|
-| ✅ **Safe to merge** | CI green, not superseded, **and** (patch bump of any dep **or** minor bump of a **dev** dep) | batch-merge |
-| 👀 **Review then merge** | CI green **and** minor bump of a **prod** dep | eyeball changelog, then merge |
-| 🔧 **Needs code work** | **major** bump (even if CI is green) **or** CI red | draft a ticket — likely needs companion changes (e.g. codegen updates, API migration) |
-| 🗑️ **Close** | superseded by a chosen vehicle (any age, see step 3), or an abandoned major not worth pursuing | close with a one-line reason |
+| ✅ **Safe to merge** | CI green, not `DIRTY`, not superseded, **and** (patch bump of any dep **or** minor bump of a **dev** dep) | batch-merge |
+| 👀 **Review then merge** | CI green, not `DIRTY`, **and** minor bump of a **prod** dep | eyeball changelog, then merge |
+| 🔧 **Needs code work** | **major** bump (even if CI is green), CI red, **or** `DIRTY` with companion commits | draft a ticket — likely needs companion changes (e.g. codegen updates, API migration) |
+| 🗑️ **Close** | superseded by a chosen vehicle (any age, see step 3), a major coupled to a parked major, or an abandoned major not worth pursuing | close with a one-line reason |
+| ⏳ **Awaiting CI or rebase** | checks pending or absent, or `DIRTY` with no companion commits | re-check later, or offer `@dependabot rebase`; don't merge |
 
-Note: a **major** bump always lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none.
+Apply the rules in this order and stop at the first match, so each PR lands in exactly one bucket:
+1. A ⚠️ / 🛡️ finding from step 3.5.
+2. 🗑️ — superseded, coupled to a parked major, or an abandoned major.
+3. ⏳ — checks pending or absent, or `DIRTY` with no companion commits.
+4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it.
+5. 🔧 — any other major, or CI red.
+6. ✅ / 👀 from the table.
+
+Note: a **major** bump with no companion commits lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none. It leaves 🔧 only through the verification below, marked in the report.
+
+**Majors coupled to a parked major close, not ticket.** When `dependabot.yml` deliberately ignores a framework's major (parked until the team decides to move) and another package's new major needs that parked major (it targets the framework's next major, or peer-requires it), the bump can't land while the park holds. Close it and propose a matching `ignore:` entry for that package's majors, commented with the parked framework so both lift together — e.g. a utility whose new major targets a newer major of a CSS framework the repo has parked. Confirm the coupling from release notes or peer ranges before closing.
 
 When a 🔧 PR maps to an existing ticket, note that instead of proposing a new one. Cross-check via `jira issue list --project "${JIRA_PROJECT:-YOUR_PROJECT}" -q 'summary ~ "<pkg>" AND statusCategory != Done'`. If `JIRA_PROJECT` is unset, ask for the key rather than searching `YOUR_PROJECT`.
 
@@ -137,7 +148,7 @@ The bucketing above is a **fast heuristic** (bump type + CI + dev/prod) — it i
 ```bash
 gh pr view <n> --json body,files --jq '{body, changed: (.files|length), paths: [.files[].path]}'
 ```
-- Dependabot's `body` carries a **compatibility score** (% of public repos whose CI passed on this update) plus release notes / changelog / commit list. High score + lockfile-only diff → a 👀 may safely promote to ✅.
+- Dependabot's `body` carries release notes / changelog / commit list. The **compatibility score** (% of public repos whose CI passed on this update) is not text in the body, only a badge image (URL starts `https://dependabot-badges.githubapp.com/badges/compatibility_score`). To read it, fetch the SVG and pull its text: `curl -sL "<badge url>" | grep -o '<text[^>]*>[^<]*</text>' | sed 's/<[^>]*>//g'`; it may read `unknown`. One input, never a gate: high score + lockfile-only diff can support promoting a 👀 to ✅; a low or unknown score proves nothing alone.
 - For a 🔧 **major**: scan the release notes / changelog for `BREAKING`. If nothing breaking touches our usage, it may demote to 👀; if the diff also edits the manifest and many files, 🔧 is confirmed.
 
 Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine; before a batch-merge, verify the ✅ candidates.)
@@ -150,8 +161,13 @@ Only promote/demote **after looking**, and in the report mark which entries were
 ✅ Safe to merge (<n>):   <#PR pkg A→B (dev/patch)> …            → batch-merge?
 👀 Review then merge (<n>): <#PR pkg A→B (prod/minor)> …
 🔧 Needs code work (<n>):  <#PR pkg A→B (MAJOR / CI red)> — ticket: <new | existing PROJ-XXXX>
-🗑️ Close (<n>):            <#PR pkg — stale Nd / superseded by #M>
+🗑️ Close (<n>):            <#PR pkg — superseded by #M / needs parked <framework> major>
+⏳ Awaiting CI or rebase (<n>): <#PR pkg (CI pending / DIRTY)>
+
+Verified: <#PR, #PR>. Everything else is at its heuristic default.
 ```
+
+Tag an entry a verification moved with where it came from, e.g. `#N pkg A→B (dev/MAJOR, verified, demoted from 🔧)` sitting in 👀. Tag a `DIRTY` PR `conflicts` wherever it lands.
 
 Rules: bullets not prose; link each PR `[#N](url)` and ticket `[PROJ-X](url)`; omit empty buckets. Sort 🔧 by risk (majors first). Note the oldest age per bucket so the staleness is visible.
 
