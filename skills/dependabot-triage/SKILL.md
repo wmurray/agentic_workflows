@@ -5,7 +5,7 @@ description: Triage open Dependabot PRs across your repos — classify each by b
 
 Triage open Dependabot PRs. **Phase 1** (default) is a read-only report + recommended actions; nothing is merged, closed, or ticketed without explicit confirmation. **Phase 2** is an opt-in fix pipeline for PRs that need code changes.
 
-Arguments passed: $ARGUMENTS
+Arguments passed (blank means none): $ARGUMENTS
 
 Dependabot author handle for `gh` is `app/dependabot`.
 
@@ -170,15 +170,17 @@ Note: a **major** bump with no companion commits lands in 🔧 regardless of CI 
 
 **Majors coupled to a parked major close, not ticket.** When `dependabot.yml` deliberately ignores a framework's major (parked until the team decides to move) and another package's new major needs that parked major (it targets the framework's next major, or peer-requires it), the bump can't land while the park holds. Close it and propose a matching `ignore:` entry for that package's majors, commented with the parked framework so both lift together — e.g. a utility whose new major targets a newer major of a CSS framework the repo has parked. Confirm the coupling from release notes or peer ranges before closing.
 
-When a 🔧 PR maps to an existing ticket, note that instead of proposing a new one. Cross-check via `jira issue list --project "${JIRA_PROJECT:-YOUR_PROJECT}" -q 'summary ~ "<pkg>" AND statusCategory != Done'`. If `JIRA_PROJECT` is unset, ask for the key rather than searching `YOUR_PROJECT`.
+When a 🔧 PR maps to an existing ticket, note that instead of proposing a new one. Cross-check via `jira issue list --project "${JIRA_PROJECT:-YOUR_PROJECT}" -q 'summary ~ "<pkg>" AND statusCategory != Done' --plain --no-headers --columns key,status,summary` (`--plain` keeps the CLI from opening its interactive table). If `JIRA_PROJECT` is unset, ask for the key rather than searching `YOUR_PROJECT`. `summary ~` is a text match and returns false hits (a ticket about another app's type-checking for a `typescript` bump), so read each result against the PR before citing it.
 
 ### Preliminary vs verified
 
 The bucketing above is a **fast heuristic** (bump type + CI + dev/prod) — it is NOT proof that a 👀 truly needs review or a 🔧 truly needs code work. Before *acting* on those two buckets, verify against the PR's own evidence:
 
 ```bash
-gh pr view <n> --json body,files --jq '{body, changed: (.files|length), paths: [.files[].path]}'
+gh pr view <n> --json body --jq .body
+gh api repos/{owner}/{repo}/pulls/<n>/files --paginate --jq '.[].filename'
 ```
+Use the REST files endpoint: `gh pr view --json files` stops at 100 files.
 - Dependabot's `body` carries release notes / changelog / commit list. The **compatibility score** (% of public repos whose CI passed on this update) is not text in the body, only a badge image (URL starts `https://dependabot-badges.githubapp.com/badges/compatibility_score`). To read it, fetch the SVG and pull its text: `curl -sL "<badge url>" | grep -o '<text[^>]*>[^<]*</text>' | sed 's/<[^>]*>//g'`; it may read `unknown`. One input, never a gate: high score + lockfile-only diff can support promoting a 👀 to ✅; a low or unknown score proves nothing alone.
 - For a 🔧 **major**: scan the release notes / changelog for `BREAKING`. If nothing breaking touches our usage, it may demote to 👀; if the diff also edits the manifest and many files, 🔧 is confirmed.
 
