@@ -9,7 +9,7 @@ Arguments passed (blank means none): $ARGUMENTS
 
 Dependabot author handle for `gh` is `app/dependabot`.
 
-**Helper scripts.** Snippets that need shell positional parameters live in `scripts/` rather than in this file, because Claude Code substitutes positional placeholders (a dollar sign followed by a digit) everywhere in a skill's text when it's invoked with arguments. All four are read-only (GitHub API and npm registry reads): `gem-parents.sh`, `install-script-config.sh`, `install-script-diff.sh`, `changelog-since.sh`. Call them as `"${CLAUDE_SKILL_DIR}/scripts/<name>.sh"`; one prefix rule covers them, e.g. `Bash("${CLAUDE_SKILL_DIR}/scripts/":*)` or the resolved path, since nothing in that folder writes.
+**Helper scripts.** Snippets that need shell positional parameters live in `scripts/` rather than in this file, because Claude Code substitutes positional placeholders (a dollar sign followed by a digit) everywhere in a skill's text when it's invoked with arguments. All are read-only (GitHub API, npm registry and badge reads): `gem-parents.sh`, `install-script-config.sh`, `install-script-diff.sh`, `compat-score.sh`, `upstream-repo.sh`, `changelog-since.sh`. Call them as `"${CLAUDE_SKILL_DIR}/scripts/<name>.sh"`; one prefix rule covers them, e.g. `Bash("${CLAUDE_SKILL_DIR}/scripts/":*)` or the resolved path, since nothing in that folder writes.
 
 **Configuration.** Org values come from env vars set in your shell profile (see the README's Setup section), never from this file:
 
@@ -193,7 +193,7 @@ Surface security findings at the **top** of the report — a 🛡️ fix or ⚠�
 | ⏳ **Awaiting CI or rebase** | checks pending or absent, or `DIRTY` with no companion commits | re-check later, or offer `@dependabot rebase`; don't merge |
 
 Apply the rules in this order and stop at the first match, so each PR lands in exactly one bucket:
-1. A finding from step 3.5. ⚠️ blocks the merge. A 🛡️ security fix goes to the top of 👀, tagged 🛡️, whatever its bump type, and needs the changelog read before it merges; it moves to ✅ only after that read finds nothing concerning. If CI is red or pending, or it's `DIRTY`, it stays where CI and merge state put it, still tagged 🛡️ and listed first there.
+1. A finding from step 3.5. ⚠️ blocks the merge. A 🛡️ security fix goes to the top of 👀, tagged 🛡️, whatever its bump type, and needs the changelog read before it merges; the read ignores the advisory the PR fixes, and the PR moves to ✅ unless the read finds something else (below). If CI is red or pending, or it's `DIRTY`, it stays where CI and merge state put it, still tagged 🛡️ and listed first there.
 2. 🗑️ — superseded, coupled to a parked major, or an abandoned major.
 3. ⏳ — checks pending or absent, or `DIRTY` with no companion commits.
 4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it, including the snapshot check below.
@@ -222,19 +222,23 @@ gh pr view <n> --json body --jq .body
 gh api repos/{owner}/{repo}/pulls/<n>/files --paginate --jq '.[].filename'
 ```
 Use the REST files endpoint: `gh pr view --json files` stops at 100 files.
-- Dependabot's `body` carries release notes / changelog / commit list. The **compatibility score** (% of public repos whose CI passed on this update) is not text in the body, only a badge image (URL starts `https://dependabot-badges.githubapp.com/badges/compatibility_score`). To read it, fetch the SVG and pull its text: `curl -sL "<badge url>" | grep -o '<text[^>]*>[^<]*</text>' | sed 's/<[^>]*>//g'`; it may read `unknown`. One input, never a gate: high score + lockfile-only diff can support promoting a 👀 to ✅; a low or unknown score proves nothing alone.
-- No release notes or changelog in the body → fetch them upstream. Resolve the upstream repo from the registry, look for a GitHub release for the target version, and fall back to the repo's `CHANGELOG.md` (printed from the top down to the current version's entry):
+- Dependabot's `body` carries release notes / changelog / commit list. The **compatibility score** (% of public repos whose CI passed on this update) is not text in the body, only a badge image, which this reads:
   ```bash
-  up=$(npm view <pkg> repository.url | sed -E 's#^(git\+)?(https?|git|ssh)://(git@)?github\.com/##; s#\.git$##')
+  "${CLAUDE_SKILL_DIR}/scripts/compat-score.sh" '{owner}/{repo}' <n>
+  ```
+  It prints a percentage, `unknown (low-confidence)`, or `no badge, grouped PR (no signal)`. A grouped PR (more than one `Updates` line) has no badge by design, so the missing badge is no signal and doesn't make it low-confidence. A single-package PR with no badge, or a badge reading `unknown` or unreadable, counts as unknown, which is low-confidence. One input, never a gate: high score + lockfile-only diff can support promoting a 👀 to ✅.
+- No release notes or changelog in the body → fetch them upstream. Resolve the upstream repo from the registry (`upstream-repo.sh` accepts every form npm allows: `github:owner/repo`, `owner/repo`, `git+https://`, `git://`, `git@github.com:`, or an object with `.url`), look for a GitHub release for the target version, and fall back to the repo's changelog (`CHANGELOG.md`, `CHANGES.md` or `HISTORY.md`), which `changelog-since.sh` prints from the top down to the current version's entry, whatever heading level and version form it uses:
+  ```bash
+  up=$("${CLAUDE_SKILL_DIR}/scripts/upstream-repo.sh" <pkg>)
   gh api "repos/$up/releases?per_page=100" --jq '.[] | select(.tag_name | test("(^|[@v])<target>$")) | .tag_name, .body'
   "${CLAUDE_SKILL_DIR}/scripts/changelog-since.sh" "$up" <current>
   ```
   For a gem, take `owner/repo` from `curl -s https://rubygems.org/api/v1/gems/<gem>.json | jq -r '.source_code_uri // .homepage_uri'`. Use what you find for the breaking-change read and the changelog read below.
 - For a 🔧 **major**: scan the release notes / changelog for `BREAKING`. If nothing breaking touches our usage, it may demote to 👀; if the diff also edits the manifest and many files, 🔧 is confirmed.
 
-**The changelog read** — for 🛡️ PRs, minor bumps of prod deps, and low-confidence PRs. Read the notes between the current and target versions for two things only: security notes or advisories, and changes touching high-risk surfaces (auth, sessions/cookies, tokens, crypto, payments, permissions, request handling/CSP). Anything found keeps the PR in 👀 with the finding named; nothing found lets it move to ✅.
+**The changelog read** — for 🛡️ PRs, minor bumps of prod deps, and low-confidence PRs. Read the notes between the current and target versions for two things only: security notes or advisories, and changes touching high-risk surfaces (auth, sessions/cookies, tokens, crypto, payments, permissions, request handling/CSP). Anything found keeps the PR in 👀 with the finding named; nothing found lets it move to ✅. For a 🛡️ PR, the advisory it fixes is the reason for the bump, so ignore it: the PR stays in 👀 only if the read finds something else (another advisory, a breaking change, or a high-risk-surface change).
 
-A PR is **low-confidence** if any of: compatibility score low or unknown; no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); an added or changed install script (step 3.5d). A low-confidence PR is never in ✅ without the read.
+A PR is **low-confidence** if any of: compatibility score low, or unknown on a single-package PR (a grouped PR's missing badge is no signal); no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); an added or changed install script (step 3.5d). A low-confidence PR is never in ✅ without the read.
 
 Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine, except that a low-confidence PR doesn't reach ✅ without the changelog read.)
 
