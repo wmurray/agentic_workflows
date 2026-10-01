@@ -55,7 +55,16 @@ Read the manifest **once** to classify dev vs prod accurately (don't guess from 
 - **Dev vs prod** — from the manifest (step 2). Dev-dep bumps are low blast-radius.
 - **CI** — `ci: 0` = green; `> 0` = failing. Failing major bumps are the strongest "needs code work" signal.
 - **Age** — from `createdAt`. Flag anything > ~30 days as stale.
-- **Superseded** — if two open PRs bump the *same* package, the older is superseded by the newer.
+- **Companion commits** — count the commits someone other than Dependabot pushed onto the PR branch. Use the REST endpoint; `gh pr view --json commits` has under-reported them.
+  ```bash
+  gh api repos/{owner}/{repo}/pulls/<n>/commits \
+    --jq '[.[] | select(.author.login != "dependabot[bot]")] | length'
+  ```
+  (`{owner}/{repo}` is filled in by `gh` from the current checkout.) Above 0 means someone has pushed a fix onto the branch. A commit whose email is not linked to a GitHub account has a null `author` and is counted too, which is the safe direction.
+- **Superseded** — if two or more open PRs bump the *same* package, pick one **vehicle**; the rest are superseded by it.
+  - If any of them carries companion commits, the vehicle is the newest PR that does. A bare re-bump without them is superseded even when newer, because it lacks the fix: close it by default (porting the fix onto it is a Phase 2 choice for the user). Never close the PR holding the fix in its favour.
+  - Otherwise the vehicle is the newest PR.
+  - A superseded PR closes once the vehicle is chosen, whatever its age; the stale threshold does not apply to it.
 
 ## 3.5 Security gate (run BEFORE trusting any bucket — especially JS)
 
@@ -93,7 +102,7 @@ Surface security findings at the **top** of the report — a 🛡️ fix or ⚠�
 | ✅ **Safe to merge** | CI green, not superseded, **and** (patch bump of any dep **or** minor bump of a **dev** dep) | batch-merge |
 | 👀 **Review then merge** | CI green **and** minor bump of a **prod** dep | eyeball changelog, then merge |
 | 🔧 **Needs code work** | **major** bump (even if CI is green) **or** CI red | draft a ticket — likely needs companion changes (e.g. codegen updates, API migration) |
-| 🗑️ **Close** | stale **and** superseded, or an abandoned major not worth pursuing | close with a one-line reason |
+| 🗑️ **Close** | superseded by a chosen vehicle (any age, see step 3), or an abandoned major not worth pursuing | close with a one-line reason |
 
 Note: a **major** bump always lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none.
 
@@ -135,6 +144,7 @@ Offer the actions; do nothing until you pick. Never merge/close/create-ticket un
   Default to asking rather than assuming — approving on the user's behalf is an outward-facing action.
 - **Tickets for 🔧** — draft each ticket (title `[Deps] Bump <pkg> to <ver>`, body: what breaks, why it needs code, the failing checks). On confirmation create via `jira issue create -tTask -p "${JIRA_PROJECT:-YOUR_PROJECT}" -s "..." -b "..."` (the user may prefer to create them themselves — offer the drafted text either way). Link the ticket back as a comment on the PR if created.
 - **Close 🗑️** — `gh pr close <n> --comment "<reason>"`. Dependabot will not reopen unless the dependency updates again.
+- **Never `@dependabot recreate`** a PR that carries companion commits: recreating rebuilds the branch from scratch and discards the fix. If such a PR conflicts with the default branch, resolve the conflict by hand on the branch, or port the fix onto a fresh branch via Phase 2.
 
 ## 7. Phase 2 — fix pipeline (opt-in, one PR at a time)
 
