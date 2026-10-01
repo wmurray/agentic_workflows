@@ -87,6 +87,15 @@ Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` li
   - If any of them carries companion commits, the vehicle is the newest PR that does. A bare re-bump without them is superseded even when newer, because it lacks the fix: close it by default (porting the fix onto it is a Phase 2 choice for the user). Never close the PR holding the fix in its favour.
   - Otherwise the vehicle is the newest PR.
   - A superseded PR closes once the vehicle is chosen, whatever its age; the stale threshold does not apply to it.
+  - A vehicle on an older target than the bare PR it supersedes is fine; note the newer target as a follow-up bump.
+  - Any non-superseded PR carrying companion commits is a vehicle, including a lone PR with no duplicates.
+- **Superseded PR with its own fix** — if a superseded PR also carries companion commits, compare its fix with the vehicle's before recommending the close. List each side's non-Dependabot commits, then read the two fix diffs (skip the lockfile hunks):
+  ```bash
+  gh api repos/{owner}/{repo}/pulls/<n>/commits \
+    --jq '.[] | select(.author.login != "dependabot[bot]") | "\(.sha) \(.commit.message | split("\n")[0])"'
+  gh api repos/{owner}/{repo}/commits/<sha> -H "Accept: application/vnd.github.diff"
+  ```
+  If the superseded fix touches files the vehicle's doesn't, or changes behaviour the vehicle's leaves alone, the vehicle doesn't cover it. Say in the report whether it's covered; flag it for a human when you can't tell.
 
 ## 3.5 Security gate (run BEFORE trusting any bucket — especially JS)
 
