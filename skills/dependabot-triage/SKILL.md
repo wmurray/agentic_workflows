@@ -91,11 +91,12 @@ Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` li
   - A superseded PR closes once the vehicle is chosen, whatever its age; the stale threshold does not apply to it.
   - A vehicle on an older target than the bare PR it supersedes is fine; note the newer target as a follow-up bump.
   - Any non-superseded PR carrying companion commits is a vehicle, including a lone PR with no duplicates.
-- **Superseded PR with its own fix** — if a superseded PR also carries companion commits, compare its fix with the vehicle's before recommending the close. List each side's non-Dependabot commits, then read the two fix diffs (skip the lockfile hunks):
+- **Superseded PR with its own fix** — if a superseded PR also carries companion commits, compare its fix with the vehicle's before recommending the close. List each side's non-Dependabot commits, then compare the two fix diffs with lockfiles and snapshot files (`*.snap`, `__snapshots__/`) set aside, since both regenerate and differ for reasons unrelated to the fix:
   ```bash
   gh api repos/{owner}/{repo}/pulls/<n>/commits \
     --jq '.[] | select(.author.login != "dependabot[bot]") | "\(.sha) \(.commit.message | split("\n")[0])"'
-  gh api repos/{owner}/{repo}/commits/<sha> -H "Accept: application/vnd.github.diff"
+  gh api repos/{owner}/{repo}/commits/<sha> -H "Accept: application/vnd.github.diff" \
+    | awk '/^diff --git/{skip=($0 ~ /(yarn\.lock|package-lock\.json|Gemfile\.lock|\.snap|__snapshots__\/)/)} !skip'
   ```
   If the superseded fix touches files the vehicle's doesn't, or changes behaviour the vehicle's leaves alone, the vehicle doesn't cover it. Say in the report whether it's covered; flag it for a human when you can't tell.
 
@@ -173,11 +174,18 @@ Apply the rules in this order and stop at the first match, so each PR lands in e
 1. A finding from step 3.5. ⚠️ blocks the merge. A 🛡️ security fix goes to the top of ✅ if CI is green and it isn't `DIRTY`; otherwise it stays where CI and merge state put it, tagged 🛡️ and listed first there.
 2. 🗑️ — superseded, coupled to a parked major, or an abandoned major.
 3. ⏳ — checks pending or absent, or `DIRTY` with no companion commits.
-4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it.
+4. A vehicle PR carrying companion commits — 🔧 if CI is red or it is `DIRTY` (resolve the conflict by hand), otherwise 👀 whatever the bump type: the code work is already on the branch, so what's left is reviewing it, including the snapshot check below.
 5. 🔧 — any other major, or CI red.
 6. ✅ / 👀 from the table.
 
 Note: a **major** bump with no companion commits lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none. It leaves 🔧 only through the verification below, marked in the report.
+
+**Vehicle snapshot changes must be format-only.** A tool upgrade often rewrites snapshots (a new header line, a serializer that escapes differently) — fine. A snapshot hunk that changes rendered content (an element, attribute or text added or removed) is a possible behaviour change hiding in a regenerated file → flag it for a human. List the snapshot changes in the companion commits, header line dropped:
+```bash
+gh api repos/{owner}/{repo}/commits/<sha> -H "Accept: application/vnd.github.diff" \
+  | awk '/^diff --git/{keep=($0 ~ /(\.snap|__snapshots__\/)/)} keep && /^[+-]/ && !/^(\+\+\+|---) / && !/^[+-]\/\/ .*[Ss]napshot v/'
+```
+Line pairs that differ only in quoting or escaping are format-only.
 
 **Majors coupled to a parked major close, not ticket.** When `dependabot.yml` deliberately ignores a framework's major (parked until the team decides to move) and another package's new major needs that parked major (it targets the framework's next major, or peer-requires it), the bump can't land while the park holds. Close it and propose a matching `ignore:` entry for that package's majors, commented with the parked framework so both lift together — e.g. a utility whose new major targets a newer major of a CSS framework the repo has parked. Confirm the coupling from release notes or peer ranges before closing.
 
