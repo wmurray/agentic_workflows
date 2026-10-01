@@ -39,12 +39,14 @@ If `REPOS` is unset the loop stops with that message; ask the user which repos t
 ```bash
 cd "${SOURCE_DIR:-$HOME/Projects}/<repo>"
 gh pr list --author "app/dependabot" --state open --limit 100 \
-  --json number,title,url,createdAt,labels,statusCheckRollup,mergeable,mergeStateStatus \
-  --jq '.[] | {number, title, url, createdAt, mergeable, mergeStateStatus,
+  --json number,title,url,createdAt,labels,statusCheckRollup,mergeable,mergeStateStatus,headRefOid \
+  --jq '.[] | {number, title, url, createdAt, mergeable, mergeStateStatus, headRefOid,
                ci: ([.statusCheckRollup[]?|select((.conclusion//.state)=="FAILURE")]|length),
                pending: ([.statusCheckRollup[]?|select((.conclusion//.state)|IN("PENDING","IN_PROGRESS","QUEUED"))]|length),
                labels: [.labels[].name]}'
 ```
+
+`headRefOid` is the head SHA you're triaging; keep it, since the report records it and step 6 checks it before merging.
 
 **Merge state is separate from CI.** `mergeStateStatus: DIRTY` (with `mergeable: CONFLICTING`) means the branch conflicts with the default branch: a green PR in that state cannot merge, so it never lands in ✅ or 👀. `BLOCKED` usually just means a required review is outstanding, which is normal here (step 6). `UNKNOWN` means GitHub has not computed it yet; re-query.
 
@@ -211,6 +213,8 @@ Verified: <#PR, #PR>. Everything else is at its heuristic default.
 
 Tag an entry a verification moved with where it came from, e.g. `#N pkg A→B (dev/MAJOR, verified, demoted from 🔧)` sitting in 👀. Tag a `DIRTY` PR `conflicts` wherever it lands.
 
+Record each PR's triaged head as `@<short sha>` after its link, so a later head change is detectable (step 6).
+
 Rules: bullets not prose; link each PR `[#N](url)` and ticket `[PROJ-X](url)`; omit empty buckets. Sort 🔧 by risk (majors first). Note the oldest age per bucket so the staleness is visible.
 
 ## 6. Act — only on explicit confirmation (each action is outward-facing)
@@ -218,6 +222,11 @@ Rules: bullets not prose; link each PR `[#N](url)` and ticket `[PROJ-X](url)`; o
 Offer the actions; do nothing until you pick. Never merge/close/create-ticket unprompted.
 
 - **Merge ✅ (approve-then-merge)** — there is **no auto-merge configured**; each PR needs an approving review before it can merge. **Never merge the whole ✅ bucket on a single "yes."** Confirm the *specific PR set* first — present the ✅ list and have the user name which to merge (e.g. "all four", "just #5845 and #5849", "skip the prod one"). Only after the set is confirmed, ask which mechanism is preferred:
+  - **Re-check the head before each merge, whatever the mechanism.** Work through the confirmed set in order; immediately before merging each PR, compare its current head with the triaged one:
+    ```bash
+    gh pr view <n> --json headRefOid --jq .headRefOid
+    ```
+    If it differs (Dependabot rebased it after an earlier merge in the batch, or someone pushed), re-run the step 3.5 gate and check CI for that PR against the new head before merging it. Per PR, not once for the batch, so with the wrapper below pass one PR per call when merging several.
   - *Skill does it* — run the guarded wrapper with the confirmed set:
     ```bash
     "${MC_PIPELINE:-$HOME/.claude/lib/pipeline}/dependabot-merge.sh" "${SOURCE_DIR:-$HOME/Projects}/<repo>" <n> [<n> ...]
