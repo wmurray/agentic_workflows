@@ -5,26 +5,39 @@ description: Triage open Dependabot PRs across your repos — classify each by b
 
 Triage open Dependabot PRs. **Phase 1** (default) is a read-only report + recommended actions; nothing is merged, closed, or ticketed without explicit confirmation. **Phase 2** is an opt-in fix pipeline for PRs that need code changes.
 
-Repos: configured in `lib/workspace-context.sh` via `$REPOS` (e.g. one Bundler-based repo and several Yarn/npm repos). Dependabot author handle for `gh` is `app/dependabot`.
+Arguments passed: $ARGUMENTS
+
+Dependabot author handle for `gh` is `app/dependabot`.
+
+**Configuration.** Org values come from env vars set in your shell profile (see the README's Setup section), never from this file:
+
+| Var | Default | Used for |
+| --- | --- | --- |
+| `SOURCE_DIR` | `$HOME/Projects` | root folder holding your repo checkouts |
+| `REPOS` | none; required for the multi-repo count | space-separated repo names under `$SOURCE_DIR` (e.g. one Bundler-based repo and several Yarn/npm repos) |
+| `JIRA_PROJECT` | `YOUR_PROJECT` | Jira project key for searching and filing 🔧 tickets |
+| `MC_PIPELINE` | `$HOME/.claude/lib/pipeline` | folder holding the `lib/jira-toolkit/` wrappers, including `dependabot-merge.sh` (§6) |
+
+These are the same names `lib/workspace-context.sh` reads, with the same defaults. Do not source that script to get them: it runs its queries and prints JSON. Every command below writes them as `${VAR:-default}` so an unset variable falls back rather than expanding to an empty path.
 
 ---
 
 ## 1. Scope
 
-`$ARGUMENTS` may name a repo (e.g. `/dependabot-triage MyFrontendApp`). If omitted, run a fast count across all configured repos and ask which to triage in depth — the JS repos can carry 30+ PRs, so **one repo at a time** keeps the report actionable.
+The arguments above may name a repo (e.g. `/dependabot-triage MyFrontendApp`). If none was given, run a fast count across all configured repos and ask which to triage in depth — the JS repos can carry 30+ PRs, so **one repo at a time** keeps the report actionable.
 
 ```bash
-for repo in $REPOS; do
-  echo "=== $repo ===" && (cd $SOURCE_DIR/$repo && gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null)
+for repo in ${REPOS:?set REPOS to your space-separated repo names}; do
+  echo "=== $repo ===" && (cd "${SOURCE_DIR:-$HOME/Projects}/$repo" && gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null)
 done
 ```
 
-(`$REPOS` and `$SOURCE_DIR` come from `lib/workspace-context.sh` — source it or set them manually.)
+If `REPOS` is unset the loop stops with that message; ask the user which repos to count rather than guessing.
 
 ## 2. Gather (for the chosen repo)
 
 ```bash
-cd $SOURCE_DIR/<repo>
+cd "${SOURCE_DIR:-$HOME/Projects}/<repo>"
 gh pr list --author "app/dependabot" --state open --limit 60 \
   --json number,title,url,createdAt,labels,statusCheckRollup \
   --jq '.[] | {number, title, url, createdAt,
@@ -84,7 +97,7 @@ Surface security findings at the **top** of the report — a 🛡️ fix or ⚠�
 
 Note: a **major** bump always lands in 🔧 regardless of CI — green CI on a major just means tests didn't catch the breakage, not that there is none.
 
-When a 🔧 PR maps to an existing ticket, note that instead of proposing a new one. Cross-check `jira_open`/recent via `jira issue list --project <YOUR_PROJECT> -q "..."` if useful.
+When a 🔧 PR maps to an existing ticket, note that instead of proposing a new one. Cross-check via `jira issue list --project "${JIRA_PROJECT:-YOUR_PROJECT}" -q 'summary ~ "<pkg>" AND statusCategory != Done'`. If `JIRA_PROJECT` is unset, ask for the key rather than searching `YOUR_PROJECT`.
 
 ### Preliminary vs verified
 
@@ -120,7 +133,7 @@ Offer the actions; do nothing until you pick. Never merge/close/create-ticket un
   - *Native auto-merge* — if the repo has auto-merge enabled in settings, `gh pr merge <n> --squash --auto` queues it to merge automatically once CI passes (a repo-admin setting, off by default — flag this rather than enabling it).
   - *Keep the approval human* — just list the ✅ PRs with direct links to approve + merge in the GitHub UI.
   Default to asking rather than assuming — approving on the user's behalf is an outward-facing action.
-- **Tickets for 🔧** — draft each ticket (title `[Deps] Bump <pkg> to <ver>`, body: what breaks, why it needs code, the failing checks). On confirmation create via `jira issue create -tTask -p <YOUR_PROJECT> -s "..." -b "..."` (the user may prefer to create them themselves — offer the drafted text either way). Link the ticket back as a comment on the PR if created.
+- **Tickets for 🔧** — draft each ticket (title `[Deps] Bump <pkg> to <ver>`, body: what breaks, why it needs code, the failing checks). On confirmation create via `jira issue create -tTask -p "${JIRA_PROJECT:-YOUR_PROJECT}" -s "..." -b "..."` (the user may prefer to create them themselves — offer the drafted text either way). Link the ticket back as a comment on the PR if created.
 - **Close 🗑️** — `gh pr close <n> --comment "<reason>"`. Dependabot will not reopen unless the dependency updates again.
 
 ## 7. Phase 2 — fix pipeline (opt-in, one PR at a time)
