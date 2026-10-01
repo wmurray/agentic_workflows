@@ -84,26 +84,36 @@ Supply-chain attacks in the JS ecosystem are a live threat, and Dependabot's pic
 
 **a) Known advisories — GitHub Advisory DB:**
 ```bash
-gh api graphql -f query='{ securityVulnerabilities(ecosystem: NPM, package: "<pkg>", first: 5) {
+gh api graphql -f query='{ securityVulnerabilities(ecosystem: NPM, package: "<pkg>", first: 20) {
+  totalCount
   nodes { advisory { summary severity identifiers { type value } }
           vulnerableVersionRange firstPatchedVersion { identifier } } } }'
 ```
-(Ruby gems: `ecosystem: RUBYGEMS`.) Interpret against the bump's from→to:
+(Ruby gems: `ecosystem: RUBYGEMS`. GitHub Actions bumps: `ecosystem: ACTIONS`, package = the action's `owner/name`, e.g. `actions/checkout`.) If `totalCount` exceeds the nodes returned, raise `first` until it doesn't; long-lived packages can carry more advisories than one page. Interpret against the bump's from→to:
 - Target version falls **inside** a `vulnerableVersionRange` → ⚠️ **do not merge**; the bump lands on a still-vulnerable version. → 🔧/hold.
 - Current version is vulnerable and target ≥ `firstPatchedVersion` → 🛡️ **security fix — prioritize** (jump it to the top of the merge list).
 - Any advisory with identifier type **`MALWARE`** or summary mentioning malicious/compromised → ⚠️ **block and flag loudly**.
 
 **b) Freshness / yank heuristic — `npm view`:** supply-chain payloads ride brand-new or quickly-pulled versions.
 ```bash
-npm view <pkg>@<target> time.modified version deprecated
+npm view <pkg> time --json | jq -r '.["<target>"]'   # publish date of the target version
+npm view <pkg>@<target> deprecated
 ```
+Not `time.modified`: that's when the package as a whole last changed, which only matches the target's publish date when the target is the newest release.
 - Target published **< ~7 days ago** → flag for manual eyeball (unusually fresh for a routine bump).
 - `deprecated` is set → flag; don't merge onto a deprecated version.
 
-**c) Deeper scanning (optional, stronger — not installed today):**
-- `osv-scanner` (`brew install osv-scanner`, no account) — scans the lockfile against OSV *including the malicious-packages dataset*. **Recommended low-friction add.**
+**c) Deeper scanning (optional, stronger — check `command -v osv-scanner`):**
+- `osv-scanner` (`brew install osv-scanner`, no account) — scans the lockfile against OSV *including the malicious-packages dataset*. **Recommended low-friction add.** Fetch the PR branch's lockfile without checking the branch out, keeping its real filename (the parser is picked from the name):
+  ```bash
+  ref=$(gh pr view <n> --json headRefName --jq .headRefName)
+  dir=$(mktemp -d)
+  gh api "repos/{owner}/{repo}/contents/yarn.lock?ref=$ref" -H "Accept: application/vnd.github.raw" > "$dir/yarn.lock"
+  osv-scanner scan -L "$dir/yarn.lock"
+  ```
+  Swap in `package-lock.json` or `Gemfile.lock` as the repo uses.
 - Socket.dev (`socket` CLI / GitHub app) — purpose-built for malicious-package, install-script, and typosquat detection.
-If either is present, run it on the PR branch's lockfile and fold results in.
+If either is present, fold its results in; if neither is, say in the report that the gate ran without a lockfile scan.
 
 Surface security findings at the **top** of the report — a 🛡️ fix or ⚠️ vulnerable/suspicious flag overrides normal bump-type bucketing.
 
