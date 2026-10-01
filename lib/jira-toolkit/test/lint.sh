@@ -100,6 +100,21 @@ else bad "dependabot-merge: happy path calls — $(tr '\n' ';' < "$DM/calls")"; 
 rm -f "${DM:?}/bin/gh" "${DM:?}/calls" "${DM:?}/pr.json" "${DM:?}/repo.json" "${DM:?}/files.json" "${DM:?}/page.json"
 rmdir "${DM:?}/bin" "${DM:?}"
 
+echo "dependabot-triage skill"
+# Claude Code substitutes positional placeholders anywhere in a skill's text, so a shell or awk
+# snippet using them breaks silently when the skill gets arguments; they belong in scripts/.
+SK="$T/../../skills/dependabot-triage"
+if grep -nE '\$[0-9]|\$\{[0-9]|\$ARGUMENTS\[' "$SK/SKILL.md" >/dev/null; then
+  bad "SKILL.md has a positional placeholder: $(grep -nE '\$[0-9]|\$\{[0-9]|\$ARGUMENTS\[' "$SK/SKILL.md" | head -1 | cut -c1-80)"
+else ok "SKILL.md has no positional placeholders"; fi
+[ "$(grep -c '\$ARGUMENTS' "$SK/SKILL.md")" = 1 ] && ok "SKILL.md has exactly one \$ARGUMENTS line" || bad "SKILL.md \$ARGUMENTS count"
+for f in "$SK"/scripts/*.sh; do bash -n "$f" && ok "$(basename "$f") parses" || bad "$(basename "$f") syntax"; done
+expect "gem-parents: usage"            2 "$SK/scripts/gem-parents.sh"
+expect "install-script-config: usage"  2 "$SK/scripts/install-script-config.sh"
+expect "install-script-diff: usage"    2 "$SK/scripts/install-script-diff.sh" o/r
+expect "install-script-diff: bad pr"   2 "$SK/scripts/install-script-diff.sh" o/r abc
+expect "changelog-since: usage"        2 "$SK/scripts/changelog-since.sh" o/r
+
 echo "config validation"
 says "qa-transition names the missing token" 'missing config:.*JIRA_API_TOKEN' "$T/qa-transition.sh" ABC-1
 expect "qa-transition exits 1 without token"  1 "$T/qa-transition.sh" ABC-1
