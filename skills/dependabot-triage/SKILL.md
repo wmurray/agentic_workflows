@@ -38,22 +38,34 @@ If `REPOS` is unset the loop stops with that message; ask the user which repos t
 
 ```bash
 cd "${SOURCE_DIR:-$HOME/Projects}/<repo>"
-gh pr list --author "app/dependabot" --state open --limit 60 \
-  --json number,title,url,createdAt,labels,statusCheckRollup \
-  --jq '.[] | {number, title, url, createdAt,
+gh pr list --author "app/dependabot" --state open --limit 100 \
+  --json number,title,url,createdAt,labels,statusCheckRollup,mergeable,mergeStateStatus \
+  --jq '.[] | {number, title, url, createdAt, mergeable, mergeStateStatus,
                ci: ([.statusCheckRollup[]?|select((.conclusion//.state)=="FAILURE")]|length),
+               pending: ([.statusCheckRollup[]?|select((.conclusion//.state)|IN("PENDING","IN_PROGRESS","QUEUED"))]|length),
                labels: [.labels[].name]}'
+```
+
+**Merge state is separate from CI.** `mergeStateStatus: DIRTY` (with `mergeable: CONFLICTING`) means the branch conflicts with the default branch: a green PR in that state cannot merge, so it never lands in ✅ or 👀. `BLOCKED` usually just means a required review is outstanding, which is normal here (step 6). `UNKNOWN` means GitHub has not computed it yet; re-query.
+
+**Read config from the remote default branch, never the working tree.** The local checkout may be days behind, and a stale manifest or `.github/dependabot.yml` will not match the open PRs:
+```bash
+git fetch -q origin && git show origin/HEAD:<path>     # or: git show origin/main:<path>
+gh api repos/{owner}/{repo}/contents/<path> -H "Accept: application/vnd.github.raw"   # no fetch needed
 ```
 
 Read the manifest **once** to classify dev vs prod accurately (don't guess from names alone):
 - JS: `package.json` → `devDependencies` keys are dev; `dependencies` keys are prod.
 - Ruby: `Gemfile` → gems in `group :development`/`:test` are dev.
+- **Transitive** (bumped package not in the manifest): find the direct dependency that pulls it in and classify from that parent. Write the remote manifest and lockfile into a scratch dir and run `yarn why <pkg>` (works without `node_modules`) or `npm explain <pkg>`; for a gem, `awk -v g=<gem> '/^    [^ ]/{p=$1} $1==g && /^      [^ ]/{print p}' Gemfile.lock` lists its parents.
+
+Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` list names the majors the repo has deliberately parked (step 4).
 
 ## 3. Classify each PR
 
 - **Bump type** — parse the title `Bump <pkg> from A.B.C to D.E.F`: major if A changes, minor if B, patch if C. Grouped PRs (`Bump the <x> group …`, `Bump <a> and <b>`) have no single version — mark as **group** and lean on CI + dev/prod.
 - **Dev vs prod** — from the manifest (step 2). Dev-dep bumps are low blast-radius.
-- **CI** — `ci: 0` = green; `> 0` = failing. Failing major bumps are the strongest "needs code work" signal.
+- **CI** — `ci > 0` = failing; `ci: 0` and `pending: 0` = green; anything pending (or no checks at all) = awaiting CI, not green. Failing major bumps are the strongest "needs code work" signal.
 - **Age** — from `createdAt`. Flag anything > ~30 days as stale.
 - **Companion commits** — count the commits someone other than Dependabot pushed onto the PR branch. Use the REST endpoint; `gh pr view --json commits` has under-reported them.
   ```bash
