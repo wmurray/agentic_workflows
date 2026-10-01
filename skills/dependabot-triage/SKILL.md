@@ -63,8 +63,18 @@ Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` li
 
 ## 3. Classify each PR
 
-- **Bump type** — parse the title `Bump <pkg> from A.B.C to D.E.F`: major if A changes, minor if B, patch if C. Grouped PRs (`Bump the <x> group …`, `Bump <a> and <b>`) have no single version — mark as **group** and lean on CI + dev/prod.
-- **Dev vs prod** — from the manifest (step 2). Dev-dep bumps are low blast-radius.
+- **Bump type** — major if the first version component changes, minor if the second, patch if the third. A grouped PR (`Bump the <x> group …`, `Bump <a> and <b>`) takes its **largest** member bump, so a group containing a major is a major. The body lists each member as ``Updates `<pkg>` from A to B``; a single-member group or plain bump also names it in the title. This filter reads both:
+  ```bash
+  gh pr view <n> --json title,body --jq '
+    [ (.body | split("\n")[] | rtrimstr("\r") | capture("^Updates `(?<pkg>[^`]+)` from (?<from>\\S+) to (?<to>\\S+)$")),
+      (.title | capture("^Bump (?<pkg>\\S+) from (?<from>\\S+) to (?<to>\\S+)")) ]
+    | unique_by(.pkg)
+    | map(. + {type: ((.from|ltrimstr("v")|split(".")) as $a | (.to|ltrimstr("v")|split(".")) as $b
+        | if $a[0] != $b[0] then "major" elif ($a[1]//"0") != ($b[1]//"0") then "minor" else "patch" end)})
+    | {bump: (if any(.[]; .type=="major") then "major" elif any(.[]; .type=="minor") then "minor" else "patch" end),
+       members: map("\(.pkg) \(.from)→\(.to) (\(.type))")}'
+  ```
+- **Dev vs prod** — from the manifest (step 2). Dev-dep bumps are low blast-radius. GitHub Actions bumps (`.github/workflows`) are CI tooling: dev-like blast radius, but a major Actions bump is still a major.
 - **CI** — `ci > 0` = failing; `ci: 0` and `pending: 0` = green; anything pending (or no checks at all) = awaiting CI, not green. Failing major bumps are the strongest "needs code work" signal.
 - **Age** — from `createdAt`. Flag anything > ~30 days as stale.
 - **Companion commits** — count the commits someone other than Dependabot pushed onto the PR branch. Use the REST endpoint; `gh pr view --json commits` has under-reported them.
