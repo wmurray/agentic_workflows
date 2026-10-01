@@ -139,8 +139,8 @@ Not `time.modified`: that's when the package as a whole last changed, which only
   echo "Malicious on the PR branch (blocking):"; grep '^MAL-' "$dir/head.ids" || echo "  none"
   echo "New versus $base:"; LC_ALL=C comm -13 "$dir/base.ids" "$dir/head.ids"
   echo "Fixed versus $base:"; LC_ALL=C comm -23 "$dir/base.ids" "$dir/head.ids"
-  for side in base head; do rm -f "$dir/$side/$lock" "$dir/$side.json" "$dir/$side.ids"; rmdir "$dir/$side"; done
-  rmdir "$dir"
+  for side in base head; do rm -f "${dir:?}/${side:?}/${lock:?}" "${dir:?}/${side:?}.json" "${dir:?}/${side:?}.ids"; rmdir "${dir:?}/${side:?}"; done
+  rmdir "${dir:?}"
   ```
   Reading it: any `MAL-` ID → ⚠️ block. A **new** ID on a package the PR bumps (or pulls in) → a finding against the bump, same as a target inside a `vulnerableVersionRange`. A new ID on a package the PR doesn't touch usually means the branch is behind the default branch, which already has the fix → a rebase signal, not a finding. IDs on both sides are pre-existing and out of scope; fixed IDs support a 🛡️.
 - Socket.dev (`socket` CLI / GitHub app) — purpose-built for malicious-package, install-script, and typosquat detection.
