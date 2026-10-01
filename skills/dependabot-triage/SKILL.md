@@ -9,6 +9,8 @@ Arguments passed (blank means none): $ARGUMENTS
 
 Dependabot author handle for `gh` is `app/dependabot`.
 
+**Helper scripts.** Snippets that need shell positional parameters live in `scripts/` rather than in this file, because Claude Code substitutes positional placeholders (a dollar sign followed by a digit) everywhere in a skill's text when it's invoked with arguments. All four are read-only (GitHub API and npm registry reads): `gem-parents.sh`, `install-script-config.sh`, `install-script-diff.sh`, `changelog-since.sh`. Call them as `"${CLAUDE_SKILL_DIR}/scripts/<name>.sh"`; one prefix rule covers them, e.g. `Bash("${CLAUDE_SKILL_DIR}/scripts/":*)` or the resolved path, since nothing in that folder writes.
+
 **Configuration.** Org values come from env vars set in your shell profile (see the README's Setup section), never from this file:
 
 | Var | Default | Used for |
@@ -59,7 +61,7 @@ gh api repos/{owner}/{repo}/contents/<path> -H "Accept: application/vnd.github.r
 Read the manifest **once** to classify dev vs prod accurately (don't guess from names alone):
 - JS: `package.json` → `devDependencies` keys are dev; `dependencies` keys are prod.
 - Ruby: `Gemfile` → gems in `group :development`/`:test` are dev.
-- **Transitive** (bumped package not in the manifest): find the direct dependency that pulls it in and classify from that parent. Write the remote manifest and lockfile into a scratch dir and run `yarn why <pkg>` (works without `node_modules`) or `npm explain <pkg>`; for a gem, `awk -v g=<gem> '/^    [^ ]/{p=$1} $1==g && /^      [^ ]/{print p}' Gemfile.lock` lists its parents.
+- **Transitive** (bumped package not in the manifest): find the direct dependency that pulls it in and classify from that parent. Write the remote manifest and lockfile into a scratch dir and run `yarn why <pkg>` (works without `node_modules`) or `npm explain <pkg>`; for a gem, `"${CLAUDE_SKILL_DIR}/scripts/gem-parents.sh" <gem> Gemfile.lock` lists its parents.
 
 Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` list names the majors the repo has deliberately parked (step 4).
 
@@ -96,7 +98,7 @@ Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` li
   gh api repos/{owner}/{repo}/pulls/<n>/commits \
     --jq '.[] | select(.author.login != "dependabot[bot]") | "\(.sha) \(.commit.message | split("\n")[0])"'
   gh api repos/{owner}/{repo}/commits/<sha> -H "Accept: application/vnd.github.diff" \
-    | awk '/^diff --git/{skip=($0 ~ /(yarn\.lock|package-lock\.json|Gemfile\.lock|\.snap|__snapshots__\/)/)} !skip'
+    | awk '/^diff --git/{skip=(/(yarn\.lock|package-lock\.json|Gemfile\.lock|\.snap|__snapshots__\/)/)} !skip'
   ```
   If the superseded fix touches files the vehicle's doesn't, or changes behaviour the vehicle's leaves alone, the vehicle doesn't cover it. Say in the report whether it's covered; flag it for a human when you can't tell.
 
@@ -106,11 +108,9 @@ Supply-chain attacks in the JS ecosystem are a live threat, and Dependabot's pic
 
 **First, once per repo — does it run install scripts?** Read the package manager config from the remote default branch:
 ```bash
-cfg() { gh api "repos/{owner}/{repo}/contents/$1" -H "Accept: application/vnd.github.raw" 2>/dev/null; }
-if cfg .yarnrc.yml | grep -Eq '^[[:space:]]*enableScripts:[[:space:]]*false'; then echo "install scripts: disabled (enableScripts: false)"
-elif { cfg .npmrc; cfg .yarnrc; } | grep -Eq '^[[:space:]]*ignore-scripts[[:space:]=]+"?true'; then echo "install scripts: disabled (ignore-scripts)"
-else echo "install scripts: RUN on install and in CI"; fi
+"${CLAUDE_SKILL_DIR}/scripts/install-script-config.sh" '{owner}/{repo}'
 ```
+It reads `.yarnrc.yml` (`enableScripts: false`), `.npmrc` and `.yarnrc` (`ignore-scripts`) and prints one line. `{owner}/{repo}` is passed literally; `gh` fills it in from the current checkout.
 Report that line once at the top of the security section. Script changes are flagged either way (d), but when scripts run, CI executes them on the PR branch before anyone reviews it — raise a blocking finding before the PR's checks are re-run.
 
 **a) Known advisories — GitHub Advisory DB:**
@@ -169,26 +169,10 @@ If either is present, fold its results in; if neither is, say in the report that
 
 **d) Install scripts:** a new or changed `preinstall` / `install` / `postinstall` runs code at install time — how most npm supply-chain payloads execute. For npm/yarn repos, compare every package version the lockfile adds between the merge-base and the PR head (direct bumps, group members, transitive packages) against the version it replaces. `prepare` is left out: npm runs it only for git and local installs, so check it by hand only for a package resolved from git.
 ```bash
-lock=yarn.lock    # Yarn 1 or Berry; see below for package-lock.json
-head=$(gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha)
-base=$(gh api repos/{owner}/{repo}/pulls/<n> --jq .base.ref)
-mb=$(gh api "repos/{owner}/{repo}/compare/$base...$head" --jq .merge_base_commit.sha)
-dir=$(mktemp -d)
-for side in "$mb:old" "$head:new"; do
-  gh api "repos/{owner}/{repo}/contents/$lock?ref=${side%%:*}" -H "Accept: application/vnd.github.raw" \
-    | awk '/^[^ #].*:$/{n=$1; gsub(/[",:]/,"",n); sub(/@[^@]*$/,"",n)} /^  version:? / && n != "__metadata" {v=$2; gsub(/"/,"",v); print n, v}' \
-    | LC_ALL=C sort -u > "${dir:?}/${side##*:}"
-done
-scripts() { npm view "$1@$2" scripts --json 2>/dev/null | jq -cS '{preinstall, install, postinstall} | with_entries(select(.value != null))' 2>/dev/null | sed 's/^{}$//'; }
-LC_ALL=C comm -13 "${dir:?}/old" "${dir:?}/new" | while read -r name ver; do
-  prev=$(awk -v n="$name" '$1 == n {print $2}' "${dir:?}/old" | sort -V | tail -1)
-  before=$([ -n "$prev" ] && scripts "$name" "$prev"); after=$(scripts "$name" "$ver")
-  [ "$before" = "$after" ] && continue
-  printf '%s %s -> %s\n  before: %s\n  after:  %s\n' "$name" "${prev:-(new)}" "$ver" "${before:-none}" "${after:-none}"
-done
-rm -f "${dir:?}/old" "${dir:?}/new"; rmdir "${dir:?}"
+"${CLAUDE_SKILL_DIR}/scripts/install-script-diff.sh" '{owner}/{repo}' <n>                      # yarn.lock, Yarn 1 or Berry
+"${CLAUDE_SKILL_DIR}/scripts/install-script-diff.sh" '{owner}/{repo}' <n> package-lock.json    # npm
 ```
-One `npm view` per changed package, so a large bump (a test-framework major) can take a minute or more — say so rather than appearing to hang. For `package-lock.json`, build the two lists with `jq -r '.packages | to_entries[] | select(.key != "") | "\(.key | sub(".*node_modules/"; "")) \(.value.version)"'` instead of the awk (it also marks `hasInstallScript: true`).
+It prints each package whose install-time scripts differ, with the before/after text, then a one-line count. One `npm view` per changed package, so a large bump (a test-framework major) can take a minute or more — say so rather than appearing to hang. A `package-lock.json` also marks packages with install scripts as `hasInstallScript: true`.
 
 Reading it:
 - Any added or changed script → the PR is **low-confidence** (step 4). Show the before/after script text in the report.
@@ -221,7 +205,7 @@ Note: a **major** bump with no companion commits lands in 🔧 regardless of CI 
 **Vehicle snapshot changes must be format-only.** A tool upgrade often rewrites snapshots (a new header line, a serializer that escapes differently) — fine. A snapshot hunk that changes rendered content (an element, attribute or text added or removed) is a possible behaviour change hiding in a regenerated file → flag it for a human. List the snapshot changes in the companion commits, header line dropped:
 ```bash
 gh api repos/{owner}/{repo}/commits/<sha> -H "Accept: application/vnd.github.diff" \
-  | awk '/^diff --git/{keep=($0 ~ /(\.snap|__snapshots__\/)/)} keep && /^[+-]/ && !/^(\+\+\+|---) / && !/^[+-]\/\/ .*[Ss]napshot v/'
+  | awk '/^diff --git/{keep=(/(\.snap|__snapshots__\/)/)} keep && /^[+-]/ && !/^(\+\+\+|---) / && !/^[+-]\/\/ .*[Ss]napshot v/'
 ```
 Line pairs that differ only in quoting or escaping are format-only.
 
@@ -243,7 +227,7 @@ Use the REST files endpoint: `gh pr view --json files` stops at 100 files.
   ```bash
   up=$(npm view <pkg> repository.url | sed -E 's#^(git\+)?(https?|git|ssh)://(git@)?github\.com/##; s#\.git$##')
   gh api "repos/$up/releases?per_page=100" --jq '.[] | select(.tag_name | test("(^|[@v])<target>$")) | .tag_name, .body'
-  gh api "repos/$up/contents/CHANGELOG.md" -H "Accept: application/vnd.github.raw" | awk -v from=<current> '/^## /{ h=$0; sub(/^## \[?v?/, "", h); if (index(h, from) == 1) exit; p=1 } p'
+  "${CLAUDE_SKILL_DIR}/scripts/changelog-since.sh" "$up" <current>
   ```
   For a gem, take `owner/repo` from `curl -s https://rubygems.org/api/v1/gems/<gem>.json | jq -r '.source_code_uri // .homepage_uri'`. Use what you find for the breaking-change read and the changelog read below.
 - For a 🔧 **major**: scan the release notes / changelog for `BREAKING`. If nothing breaking touches our usage, it may demote to 👀; if the diff also edits the manifest and many files, 🔧 is confirmed.
