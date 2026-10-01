@@ -28,7 +28,7 @@ feature-flags.sh       write / verify the feature-flags labels field
 sprint-add.sh          add a ticket to the active sprint
 request-review.sh      draft → ready + request the reviewer team (+ outside-sprint label)
 merge.sh               guarded PR merge: approved, approval current, CI green, not frozen, no veto label
-dependabot-merge.sh    approve + squash Dependabot PRs only, manifest/lockfile-only diffs
+dependabot-merge.sh    approve + merge Dependabot PRs only, manifest/lockfile-only diffs, <pr>@<sha>
 test/lint.sh           syntax + arg-handling + config-validation checks, no network
 ```
 
@@ -62,7 +62,7 @@ are always found next to the real files. The `jira` CLI (ankitpokhrel/jira-cli),
 | `GH_REVIEW_TEAM` | request-review | Default reviewer team, `org/team`. |
 | `GH_OUTSIDE_SPRINT_LABEL`, `GH_SPRINT_LABELS` | request-review, merge | The label meaning "not part of the sprint commitment", and the list merge.sh strips. |
 | `GH_BLOCK_LABELS` | merge | Labels that veto a merge, case-insensitive, no override. |
-| `GH_MERGE_METHOD` | merge | `squash`, `merge` or `rebase`. |
+| `GH_MERGE_METHOD` | merge, dependabot-merge | `squash`, `merge` or `rebase`. dependabot-merge falls back to the first method the repo allows. |
 | `GH_FREEZE_CHECK_PATTERN` | merge | A red CI check whose name matches this is a sprint-freeze gate, bypassed only by `--allow-freeze`. |
 | `DEPENDABOT_ALLOWED_PATHS` | dependabot-merge | Regex of files a Dependabot PR may touch. |
 
