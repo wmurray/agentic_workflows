@@ -104,6 +104,15 @@ Also read `.github/dependabot.yml` from the same remote branch: its `ignore:` li
 
 Supply-chain attacks in the JS ecosystem are a live threat, and Dependabot's pickup rules reduce but don't eliminate the risk. For each PR's **target** `package@version`, run these cheap checks — no extra tooling needed (uses `gh` + `npm`, already available):
 
+**First, once per repo — does it run install scripts?** Read the package manager config from the remote default branch:
+```bash
+cfg() { gh api "repos/{owner}/{repo}/contents/$1" -H "Accept: application/vnd.github.raw" 2>/dev/null; }
+if cfg .yarnrc.yml | grep -Eq '^[[:space:]]*enableScripts:[[:space:]]*false'; then echo "install scripts: disabled (enableScripts: false)"
+elif { cfg .npmrc; cfg .yarnrc; } | grep -Eq '^[[:space:]]*ignore-scripts[[:space:]=]+"?true'; then echo "install scripts: disabled (ignore-scripts)"
+else echo "install scripts: RUN on install and in CI"; fi
+```
+Report that line once at the top of the security section. Script changes are flagged either way (d), but when scripts run, CI executes them on the PR branch before anyone reviews it — raise a blocking finding before the PR's checks are re-run.
+
 **a) Known advisories — GitHub Advisory DB:**
 ```bash
 gh api graphql -f query='{ securityVulnerabilities(ecosystem: NPM, package: "<pkg>", first: 20) {
@@ -157,6 +166,35 @@ Not `time.modified`: that's when the package as a whole last changed, which only
   Reading it: any `MAL-` ID → ⚠️ block. A **new** ID is something this PR's lockfile introduced, on a package it bumps or pulls in → a finding against the bump, same as a target inside a `vulnerableVersionRange`. IDs on both sides are pre-existing and out of scope; fixed IDs support a 🛡️.
 - Socket.dev (`socket` CLI / GitHub app) — purpose-built for malicious-package, install-script, and typosquat detection.
 If either is present, fold its results in; if neither is, say in the report that the gate ran without a lockfile scan.
+
+**d) Install scripts:** a new or changed `preinstall` / `install` / `postinstall` runs code at install time — how most npm supply-chain payloads execute. For npm/yarn repos, compare every package version the lockfile adds between the merge-base and the PR head (direct bumps, group members, transitive packages) against the version it replaces. `prepare` is left out: npm runs it only for git and local installs, so check it by hand only for a package resolved from git.
+```bash
+lock=yarn.lock    # Yarn 1 or Berry; see below for package-lock.json
+head=$(gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha)
+base=$(gh api repos/{owner}/{repo}/pulls/<n> --jq .base.ref)
+mb=$(gh api "repos/{owner}/{repo}/compare/$base...$head" --jq .merge_base_commit.sha)
+dir=$(mktemp -d)
+for side in "$mb:old" "$head:new"; do
+  gh api "repos/{owner}/{repo}/contents/$lock?ref=${side%%:*}" -H "Accept: application/vnd.github.raw" \
+    | awk '/^[^ #].*:$/{n=$1; gsub(/[",:]/,"",n); sub(/@[^@]*$/,"",n)} /^  version:? / && n != "__metadata" {v=$2; gsub(/"/,"",v); print n, v}' \
+    | LC_ALL=C sort -u > "${dir:?}/${side##*:}"
+done
+scripts() { npm view "$1@$2" scripts --json 2>/dev/null | jq -cS '{preinstall, install, postinstall} | with_entries(select(.value != null))' 2>/dev/null | sed 's/^{}$//'; }
+LC_ALL=C comm -13 "${dir:?}/old" "${dir:?}/new" | while read -r name ver; do
+  prev=$(awk -v n="$name" '$1 == n {print $2}' "${dir:?}/old" | sort -V | tail -1)
+  before=$([ -n "$prev" ] && scripts "$name" "$prev"); after=$(scripts "$name" "$ver")
+  [ "$before" = "$after" ] && continue
+  printf '%s %s -> %s\n  before: %s\n  after:  %s\n' "$name" "${prev:-(new)}" "$ver" "${before:-none}" "${after:-none}"
+done
+rm -f "${dir:?}/old" "${dir:?}/new"; rmdir "${dir:?}"
+```
+One `npm view` per changed package, so a large bump (a test-framework major) can take a minute or more — say so rather than appearing to hang. For `package-lock.json`, build the two lists with `jq -r '.packages | to_entries[] | select(.key != "") | "\(.key | sub(".*node_modules/"; "")) \(.value.version)"'` instead of the awk (it also marks `hasInstallScript: true`).
+
+Reading it:
+- Any added or changed script → the PR is **low-confidence** (step 4). Show the before/after script text in the report.
+- A script that only runs a bundled file (`node postinstall.js`) → read that file from the tarball before judging: `curl -sL "$(npm view <pkg>@<ver> dist.tarball)" | tar -xzO package/<file>`.
+- A new script, or the file it runs, that fetches or executes remote code (`curl`, `wget`, `fetch(`, an `http(s)://` URL, `node -e` reaching the network, a base64 blob, any download-then-execute pattern) → ⚠️ **blocking**, same tier as a `MAL-` hit.
+- Narrow exception: a native-module package whose script hands off to a well-known prebuilt-binary installer (`napi-postinstall`, `prebuild-install`, `node-pre-gyp`) to fetch its own platform binary is low-confidence, not blocking — name the helper in the report. Anything fetching from elsewhere, or obscuring what it fetches, still blocks.
 
 Surface security findings at the **top** of the report — a 🛡️ fix or ⚠️ vulnerable/suspicious flag overrides normal bump-type bucketing.
 
@@ -212,7 +250,7 @@ Use the REST files endpoint: `gh pr view --json files` stops at 100 files.
 
 **The changelog read** — for 🛡️ PRs, minor bumps of prod deps, and low-confidence PRs. Read the notes between the current and target versions for two things only: security notes or advisories, and changes touching high-risk surfaces (auth, sessions/cookies, tokens, crypto, payments, permissions, request handling/CSP). Anything found keeps the PR in 👀 with the finding named; nothing found lets it move to ✅.
 
-A PR is **low-confidence** if any of: compatibility score low or unknown; no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); bucket still at the heuristic default. A low-confidence PR is never in ✅ without the read.
+A PR is **low-confidence** if any of: compatibility score low or unknown; no release notes even after the upstream fetch; target published within ~7 days (step 3.5b); an added or changed install script (step 3.5d); bucket still at the heuristic default. A low-confidence PR is never in ✅ without the read.
 
 Only promote/demote **after looking**, and in the report mark which entries were *verified* vs left at the *heuristic* default — so you know where the confidence is. (For a fast on-call sweep, heuristic-only is fine for 🔧, 🗑️ and ⏳; nothing is reported as ✅ without the changelog read.)
 
@@ -220,6 +258,10 @@ Only promote/demote **after looking**, and in the report mark which entries were
 
 ```
 📦 DEPENDABOT — <repo> (<N> open)
+
+install scripts: <disabled (enableScripts: false) | RUN on install and in CI>
+⚠️  Security (<n>):        <#PR pkg (advisory / MAL- hit / remote-code install script)>
+🛡️  Security fixes (<n>):  <#PR pkg A→B, patches <advisory id>>
 
 ✅ Safe to merge (<n>):   <#PR pkg A→B (dev/patch)> …            → batch-merge?
 👀 Review then merge (<n>): <#PR pkg A→B (prod/minor)> …
@@ -234,7 +276,7 @@ Tag an entry a verification moved with where it came from, e.g. `#N pkg A→B (d
 
 Record each PR's triaged head as `@<short sha>` after its link, so a later head change is detectable (step 6).
 
-Rules: bullets not prose; link each PR `[#N](url)` and ticket `[PROJ-X](url)`; omit empty buckets. Sort 🔧 by risk (majors first). Note the oldest age per bucket so the staleness is visible.
+Rules: bullets not prose; link each PR `[#N](url)` and ticket `[PROJ-X](url)`; omit empty buckets. Sort 🔧 by risk (majors first). Note the oldest age per bucket so the staleness is visible. Under any PR with an install-script change, show the package, versions, and before/after script text.
 
 ## 6. Act — only on explicit confirmation (each action is outward-facing)
 
