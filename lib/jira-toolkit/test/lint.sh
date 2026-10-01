@@ -39,7 +39,66 @@ expect "request-review: no pr"     2 "$T/request-review.sh"
 expect "merge: no pr"              2 "$T/merge.sh"
 expect "merge: unknown arg"        2 "$T/merge.sh" --bogus
 expect "dependabot-merge: usage"   2 "$T/dependabot-merge.sh"
+expect "dependabot-merge: bad pr"  2 "$T/dependabot-merge.sh" . abc
+expect "dependabot-merge: bad sha" 2 "$T/dependabot-merge.sh" . 7@not-a-sha
 expect "assign: lane guard"        4 "$T/assign.sh" ABC-1 --lane qa
+
+echo "dependabot-merge against a stub gh (no network)"
+# The stub serves canned JSON from $FX and logs every call to $FX/calls. Without --paginate the
+# files endpoint returns only its first 30 entries, as the REST API pages them.
+DM="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-dm.XXXXXX")"
+mkdir "$DM/bin"
+cat > "$DM/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$FX/calls"
+q=''; paginate=0
+for ((i = 1; i <= $#; i++)); do
+  case "${!i}" in --jq) j=$((i + 1)); q="${!j}" ;; --paginate) paginate=1 ;; esac
+done
+case "$1 $2" in
+  "api repos/{owner}/{repo}/pulls/"*)
+    f="$FX/files.json"
+    [ "$paginate" = 1 ] || { jq '.[:30]' "$f" > "$FX/page.json"; f="$FX/page.json"; } ;;
+  "api repos/{owner}/{repo}") f="$FX/repo.json" ;;
+  "pr view") f="$FX/pr.json" ;;
+  "pr review"|"pr merge") exit 0 ;;
+  *) echo "stub gh: unexpected $*" >&2; exit 1 ;;
+esac
+if [ -n "$q" ]; then jq -r "$q" "$f"; else cat "$f"; fi
+STUB
+chmod +x "$DM/bin/gh"
+# dm_fixture <squash> <merge> <rebase> <files (newline list)>: one green Dependabot PR, head abc1234…
+dm_fixture() {
+  : > "$DM/calls"
+  jq -n '{author:{login:"app/dependabot"}, isDraft:false, mergeable:"MERGEABLE", state:"OPEN",
+          statusCheckRollup:[{name:"test", conclusion:"SUCCESS"}], headRefOid:"abc1234def5678", title:"Bump x"}' > "$DM/pr.json"
+  jq -n --argjson s "$1" --argjson m "$2" --argjson r "$3" \
+    '{allow_squash_merge:$s, allow_merge_commit:$m, allow_rebase_merge:$r}' > "$DM/repo.json"
+  jq -Rn '[inputs | {filename: .}]' <<<"$4" > "$DM/files.json"
+}
+dm() { (cd "$DM" && PATH="$DM/bin:$PATH" FX="$DM" "$T/dependabot-merge.sh" "$DM" "$@" 2>&1); }
+no_approve() { if grep -q '^pr review' "$DM/calls"; then bad "$1 — approve was called"; else ok "$1"; fi; }
+
+many="$(for i in $(seq 1 150); do if [ "$i" -eq 140 ]; then echo src/app.js; else echo yarn.lock; fi; done)"
+dm_fixture true false false "$many"
+says "dependabot-merge: file 140 of 150 refused (pagination)" 'touches non-manifest files: src/app.js' dm 7
+no_approve "dependabot-merge: no approve after a refused file"
+
+dm_fixture true false false $'package.json\nyarn.lock'
+says "dependabot-merge: head moved is refused" 'REFUSE: head moved since triage' dm 7@fff0000
+no_approve "dependabot-merge: no approve after a moved head"
+
+dm_fixture false false false $'package.json\nyarn.lock'
+says "dependabot-merge: no allowed method is skipped" 'SKIP: the repo allows no merge method' dm 7
+no_approve "dependabot-merge: no approve when no method is allowed"
+
+dm_fixture false false true $'package.json\nyarn.lock'
+says "dependabot-merge: falls back from a disallowed GH_MERGE_METHOD" 'using rebase' dm 7@abc1234
+if grep -q '^pr review' "$DM/calls" && grep -q '^pr merge 7 --rebase' "$DM/calls"; then ok "dependabot-merge: approves, then merges with the allowed method"
+else bad "dependabot-merge: happy path calls — $(tr '\n' ';' < "$DM/calls")"; fi
+
+rm -f "${DM:?}/bin/gh" "${DM:?}/calls" "${DM:?}/pr.json" "${DM:?}/repo.json" "${DM:?}/files.json" "${DM:?}/page.json"
+rmdir "${DM:?}/bin" "${DM:?}"
 
 echo "config validation"
 says "qa-transition names the missing token" 'missing config:.*JIRA_API_TOKEN' "$T/qa-transition.sh" ABC-1
