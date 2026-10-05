@@ -18,6 +18,7 @@
 #   MC_HERDR_SETTLE_S                            debounce after wait returns (default 20)
 #   MC_HERDR_START_TIMEOUT_MS                    agent start readiness (default 60000)
 #   MC_MODEL_<ROLE>                              model per role (e.g. MC_MODEL_CODER=opus)
+#   MC_HERDR_AUTOCOMPACT_WINDOW                  auto-compact tokens (default 200000; none = model default)
 set -euo pipefail
 
 op="${1:-}"; shift || true
@@ -120,6 +121,10 @@ op_spawn() {
   #    can take a second to get there, so retry a few times before giving up.
   local -a start_args=(--name "$name")
   [ -n "$model" ] && start_args+=(--model "$model")
+  # Pane sessions compact at 200k by default so long-lived workers stay responsive; set
+  # MC_HERDR_AUTOCOMPACT_WINDOW=none to keep the model's own window.
+  local compact="${MC_HERDR_AUTOCOMPACT_WINDOW:-200000}"
+  [ "$compact" != none ] && start_args+=(--settings "{\"env\":{\"CLAUDE_CODE_AUTO_COMPACT_WINDOW\":\"$compact\"}}")
   local try err=""
   for try in 1 2 3 4 5; do
     sleep 1
