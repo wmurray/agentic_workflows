@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline checks for upstream-repo.sh (repository URL forms) and changelog-since.sh (heading
 # levels and version forms), the latter against a stub `gh` serving a canned CHANGELOG.md.
-# Run: bash release-tools.test.sh
+# Run: bash dependency-changelog.test.sh
 set -u
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,7 +19,7 @@ done
 bash "$DIR/upstream-repo.sh" --url gitlab:acme/widget >/dev/null 2>&1
 check "upstream-repo: gitlab is refused" 1 "$?"
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/release-tools-test.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/dependency-changelog-test.XXXXXX")"
 cleanup() { rm -f "${WORK:?}/bin/gh" "${WORK:?}/CHANGELOG.md"; rmdir "${WORK:?}/bin" "${WORK:?}"; }
 trap cleanup EXIT
 mkdir "$WORK/bin"
