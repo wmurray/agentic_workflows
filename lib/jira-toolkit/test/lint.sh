@@ -100,6 +100,29 @@ else bad "dependabot-merge: happy path calls — $(tr '\n' ';' < "$DM/calls")"; 
 rm -f "${DM:?}/bin/gh" "${DM:?}/calls" "${DM:?}/pr.json" "${DM:?}/repo.json" "${DM:?}/files.json" "${DM:?}/page.json"
 rmdir "${DM:?}/bin" "${DM:?}"
 
+echo "assign against a stub jira (no network)"
+# The stub reports the ticket Unassigned and logs every call, so the assign argv is visible.
+JA="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-ja.XXXXXX")"
+mkdir "$JA/bin"
+cat > "$JA/bin/jira" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$FX/calls"
+case "$1 $2" in
+  "issue view")   echo '{"fields":{"assignee":null}}' ;;
+  "issue assign") exit 0 ;;
+  *) echo "stub jira: unexpected $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$JA/bin/jira"
+ja() { : > "$JA/calls"; (PATH="$JA/bin:$PATH" FX="$JA" "$T/assign.sh" ABC-1 >/dev/null 2>&1); }
+JIRA_PROJECT=ABC ja
+if grep -qx 'issue assign -p ABC ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: exported JIRA_PROJECT is passed as -p"
+else bad "assign: with JIRA_PROJECT — $(tr '\n' ';' < "$JA/calls")"; fi
+(unset JIRA_PROJECT; ja)
+if grep -qx 'issue assign ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: no -p when JIRA_PROJECT is unset"
+else bad "assign: without JIRA_PROJECT — $(tr '\n' ';' < "$JA/calls")"; fi
+rm -f "${JA:?}/bin/jira" "${JA:?}/calls"; rmdir "${JA:?}/bin" "${JA:?}"
+
 echo "dependabot-triage skill"
 # Claude Code substitutes positional placeholders anywhere in a skill's text, so a shell or awk
 # snippet using them breaks silently when the skill gets arguments; they belong in scripts/.

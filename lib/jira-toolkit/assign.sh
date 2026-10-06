@@ -52,7 +52,9 @@ fi
 if [ "$mode" = "check" ]; then
   echo "assign: $key is Unassigned → would assign to '$to'."; exit 0
 fi
-if jira issue assign "$key" "$to" >/dev/null 2>&1; then
+# -p for the same reason as jt_status_of: the CLI resolves the assignee against the project's
+# assignable users, and an exported JIRA_PROJECT blanks that scope (the call then 400s).
+if jira issue assign ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} "$key" "$to" >/dev/null 2>&1; then
   echo "assign: $key Unassigned → assigned to '$to'."
   jt_worklog --ticket "$key" "$key assigned to '$to'"
   exit 0
