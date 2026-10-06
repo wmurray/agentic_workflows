@@ -231,6 +231,17 @@ else
   red "  FAIL  dash produced no frame"; printf '%s\n' "$frame" | sed 's/^/          /'; fail=$((fail+1))
 fi
 
+# A refined ticket committed to the sprint is a board row; only refined tickets outside
+# the sprint fold into the parked footer. Rendered from a derived board so the shared
+# fixture (which the detectors above assert on) stays untouched.
+jq '.tickets += [{"ticket":"ENG-208","lane":"refined","cycle":"sprint","worker":null,"blocked":false,"desc":"Sprint ticket awaiting a plan"}]' \
+  "$WORK/state.json" > "$WORK/state.sprint-refined.json"
+dash_sr() { MC_STATE="$WORK/state.sprint-refined.json" MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_ADDRESS_FILE="$WORK/KICKBACK_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh"; }
+says "dash rows a sprint refined ticket"     yes '^ +ENG-208 +refined '        dash_sr
+says "  … and keeps it out of parked"        no  'parked.*ENG-208'             dash_sr
+says "  … a non-sprint refined stays parked" yes 'parked.*: 1 — ENG-207'       dash_sr
+says "  … and gets no row"                   no  '^ +ENG-207 '                 dash_sr
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"

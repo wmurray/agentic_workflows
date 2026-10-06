@@ -304,7 +304,7 @@ render() {
     .tickets
     | map(.lane //= "⚠ no-lane")
     | map(select(.cycle != "background"))
-    | map(select((.lane == "refined" and (.blocked | not) and .worker == null) | not))
+    | map(select((.lane == "refined" and (.blocked | not) and .worker == null and .cycle != "sprint") | not))
     | sort_by([(if .blocked then 0 else 1 end), (.lane | rank), .ticket])
     | .[]
     | (if .blocked then "🚫"
@@ -365,12 +365,14 @@ render() {
     printf '  ────────────────────────────────────────────────────────────────\n'
   fi
 
-  # Parked refined backlog — collapsed to a one-line count (mirrors mc-poll.sh).
-  # A refined ticket that's blocked or has a worker is NOT parked (it stays in the
-  # table above); a cycle=="background" one lives in OUT OF CYCLE above, not here —
-  # so this footer is the RAW, not-yet-vetted backlog (unvetted / not at the ready status).
+  # Parked refined backlog — collapsed to a one-line count. A refined ticket that's
+  # blocked, has a worker, or is committed to the sprint (cycle=="sprint") is NOT parked
+  # (it stays in the table above); a cycle=="background" one lives in OUT OF CYCLE above,
+  # not here — so this footer is the RAW, not-yet-vetted backlog (unvetted / not at the
+  # ready status). mc-poll.sh still folds sprint refined tickets into its parked count,
+  # because that split decides what the loop polls; the dash only changes what you see.
   local parked_ids parked_n
-  parked_ids=$(jq -r '[.tickets[] | select(.lane == "refined" and (.blocked | not) and .worker == null and (.cycle != "background")) | .ticket] | join(" ")' "$STATE")
+  parked_ids=$(jq -r '[.tickets[] | select(.lane == "refined" and (.blocked | not) and .worker == null and (.cycle != "background") and (.cycle != "sprint")) | .ticket] | join(" ")' "$STATE")
   if [[ -n "$parked_ids" ]]; then
     parked_n=$(printf '%s' "$parked_ids" | wc -w | tr -d ' ')
     printf '  \033[2mparked (raw backlog · mc plan <KEY> to pull in): %s — %s\033[0m\n' "$parked_n" "$parked_ids"
