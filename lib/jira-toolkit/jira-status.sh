@@ -11,9 +11,11 @@
 #     refused here (exit 4): qa → qa-transition.sh · done → done-transition.sh · kickback
 #     (no move needed: a review kickback is already in code review, a QA kickback already in
 #     progress).
-#   --check   read-only: print current status + target, move nothing.
-#   Some issue-type workflows label the forward transition "Move to <status>" instead of the
-#   bare status name; a failed bare-name move is retried once with that alias.
+#   --check   read-only: print current status, target and the transition that would fire.
+#   The transition is chosen by its TARGET status (REST transitions list, matched on .to.name),
+#   so it does not matter what the workflow names it. When $JIRA_STATUS_IN_PROGRESS is not
+#   directly reachable and $JIRA_STATUS_IN_PROGRESS_VIA is set, the move steps through that
+#   status first. That one hop is the only walk; any other unreachable target fails.
 # Exit: 0 moved/no-op/check · 2 bad args · 4 special-cased · 1 error
 set -uo pipefail
 . "$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/env.sh"
@@ -41,15 +43,50 @@ esac
 
 current=$(jt_status_of "$key")
 if [ "$current" = "$status" ]; then echo "jira-status: $key already '$status' — no-op."; exit 0; fi
-if [ "$mode" = "check" ]; then echo "jira-status: $key '$current' → would move to '$status'."; exit 0; fi
+trap jt_cleanup EXIT
+# _transitions — the ticket's available transitions as "id<TAB>name<TAB>target" lines.
+_transitions() {
+  local code; code=$(jt_rest GET "/rest/api/2/issue/$key/transitions")
+  [ "$code" = "200" ] || { echo "jira-status: could not list transitions for $key (HTTP $code)." >&2; return 1; }
+  jt_resp | jq -r '.transitions[] | [.id, .name, .to.name] | @tsv'
+}
+# _pick STATUS LINES — the first transition whose target is STATUS (case-insensitive), or empty.
+_pick() { printf '%s\n' "$2" | awk -F'\t' -v s="$1" 'tolower($3) == tolower(s) { print; exit }'; }
+# _fire LINE — POST the transition; Jira answers 204.
+_fire() {
+  local id code; id=$(printf '%s' "$1" | cut -f1)
+  code=$(jt_rest POST "/rest/api/2/issue/$key/transitions" "{\"transition\":{\"id\":\"$id\"}}")
+  [ "$code" = "204" ] || { echo "jira-status: transition '$(printf '%s' "$1" | cut -f2)' ($id) on $key failed (HTTP $code): $(jt_resp | head -c 300)" >&2; return 1; }
+}
+_label() { printf "'%s' (%s)" "$(printf '%s' "$1" | cut -f2)" "$(printf '%s' "$1" | cut -f1)"; }
 
-if jira issue move "$key" "$status" >/dev/null 2>&1; then
-  echo "jira-status: $key '$current' → '$status'."
-  jt_worklog --ticket "$key" "$key '$current' → $status"; exit 0
+avail=$(_transitions) || exit 1
+direct=$(_pick "$status" "$avail")
+hop=""; via="${JIRA_STATUS_IN_PROGRESS_VIA:-}"
+if [ -z "$direct" ] && [ "$status" = "$JIRA_STATUS_IN_PROGRESS" ] && [ -n "$via" ] && [ "$current" != "$via" ]; then
+  hop=$(_pick "$via" "$avail")
 fi
-if jira issue move "$key" "Move to $status" >/dev/null 2>&1; then
-  echo "jira-status: $key '$current' → '$status' (via 'Move to $status' transition)."
-  jt_worklog --ticket "$key" "$key '$current' → $status"; exit 0
+if [ -z "$direct" ] && [ -z "$hop" ]; then
+  echo "jira-status: FAILED: no transition from '$current' to '$status' on $key (reachable: $(printf '%s\n' "$avail" | cut -f3 | paste -sd, - | sed 's/,/, /g'))." >&2
+  exit 1
 fi
-echo "jira-status: FAILED to move $key '$current' → '$status' (tried '$status' and 'Move to $status'). Check the transition is valid from the current status." >&2
-exit 1
+
+if [ "$mode" = "check" ]; then
+  if [ -n "$direct" ]; then echo "jira-status: $key '$current' → would move to '$status' via $(_label "$direct")."
+  else echo "jira-status: $key '$current' → would move to '$via' via $(_label "$hop"), then to '$status'."; fi
+  exit 0
+fi
+
+path="'$current'"
+if [ -n "$hop" ]; then
+  _fire "$hop" || exit 1
+  jt_worklog --ticket "$key" "$key '$current' → $via"
+  avail=$(_transitions) || { echo "jira-status: $key left in '$via'." >&2; exit 1; }
+  direct=$(_pick "$status" "$avail")
+  [ -n "$direct" ] || { echo "jira-status: FAILED: $key moved to '$via' but no transition from there to '$status'; left in '$via'." >&2; exit 1; }
+  current="$via"; path="$path → '$via'"
+fi
+_fire "$direct" || exit 1
+echo "jira-status: $key $path → '$status'."
+jt_worklog --ticket "$key" "$key '$current' → $status"
+exit 0

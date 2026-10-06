@@ -19,7 +19,7 @@ example.env            the config template — copy to jira.env and fill in
 jira.env               your org values (GITIGNORED)
 md-to-adf.py           markdown subset → Atlassian Document Format, for the rich-text fields
 assign.sh              claim an UNASSIGNED ticket; never reassigns away from a colleague
-jira-status.sh         lane → status moves via the CLI (qa/done refused → dedicated wrappers)
+jira-status.sh         lane → status moves via REST (qa/done refused → dedicated wrappers)
 qa-transition.sh       REST transition to the QA status, optionally writing testing notes first
 done-transition.sh     REST transition to Done with resolution + release note as ADF
 release-note.sh        write / verify the release-note field (populate-when-empty; --force)
@@ -56,6 +56,7 @@ are always found next to the real files. The `jira` CLI (ankitpokhrel/jira-cli),
 | `JIRA_BASE`, `JIRA_LOGIN`, `JIRA_API_TOKEN` | REST wrappers | Site URL and basic-auth identity. The token from the shell environment wins over `jira.env`. |
 | `JIRA_KEY_REGEX` | all | What a ticket key looks like. Default matches any `ABC-123`; narrow it to one project if you like. |
 | `JIRA_STATUS_READY` `_IN_PROGRESS` `_CODE_REVIEW` `_PRODUCT_REVIEW` `_QA` `_DONE` | jira-status, qa, done | Status names exactly as your workflow spells them. |
+| `JIRA_STATUS_IN_PROGRESS_VIA` | jira-status | Optional. The status to step through when the in-progress status is not directly reachable (Backlog → ready → in progress). Empty means no hop. |
 | `JIRA_TRANSITION_QA_ID`, `JIRA_TRANSITION_DONE_ID`, `JIRA_DONE_RESOLUTION` | qa, done | Transition ids for the two moves the CLI cannot drive by name. Find them with `GET /rest/api/3/issue/<KEY>/transitions`. |
 | `JIRA_FIELD_RELEASE_NOTE`, `JIRA_FIELD_TESTING_NOTES`, `JIRA_FIELD_FEATURE_FLAGS` | field writers, done | Custom field ids. `GET /rest/api/3/field` lists them. The first two are rich text (written as ADF), the third is a labels field. |
 | `JIRA_ASSIGNEE_DEFAULT`, `JIRA_ASSIGNEE_DEFAULT_ID` | assign | Who `assign.sh` claims for; the accountId makes the already-assigned check exact. |
@@ -75,9 +76,12 @@ profile are honored as overrides for the matching `GH_*` keys.
 `string` in editmeta but the transition endpoint demands an Atlassian Document, and the
 `/issue` PUT accepts one. The writers send ADF first and retry as a plain string on a 400.
 
-**Transitions named "Move to X".** Some issue-type workflows label the forward transition
-`Move to <status>` instead of the bare status name. `jira-status.sh` retries once with that
-alias before failing.
+**Transition names do not match status names.** Workflows label transitions freely
+(`Move to <status>`, `Ready for development`, `Backlog to Done`). `jira-status.sh` ignores
+the names: it lists the ticket's transitions over REST and fires the one whose target is the
+wanted status. If none targets it, the move fails and names the statuses that are reachable.
+The one exception is the in-progress status, which may need a single hop through
+`JIRA_STATUS_IN_PROGRESS_VIA` when the workflow has no direct edge from the current status.
 
 ## Exit codes
 

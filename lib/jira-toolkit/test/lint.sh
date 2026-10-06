@@ -123,6 +123,68 @@ if grep -qx 'issue assign ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: 
 else bad "assign: without JIRA_PROJECT — $(tr '\n' ';' < "$JA/calls")"; fi
 rm -f "${JA:?}/bin/jira" "${JA:?}/calls"; rmdir "${JA:?}/bin" "${JA:?}"
 
+echo "jira-status against a stub jira + curl (no network)"
+# A three-status workflow whose transition names do not match their targets, and with no
+# direct Backlog → In Progress edge. $FX/status holds the ticket's status; a POSTed transition
+# id moves it. Every REST call is logged to $FX/calls.
+JS="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-js.XXXXXX")"
+mkdir "$JS/bin"
+cat > "$JS/flow.json" <<'JSON'
+{"Backlog": [{"id":"11","name":"Backlog","to":{"name":"Backlog"}},
+             {"id":"3","name":"Backlog to Done","to":{"name":"Done"}},
+             {"id":"8","name":"Ready for development","to":{"name":"Selected for Development"}}],
+ "Selected for Development": [{"id":"4","name":"Selected for Development to Done","to":{"name":"Done"}},
+                              {"id":"9","name":"Move to In Progress","to":{"name":"In Progress"}}],
+ "In Progress": [{"id":"21","name":"Start review","to":{"name":"Code Review"}}]}
+JSON
+cat > "$JS/bin/jira" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list") printf 'ABC-1\t%s\n' "$(cat "$FX/status")" ;;
+  *) echo "stub jira: unexpected $*" >&2; exit 1 ;;
+esac
+STUB
+cat > "$JS/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=''; method=GET; data=''
+while [ $# -gt 1 ]; do
+  case "$1" in -o) out="$2"; shift ;; -X) method="$2"; shift ;; --data) data="$2"; shift ;; -w|-u|-H) shift ;; esac
+  shift
+done
+echo "$method ${1#*atlassian.net} $data" >> "$FX/calls"
+cur="$(cat "$FX/status")"
+if [ "$method" = GET ]; then jq --arg s "$cur" '{transitions: (.[$s] // [])}' "$FX/flow.json" > "$out"; printf 200; exit 0; fi
+id=$(printf '%s' "$data" | jq -r .transition.id)
+to=$(jq -r --arg s "$cur" --arg id "$id" '.[$s][]? | select(.id == $id) | .to.name' "$FX/flow.json")
+[ -n "$to" ] || { echo '{"errorMessages":["bad transition"]}' > "$out"; printf 400; exit 0; }
+printf '%s' "$to" > "$FX/status"; : > "$out"; printf 204
+STUB
+chmod +x "$JS/bin/jira" "$JS/bin/curl"
+grep -v '^JIRA_STATUS_IN_PROGRESS_VIA=' "$T/example.env" > "$JS/novia.env"
+stub_token=not-a-real-token
+# js <start status> <args…>: run jira-status.sh against the stub from that status.
+js() { printf '%s' "$1" > "$JS/status"; : > "$JS/calls"; shift
+  (PATH="$JS/bin:$PATH" FX="$JS" JIRA_API_TOKEN=$stub_token "$T/jira-status.sh" ABC-1 "$@" 2>&1); }
+posts() { grep '^POST' "$JS/calls" | grep -o '"id":"[0-9]*"' | tr -d '"id:' | paste -sd' ' -; }
+
+says   "jira-status: refined from Backlog picks the transition by target" "'Backlog' → 'Selected for Development'" js Backlog refined
+[ "$(posts)" = 8 ] && ok "jira-status: fired 'Ready for development' (8)" || bad "jira-status: refined posts — $(posts)"
+says   "jira-status: implement from Backlog hops through the ready status" "'Backlog' → 'Selected for Development' → 'In Progress'" js Backlog implement
+[ "$(posts)" = "8 9" ] && [ "$(cat "$JS/status")" = "In Progress" ] && ok "jira-status: hop fired 8 then 9" || bad "jira-status: hop posts — $(posts)"
+says   "jira-status: implement from ready moves directly" "'Selected for Development' → 'In Progress'" js "Selected for Development" implement
+[ "$(posts)" = 9 ] && ok "jira-status: direct move fired 9 only" || bad "jira-status: direct posts — $(posts)"
+says   "jira-status: --check describes the hop" "would move to 'Selected for Development' via 'Ready for development' \(8\), then to 'In Progress'" js Backlog implement --check
+[ -z "$(posts)" ] && ok "jira-status: --check posts nothing" || bad "jira-status: --check posted — $(posts)"
+expect "jira-status: no hop for other targets" 1 js Backlog in-review
+[ -z "$(posts)" ] && ok "jira-status: unreachable target posts nothing" || bad "jira-status: in-review posted — $(posts)"
+says   "jira-status: failure names reachable statuses" 'reachable: Backlog, Done, Selected for Development' js Backlog in-review
+js_novia() { JIRA_TOOLKIT_ENV="$JS/novia.env" js "$@"; }
+says   "jira-status: no hop without JIRA_STATUS_IN_PROGRESS_VIA" "no transition from 'Backlog' to 'In Progress'" js_novia Backlog implement
+[ -z "$(posts)" ] && ok "jira-status: unconfigured hop posts nothing" || bad "jira-status: unconfigured hop posted — $(posts)"
+says   "jira-status: already there is a no-op" 'no-op' js "In Progress" implement
+[ -z "$(cat "$JS/calls")" ] && ok "jira-status: no-op makes no REST call" || bad "jira-status: no-op called REST"
+rm -f "${JS:?}"/bin/* "${JS:?}"/{calls,status,flow.json,novia.env}; rmdir "${JS:?}/bin" "${JS:?}"
+
 echo "dependabot-triage skill"
 # Claude Code substitutes positional placeholders anywhere in a skill's text, so a shell or awk
 # snippet using them breaks silently when the skill gets arguments; they belong in scripts/.
