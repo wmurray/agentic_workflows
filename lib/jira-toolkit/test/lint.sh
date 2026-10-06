@@ -100,6 +100,66 @@ else bad "dependabot-merge: happy path calls — $(tr '\n' ';' < "$DM/calls")"; 
 rm -f "${DM:?}/bin/gh" "${DM:?}/calls" "${DM:?}/pr.json" "${DM:?}/repo.json" "${DM:?}/files.json" "${DM:?}/page.json"
 rmdir "${DM:?}/bin" "${DM:?}"
 
+echo "request-review against a stub gh (no network)"
+# The stub serves $FX/pr.json for `pr view` and logs every call to $FX/calls; writes succeed.
+# The PR author is "me"; reviewers review on the 2nd, so a commit or reply on the 3rd is new.
+RR="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-rr.XXXXXX")"
+mkdir "$RR/bin"
+cat > "$RR/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$FX/calls"
+case "$1 $2" in
+  "pr view") cat "$FX/pr.json" ;;
+  "pr ready"|"pr edit"|"api -X") exit 0 ;;
+  *) echo "stub gh: unexpected $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$RR/bin/gh"
+# rr_fixture <isDraft> <requested logins, space-sep> <reviews: login:STATE …> <last commit date>
+#            [<author reply date>]
+rr_fixture() {
+  : > "$RR/calls"
+  jq -n --argjson d "$1" --arg req "$2" --arg revs "$3" --arg cd "$4" --arg reply "${5:-}" '
+    {isDraft:$d, state:"OPEN", mergedAt:null, author:{login:"me"},
+     reviewRequests:[$req | split(" ")[] | select(. != "") | {__typename:"User", login:.}],
+     reviews:([$revs | split(" ")[] | select(. != "") | split(":") | {author:{login:.[0]}, state:.[1], submittedAt:"2026-01-02T00:00:00Z"}]
+              + (if $reply == "" then [] else [{author:{login:"me"}, state:"COMMENTED", submittedAt:$reply}] end)),
+     comments:[], commits:[{oid:"abc", committedDate:$cd}]}' > "$RR/pr.json"
+}
+rr() { (PATH="$RR/bin:$PATH" FX="$RR" "$T/request-review.sh" o/r 7 "$@" 2>&1); }
+writes() { grep -E '^(pr ready|pr edit|api )' "$RR/calls" | paste -sd';' -; }
+
+rr_fixture true "" "" 2026-01-01T00:00:00Z
+rr >/dev/null
+[ "$(writes)" = "pr ready 7 -R o/r;pr edit 7 -R o/r --add-reviewer your-org/your-team" ] && ok "request-review: draft marks ready + requests the team" || bad "request-review: draft writes — $(writes)"
+
+rr_fixture false "carol" "alice:CHANGES_REQUESTED bob:COMMENTED carol:COMMENTED dave:APPROVED coderabbitai:COMMENTED copilot[bot]:COMMENTED me:COMMENTED" 2026-01-03T00:00:00Z
+says "request-review: non-draft re-requests prior reviewers" 're-requested alice, bob' rr
+[ "$(writes)" = "api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=alice -f reviewers[]=bob" ] && ok "request-review: skips bots, author, approver, already-requested; no team, no ready" || bad "request-review: re-review writes — $(writes)"
+
+rr_fixture false "" "alice:COMMENTED" 2026-01-01T00:00:00Z 2026-01-03T00:00:00Z
+rr >/dev/null
+[ "$(writes)" = "api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=alice" ] && ok "request-review: an author thread reply counts as new" || bad "request-review: reply-only writes — $(writes)"
+
+rr_fixture false "alice" "alice:COMMENTED" 2026-01-03T00:00:00Z
+says "request-review: all already requested is a no-op" 'alice already requested' rr
+[ -z "$(writes)" ] && ok "request-review: no-op writes nothing" || bad "request-review: no-op wrote — $(writes)"
+
+rr_fixture false "" "dave:APPROVED swarmia:COMMENTED" 2026-01-01T00:00:00Z
+rr >/dev/null
+[ "$(writes)" = "pr edit 7 -R o/r --add-reviewer your-org/your-team" ] && ok "request-review: no prior human reviewers falls back to the team" || bad "request-review: fallback writes — $(writes)"
+
+rr_fixture false "" "alice:CHANGES_REQUESTED" 2026-01-01T00:00:00Z
+expect "request-review: nothing new since the review is refused" 3 rr
+says   "request-review: refusal says why" 'REFUSE — o/r#7 has nothing new since the last review by alice' rr
+[ -z "$(writes)" ] && ok "request-review: refusal writes nothing" || bad "request-review: refusal wrote — $(writes)"
+expect "request-review: --check exits 3 when it would refuse" 3 rr --check
+
+rr_fixture false "carol" "alice:COMMENTED carol:COMMENTED" 2026-01-03T00:00:00Z
+says "request-review: --check names who it would re-request" 'would: re-request alice \(carol already requested\)' rr --check
+[ -z "$(writes)" ] && ok "request-review: --check writes nothing" || bad "request-review: --check wrote — $(writes)"
+rm -f "${RR:?}/bin/gh" "${RR:?}/calls" "${RR:?}/pr.json"; rmdir "${RR:?}/bin" "${RR:?}"
+
 echo "assign against a stub jira (no network)"
 # The stub reports the ticket Unassigned and logs every call, so the assign argv is visible.
 JA="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-ja.XXXXXX")"

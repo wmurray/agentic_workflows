@@ -26,7 +26,7 @@ release-note.sh        write / verify the release-note field (populate-when-empt
 testing-notes.sh       write the testing-notes field (populate-when-empty; --force)
 feature-flags.sh       write / verify the feature-flags labels field
 sprint-add.sh          add a ticket to the active sprint
-request-review.sh      draft → ready + request the reviewer team (+ outside-sprint label)
+request-review.sh      draft → ready + request the reviewer team; on a reviewed PR, re-request its reviewers
 merge.sh               guarded PR merge: approved, approval current, CI green, not frozen, no veto label
 dependabot-merge.sh    approve + merge Dependabot PRs only, manifest/lockfile-only diffs, <pr>@<sha>
 test/lint.sh           syntax + arg-handling + config-validation checks, no network
@@ -61,13 +61,14 @@ are always found next to the real files. The `jira` CLI (ankitpokhrel/jira-cli),
 | `JIRA_FIELD_RELEASE_NOTE`, `JIRA_FIELD_TESTING_NOTES`, `JIRA_FIELD_FEATURE_FLAGS` | field writers, done | Custom field ids. `GET /rest/api/3/field` lists them. The first two are rich text (written as ADF), the third is a labels field. |
 | `JIRA_ASSIGNEE_DEFAULT`, `JIRA_ASSIGNEE_DEFAULT_ID` | assign | Who `assign.sh` claims for; the accountId makes the already-assigned check exact. |
 | `GH_REVIEW_TEAM` | request-review | Default reviewer team, `org/team`. |
+| `GH_REVIEW_BOTS` | request-review | Space-separated logins never re-requested for review (`*[bot]` logins always skipped). |
 | `GH_OUTSIDE_SPRINT_LABEL`, `GH_SPRINT_LABELS` | request-review, merge | The label meaning "not part of the sprint commitment", and the list merge.sh strips. |
 | `GH_BLOCK_LABELS` | merge | Labels that veto a merge, case-insensitive, no override. |
 | `GH_MERGE_METHOD` | merge, dependabot-merge | `squash`, `merge` or `rebase`. dependabot-merge falls back to the first method the repo allows. |
 | `GH_FREEZE_CHECK_PATTERN` | merge | A red CI check whose name matches this is a sprint-freeze gate, bypassed only by `--allow-freeze`. |
 | `DEPENDABOT_ALLOWED_PATHS` | dependabot-merge | Regex of files a Dependabot PR may touch. |
 
-`MC_BLOCK_LABELS`, `MC_SPRINT_LABELS` and `MC_FREEZE_CHECK_PATTERN` from a mission-control
+`MC_BLOCK_LABELS`, `MC_SPRINT_LABELS`, `MC_REVIEW_BOTS` and `MC_FREEZE_CHECK_PATTERN` from a mission-control
 profile are honored as overrides for the matching `GH_*` keys.
 
 ## Two quirks worth knowing

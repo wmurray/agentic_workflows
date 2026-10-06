@@ -40,6 +40,7 @@ GH_MERGE_METHOD="${GH_MERGE_METHOD:-squash}"
 GH_OUTSIDE_SPRINT_LABEL="${GH_OUTSIDE_SPRINT_LABEL:-outside current sprint}"
 GH_BLOCK_LABELS="${MC_BLOCK_LABELS:-${GH_BLOCK_LABELS:-do not merge,dont merge,do-not-merge,dnm,hold,wip}}"
 GH_SPRINT_LABELS="${MC_SPRINT_LABELS:-${GH_SPRINT_LABELS:-$GH_OUTSIDE_SPRINT_LABEL}}"
+GH_REVIEW_BOTS="${MC_REVIEW_BOTS:-${GH_REVIEW_BOTS:-github-actions swarmia dependabot codecov coderabbitai sonarcloud sonarqubecloud renovate}}"
 GH_FREEZE_CHECK_PATTERN="${MC_FREEZE_CHECK_PATTERN:-${GH_FREEZE_CHECK_PATTERN:-freeze}}"
 DEPENDABOT_ALLOWED_PATHS="${DEPENDABOT_ALLOWED_PATHS:-^(package\.json|yarn\.lock|package-lock\.json|Gemfile|Gemfile\.lock)$}"
 
