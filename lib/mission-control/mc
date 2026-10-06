@@ -6,7 +6,8 @@
 # terminal stand-in for "drag a card -> orchestrator applies it".
 #
 #   mc approve ABC-1234            # Gate 1: approve the plan
-#   mc ready ABC-1234              # Gate 2: mark the draft PR ready
+#   mc ready ABC-1234              # Gate 2: mark the draft PR ready; on a kickback,
+#                                #   re-request the reviewers (lane -> in-review)
 #   mc merge ABC-1234             # authorize the merge -> orchestrator runs gh pr merge
 #                                #   (only after APPROVED + CI green + mergeable) + post-merge flow
 #   mc qa ABC-1234                # alpha smoke passed -> hand to QA (writes Testing notes,
@@ -244,7 +245,8 @@ CONTROL VERBS (queued → orchestrator acts)
                               agent uses — your text REPLACES what's there (last writer wins).
   outward / gated (moves the tracker, spawns an agent, or merges — the human-decision verbs):
     approve ABC-X            Gate 1: approve the plan → implement + spawn coder
-    ready   ABC-X            Gate 2: mark the draft PR ready for review
+    ready   ABC-X            Gate 2: mark the draft PR ready for review; on a review kickback,
+                            re-request its reviewers → in-review (tracker untouched)
     merge   ABC-X            authorize the merge → orchestrator runs merge.sh (APPROVED+green+
                             mergeable checks) + post-merge flow
     qa      ABC-X            alpha smoke passed → hand to QA (testing notes + the tracker QA status)

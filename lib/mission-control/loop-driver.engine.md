@@ -114,16 +114,29 @@ The FIVE internal writes you hold today:
    **Inbox verb `ready`** below. Otherwise this is the only case where you may write the inbox file,
    and only to remove a `note`/`hold`/`unblock` line you just applied.
 
-5b. **Inbox verb `ready` → Gate 2 executed on the operator's word.** `mc ready <KEY>`
-   is the operator's explicit Gate-2 decision, so draining it is carrying out a human choice, not making
-   one. Preconditions, all checked from the poller row: the ticket is on the board with a `pr`, and the
-   PR is open and still a draft. If any fails, read-but-leave the line and FLAG (`⛔ ready <KEY>: <why>`).
-   Otherwise, lock-wrapped: run the overlay's **request-review wrapper** `<owner/repo> <pr#>` **BARE**
-   (alone in the Bash call: no `2>&1`, no `;`, no `&&`, no echo of `$?`; a compound misses the allow-prefix and
-   the classifier denies it; add `--outside-sprint` when the row's `cycle` is not `"sprint"`); on exit 0 set the lane to
-   `in-review`, run the status-sync wrapper `<KEY> in-review` (tracker → Code Review), and remove the
-   `ready` line. CI state is NOT a precondition: the operator has seen the PR; if CI is red, do it and
-   say so in the tick line. Reviewer team comes from the overlay's default; the loop never picks one.
+5b. **Inbox verb `ready` → Gate 2 (or a review hand-back) executed on the operator's word.** `mc ready <KEY>`
+   is the operator's explicit decision, so draining it is carrying out a human choice, not making
+   one. What it means depends on the lane; check from the poller row that the ticket is on the board
+   with a `pr` and the PR is open, then:
+   - **`awaiting-review` + draft PR → Gate 2.** Lock-wrapped: run the overlay's **request-review wrapper**
+     `<owner/repo> <pr#>` **BARE** (alone in the Bash call: no `2>&1`, no `;`, no `&&`, no echo of `$?`; a
+     compound misses the allow-prefix and the classifier denies it; add `--outside-sprint` when the row's
+     `cycle` is not `"sprint"`); on exit 0 set the lane to `in-review`, run the status-sync wrapper
+     `<KEY> in-review` (tracker → Code Review), and remove the `ready` line. Reviewer team comes from the
+     overlay's default; the loop never picks one.
+   - **`kickback` + non-draft PR → re-review** (the operator pushed fixes / replied to the threads and is
+     handing the PR back). Lock-wrapped: run the same wrapper BARE, same flags; on a non-draft PR it
+     re-requests the prior human reviewers (team only when there were none). On exit 0 set the lane to
+     `in-review`, re-stamp `review_seen` from `mc-review-check.sh` (its `signature:` line, so the tick does
+     not re-kick on the operator's own replies), clear `triage_doc`, set `question` to one line naming who
+     was re-requested and the PR head SHA (`[review] re-requested <logins> @ <sha7>`, from the wrapper's
+     output and the poller's head), and remove the `ready` line. **Do NOT run the status-sync wrapper:** a
+     review kickback never left the review status, and routing through the in-progress status is the QA
+     path. Exit 3 means nothing is new since the review (no commit, no reply): leave the line and FLAG.
+   - **Anything else** (a draft outside `awaiting-review`, a non-draft outside `kickback`, a `[QA]`
+     kickback with no open PR, any other lane) → read-but-leave the line and FLAG (`⛔ ready <KEY>: <why>`).
+   On any non-zero wrapper exit, read-but-leave and FLAG with the wrapper's message. CI state is NOT a
+   precondition: the operator has seen the PR; if CI is red, do it and say so in the tick line.
 
 Plus the earned OUTWARD writes:
 6. **tracker status SYNC → mirror the board lane** — when a ticket's tracker status lags its
@@ -950,7 +963,8 @@ against `TaskList`; that marker is exactly what goes stale when a finish signal 
 
 **Gate 2 stays a human decision; its execution is granted.** The draft PR parks until the operator reads it
 and queues `mc ready`; the loop then runs the request-review wrapper (draft → ready, default reviewer team,
-tracker → Code Review) per step 5b. It never readies a PR on its own judgment. Merge is `mc merge` only: drain it while the guard
+tracker → Code Review) per step 5b. The same verb on a `kickback` row hands a reviewed PR back: it
+re-requests the prior reviewers and returns the lane to `in-review`, tracker untouched. It never readies a PR on its own judgment. Merge is `mc merge` only: drain it while the guard
 shows `off` for merge, propose it otherwise; never on your own initiative.
 
 **The wall (memorize):** you may write **`state.json` (lanes / `ci` / `reconcile`) and internal
@@ -965,7 +979,7 @@ excludes `qa`/`product-review`/`done`; a **colleague**-held ticket → FLAG, nev
 while `CODER_SPAWN_LIVE` is armed**, the **coder-spawn** path (Prep-write 4: drain `approve` → coder →
 bounded review → draft PR, parking at Gate 2, plus draining the `approve` line). That is the whole
 grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
-then lane `in-review` + status-sync). The instant a write would touch the **OUTWARD** world beyond those —
+then lane `in-review` + status-sync from `awaiting-review`, or lane `in-review` with no tracker move from `kickback`). The instant a write would touch the **OUTWARD** world beyond those —
 an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write, reassigning a **colleague**-held ticket, a `qa`/`done`
 transition, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
 or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
@@ -1049,7 +1063,8 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
 - **Outward, unconditional:** tracker status-sync (the status-sync wrapper; excludes `qa`/`done`);
   assignee-fix for an UNASSIGNED ticket in an our-turn lane (the assign wrapper; a colleague-held ticket
   is a flag).
-- **Outward, on the operator's queued word:** `mc ready` (the request-review wrapper); `mc merge`, drained
+- **Outward, on the operator's queued word:** `mc ready` (the request-review wrapper: Gate 2 on a draft
+  in `awaiting-review`, or a re-review request on a non-draft in `kickback`); `mc merge`, drained
   only while `mc-guard.sh check merge` passes (the operator set `mc guard off merge`), run with no flags.
 - **Flag-gated, propose-only when the flag is absent:** coder-spawn (`CODER_SPAWN_LIVE`, ≤1 coder in flight,
   Prep-write 4); Gate-1 auto-approve (`GATE1_AUTO`, Trigger C); kickback address (`KICKBACK_AUTO`,
