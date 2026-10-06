@@ -19,6 +19,12 @@ POINTS_FIELD="${MC_POINTS_FIELD:-Story Points}"
 
 op="${1:-}"; shift || true
 
+# Scope every JQL list to the project explicitly. jira-cli reads JIRA_* env vars as config
+# overrides, so an exported JIRA_PROJECT (a bare key) replaces the config file's `project:`
+# map, `project.key` resolves to "", and the CLI prepends `project=""` to every -q query:
+# every list comes back empty. Passing -p restores the scope. Unset → no flag, and the CLI
+# falls back to its config file as before.
+
 # Join args into a Jira `key in (…)` list: accepts space- or comma-separated input.
 _keylist() { printf '%s' "$*" | tr ' ' ',' | tr -s ',' | sed 's/^,//;s/,$//'; }
 
@@ -34,18 +40,18 @@ case "$op" in
       *)   echo "jira list_ready: cycle must be in|out|any" >&2; exit 2 ;;
     esac
     [ "$vetted" = "vetted" ] && q="$q AND \"$POINTS_FIELD\" is not EMPTY"
-    jira issue list -q "$q" --plain --no-headers --columns key,summary 2>/dev/null | tr -s '\t'
+    jira issue list ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} -q "$q" --plain --no-headers --columns key,summary 2>/dev/null | tr -s '\t'
     ;;
 
   fields_of)
     keys=$(_keylist "$@"); [ -n "$keys" ] || exit 0
-    jira issue list -q "key in ($keys)" --plain --no-headers \
+    jira issue list ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} -q "key in ($keys)" --plain --no-headers \
       --columns key,status,assignee 2>/dev/null | tr -s '\t'
     ;;
 
   in_active_cycle)
     keys=$(_keylist "$@"); [ -n "$keys" ] || exit 0
-    jira issue list -q "key in ($keys) AND sprint in openSprints()" \
+    jira issue list ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} -q "key in ($keys) AND sprint in openSprints()" \
       --plain --no-headers --columns key 2>/dev/null | tr -s '\t'
     ;;
 

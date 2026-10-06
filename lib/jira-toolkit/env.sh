@@ -63,9 +63,10 @@ jt_key() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]'; }
 jt_find_key() { printf '%s\n' "$1" | tr '[:lower:]' '[:upper:]' | grep -oE "$JIRA_KEY_REGEX" | head -1 || true; }
 
 # jt_status_of KEY — current status name via the jira CLI (the CLI prefixes the key
-# column even when only `status` is requested, so take field 2 onward).
+# column even when only `status` is requested, so take field 2 onward). -p for the same
+# reason as adapters/tracker/jira.sh: an exported JIRA_PROJECT blanks the CLI's own scope.
 jt_status_of() {
-  jira issue list -q "key = $1" --plain --no-headers --columns status 2>/dev/null \
+  jira issue list ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} -q "key = $1" --plain --no-headers --columns status 2>/dev/null \
     | tr -s '\t' | head -1 | cut -f2- | sed 's/[[:space:]]*$//'
 }
 
