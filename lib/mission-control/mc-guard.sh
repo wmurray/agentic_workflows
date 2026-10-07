@@ -14,8 +14,12 @@
 #                                         (`mc guard off [name…]` writes it, `mc guard on [name…]` trims it)
 #   MC_LOOP_GUARD=off in the env        → disabled for that one invocation
 # Either way the wrapper prints that the guard is off, so an override is never silent.
+# A wrapper may also name a GROUP (`check <wrapper> <group>`); naming the group in the marker
+# opens every wrapper in it at once. The field wrappers (release-note, feature-flags,
+# testing-notes, qa-transition, post-release-note) form the group `fields`, so
+# `mc guard off fields` is what lets the loop run the Final field check.
 #
-#   mc-guard.sh check <wrapper-name>    # exit 0 = proceed · 4 = refused · 2 = usage
+#   mc-guard.sh check <wrapper-name> [group]   # exit 0 = proceed · 4 = refused · 2 = usage
 #   mc-guard.sh status                  # human-readable: on / off-for-what + who holds the lock
 #   mc-guard.sh off [name…]             # disable for the named wrappers (none = all, writes `*`)
 #   mc-guard.sh on  [name…]             # re-enable the named wrappers (none = all, removes the marker)
@@ -31,28 +35,28 @@ OFF_FILE="${MC_GUARD_OFF_FILE:-$MC_DIR/LOOP_GUARD_OFF}"
 LOCK="${MC_LOCK:-$MC_DIR/.writer-lock}"
 export MC_LOCK="$LOCK"
 
-op="${1:-status}"; shift || true; name="${1:-}"
+op="${1:-status}"; shift || true; name="${1:-}"; group="${2:-}"
 
 # Marker semantics: a line `*` disables every wrapper; a bare name disables that one.
 # `#` lines and blanks are ignored, so a legacy header-only marker reads as "nothing off".
 _off_list() { [ -f "$OFF_FILE" ] && grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$OFF_FILE" | sort -u; }
 _off_for()  { _off_list | grep -qx -e '\*' -e "$1"; }
-_disabled() { [ "${MC_LOOP_GUARD:-on}" = "off" ] || _off_for "$1"; }
+_disabled() { [ "${MC_LOOP_GUARD:-on}" = "off" ] || _off_for "$1" || { [ -n "${2:-}" ] && _off_for "$2"; }; }
 _holder()   { [ -f "$LOCK" ] && head -1 "$LOCK" | cut -f1; }
-_why_off()  { if [ "${MC_LOOP_GUARD:-on}" = "off" ]; then echo "MC_LOOP_GUARD=off"; elif _off_list | grep -qx '\*'; then echo "marker: all"; else echo "marker: $1"; fi; }
+_why_off()  { if [ "${MC_LOOP_GUARD:-on}" = "off" ]; then echo "MC_LOOP_GUARD=off"; elif _off_list | grep -qx '\*'; then echo "marker: all"; elif _off_for "$1"; then echo "marker: $1"; else echo "marker: group $2"; fi; }
 
 case "$op" in
   check)
     [ -n "$name" ] || { echo "mc-guard: check needs <wrapper-name>" >&2; exit 2; }
-    if _disabled "$name"; then
-      echo "mc-guard: ⚠ loop guard is OFF for $name — runs unguarded ($(_why_off "$name"))" >&2
+    if _disabled "$name" "$group"; then
+      echo "mc-guard: ⚠ loop guard is OFF for $name — runs unguarded ($(_why_off "$name" "$group"))" >&2
       exit 0
     fi
     # `check manual` exits 1 only when a LIVE lock is held by someone other than manual,
     # i.e. the loop (stale locks and manual's own lock pass). Reuses mc-lock's TTL logic.
     if "$LOCK_SH" check manual; then exit 0; fi
-    echo "mc-guard: ⛔ REFUSED — $name is manual-only and the writer lock is held by '$(_holder)'." >&2
-    echo "          The loop must never run this wrapper. To override for a test: \`mc guard off\` (marker) or MC_LOOP_GUARD=off (one shot)." >&2
+    echo "mc-guard: ⛔ REFUSED — $name${group:+ (group $group)} is manual-only and the writer lock is held by '$(_holder)'." >&2
+    echo "          The loop must never run this wrapper. To override for a test: \`mc guard off${group:+ $group}\` (marker) or MC_LOOP_GUARD=off (one shot)." >&2
     exit 4 ;;
   status)
     if [ "${MC_LOOP_GUARD:-on}" = "off" ]; then echo "loop guard: OFF for this shell (MC_LOOP_GUARD=off)"
@@ -72,5 +76,5 @@ case "$op" in
     { printf '# LOOP_GUARD_OFF — one wrapper per line, * = all (%s)\n' "$(date '+%Y-%m-%dT%H:%M:%S')"; cat "$OFF_FILE.tmp"; } > "$OFF_FILE"; rm -f "$OFF_FILE.tmp"
     if [ "$#" -eq 0 ]; then echo "mc-guard: ⚠ loop guard OFF for ALL wrappers ($OFF_FILE) — until \`mc guard on\`."
     else echo "mc-guard: ⚠ loop guard OFF for: $* ($OFF_FILE) — until \`mc guard on $*\`."; fi ;;
-  *) echo "usage: mc-guard.sh {check <wrapper-name>|status|on [name…]|off [name…]}" >&2; exit 2 ;;
+  *) echo "usage: mc-guard.sh {check <wrapper-name> [group]|status|on [name…]|off [name…]}" >&2; exit 2 ;;
 esac

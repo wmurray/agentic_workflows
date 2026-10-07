@@ -201,6 +201,14 @@ run  "  … a sibling still REFUSES"          4 env MC_LOCK="$GL" MC_GUARD_OFF_F
 says "  … status lists only that one"      yes 'OFF for: merge'  env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" status
 run  "guard on for that wrapper"            0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" on merge
 run  "  … it REFUSES again"                 4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+run  "guard off for the fields GROUP"       0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" off fields
+run  "  … a field wrapper in it passes"     0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check release-note fields
+says "  … and says the group opened it"    yes 'marker: group fields' env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check qa-transition fields
+run  "  … merge (not in it) still REFUSES" 4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
+run  "  … a groupless call still REFUSES"  4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check release-note
+run  "guard on for the group"               0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" on fields
+run  "  … the field wrapper REFUSES again" 4 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check release-note fields
+says "  … the refusal names the group"     yes 'mc guard off fields' env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check release-note fields
 printf 'loop\t%s\n' "$(( $(date +%s) - 100000 ))" > "$GL"
 run  "guard allows on a STALE loop lock"    0 env MC_LOCK="$GL" MC_GUARD_OFF_FILE="$GO" "$G" check merge
 printf 'manual\t%s\n' "$(date +%s)" > "$GL"

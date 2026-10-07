@@ -102,6 +102,12 @@ merge rule reads it: while `mc guard off merge` is set, a queued `mc merge` is e
 the loop (the wrapper still re-checks every precondition); with the guard on, the loop only
 proposes it. The same pattern extends to any other wrapper the operator decides to open.
 
+A wrapper can also name a group: `mc-guard.sh check <name> <group>` passes when either the
+name or the group is in the marker. The field wrappers (release note, feature flags,
+testing notes, the QA transition, the post-release note) share the group `fields`, so
+`mc guard off fields` grants the loop the Final field check on a merged ticket in one step,
+and `mc guard on fields` takes it back.
+
 ## The pre-plan critic and Gate-1 auto-approve
 
 Before the loop plans a ticket it spawns a read-only critic (`templates/pre-plan-critic.md`,

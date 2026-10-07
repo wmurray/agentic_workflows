@@ -104,7 +104,7 @@ mc() {
     case "$2" in
       on|off)        "$gs" "$2" "${@:3}" ;;
       ""|status|show) "$gs" status ;;
-      *) printf 'mc: usage: mc guard [on|off] [wrapper…] | status  — no wrapper = all. Refuses manual-only wrappers (merge/qa/done…) while the loop holds the writer lock\n' >&2; return 1 ;;
+      *) printf 'mc: usage: mc guard [on|off] [wrapper|group…] | status  — no wrapper = all. Refuses manual-only wrappers (merge/qa/done…) while the loop holds the writer lock\n' >&2; return 1 ;;
     esac
     return 0
   fi
@@ -272,6 +272,8 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
     guard status            while the loop holds the writer lock. `off` is your per-wrapper override
                             (all if no name); `on` re-arms. Default ON. Never silent when off.
                             `guard off merge` also lets the loop EXECUTE a queued `mc merge`.
+                            `guard off fields` opens the field wrappers as a group, so the loop
+                            runs the Final field check on a merged ticket (default: it only proposes).
     lock | who              show the single-writer lock owner
     log [N]                 today's work log (or the last N days); queued verbs are logged automatically
     health | creds          probe GitHub + the tracker credential/reachability health

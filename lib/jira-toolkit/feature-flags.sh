@@ -9,7 +9,7 @@
 # Env: JIRA_API_TOKEN. Exit: 0 ok/no-op/populated · 2 args · 3 empty (on --check) · 1 error
 set -uo pipefail
 . "$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/env.sh"
-jt_guard || exit $?
+jt_guard fields || exit $?
 jt_need JIRA_FIELD_FEATURE_FLAGS JIRA_BASE JIRA_LOGIN JIRA_API_TOKEN
 FIELD="$JIRA_FIELD_FEATURE_FLAGS"
 
