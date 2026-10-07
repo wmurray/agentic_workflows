@@ -394,6 +394,19 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      (`"would reassign ABC-N off <name> (manual)"`); auto-claim NEVER pulls a ticket off a person. Record an
      APPLIED `drift[]` line `"ABC-N assignee ∅→the operator (claimed)"` (or the flagged line for the colleague case).
      Board-internal reconcile + status-sync run FIRST; skipped when the tracker is blind (health).
+   - **BOARD-INTERNAL — post-merge field check on `alpha-verify` (a read on the tracker, a write on the
+     board).** For each `alpha-verify` row that is not `blocked`, run
+     `$MC_PIPELINE/qa-transition.sh ABC-N --check` (BARE, its own Bash call). `--check` writes nothing and
+     skips the loop guard, so it runs the same with or without the lock. It reads the four handoff fields
+     (release note, testing notes, feature flags, story points) and the issue's live QA transition.
+     - **Exit 3** → its output names the empty fields (`fields missing: release note, testing notes`).
+       Set `fields_missing` to that list and `question: "merged · fields missing: <list>"`, and add a
+       `drift[]` line `"ABC-N fields missing: <list> (Final field check)"` so the row is flagged.
+     - **Exit 0** → `fields_missing: ""`, `question: "merged · fields complete · smoke on alpha, then mc qa ABC-N"`.
+     - **Exit 1** (fields unreadable, or no transition to the QA status offered) → leave the row, name it
+       in the tick line.
+     Write only when the value changed. Skip when the tracker is blind (health). This is board reconcile,
+     like `ci`: it does not count toward the one-prep-write cap. The fields themselves are NOT written here.
    - **OUTWARD — still FLAG-only (NOT granted; report as "would fix (manual): …"):** empty
      Release-Note/Testing-Notes/feature-flag field writes (judgment / voice-gate); premature-`done`
      (board `done` but the tracker ≠ Done — judgment); orphan PRs.
@@ -480,8 +493,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      **drain + execute:** lock-wrapped, run `$MC_PIPELINE/merge.sh <owner/repo> <n>` BARE with **no
      flags** (never `--allow-freeze` or `--allow-rebase-stale`; those are the operator's, passed
      conversationally in a manual session). Exit 0 → lane `ready-to-merge` → `alpha-verify`, set
-     `merged_at`, `question: "merged · post-merge fields are yours (release note, flags, QA cases)"`,
-     `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop "merged <repo>#<n> on queued mc merge"`.
+     `merged_at`, `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop "merged <repo>#<n> on queued mc merge"`,
+     then run the post-merge field check (reconcile, above) on the row in the same tick so its
+     `question` reads `merged · fields missing: …` or `merged · fields complete …` straight away.
      Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. The post-merge
      field flow (release note, feature flags, QA cases, sprint label) is NOT yours; those wrappers stay
      guarded. **`mc merge` is the ONLY thing that authorizes a merge — never propose merging a
