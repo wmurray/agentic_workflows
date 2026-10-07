@@ -30,6 +30,7 @@
 #   tracker list_ready "Ready for Dev" out vetted
 #   tracker fields_of KEY-1 KEY-2
 #   tracker in_active_cycle KEY-1 KEY-2
+#   tracker mine_of KEY-1 KEY-2
 #   tracker active_cycle
 #   tracker detail_of KEY-1
 #   tracker capabilities
@@ -45,7 +46,7 @@ FIX="$FIXROOT/tracker"
 # A missing data dir is a CONFIG error, not a degrade. The contract's "degrade, don't
 # fail" rule covers unsupported OPS; it must not paper over fixtures that aren't there.
 [ -d "$FIXROOT" ] || { echo "fixture(tracker): no fixture data dir at $FIXROOT (set MC_FIXTURES)" >&2; exit 2; }
-# Whose tickets `list_ready` returns — the fixture stand-in for `currentUser()`.
+# Whose tickets `list_ready` and `mine_of` return — the fixture stand-in for `currentUser()`.
 ME="${MC_FIXTURE_ME:-me}"
 
 op="${1:-}"; shift || true
@@ -92,6 +93,14 @@ case "$op" in
     _has cycles || exit 0          # cycle-less → empty, so mc-promote no-ops
     _keys "$@" | sort -u > "${TMPDIR:-/tmp}/.mc-fx-keys.$$"
     _rows | awk -F'\t' 'NR==FNR{want[$0];next} ($1 in want) && $4=="in"{print $1}' \
+      "${TMPDIR:-/tmp}/.mc-fx-keys.$$" -
+    rm -f "${TMPDIR:-/tmp}/.mc-fx-keys.$$"
+    ;;
+
+  mine_of)
+    [ "$#" -gt 0 ] || exit 0
+    _keys "$@" | sort -u > "${TMPDIR:-/tmp}/.mc-fx-keys.$$"
+    _rows | awk -F'\t' -v me="$ME" 'NR==FNR{want[$0];next} ($1 in want) && $3==me{print $1}' \
       "${TMPDIR:-/tmp}/.mc-fx-keys.$$" -
     rm -f "${TMPDIR:-/tmp}/.mc-fx-keys.$$"
     ;;

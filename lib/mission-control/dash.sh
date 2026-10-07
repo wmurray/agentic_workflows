@@ -109,9 +109,11 @@ render() {
 
   # "Needs you" = any state where the ball is in the operator's court: an explicit
   # block, OR sitting in a gate lane (plan-review = Gate 1, awaiting-review =
-  # Gate 2), OR the escape-hatch lane. This is separate from the pipeline lane —
-  # a ticket can be mid-pipeline and still be the human's turn.
-  local NEEDS_FILTER='(.blocked == true) or (.lane == "plan-review") or (.lane == "awaiting-review") or (.lane == "ready-to-merge") or (.lane == "kickback") or (.lane == "alpha-verify") or (.lane == "needs-me")'
+  # Gate 2), OR the escape-hatch lane, OR a sprint ticket the loop proposed planning
+  # (plan_proposed; the loop sets it only for the operator's own tickets and clears it
+  # when the row stops being eligible). This is separate from the pipeline lane — a
+  # ticket can be mid-pipeline and still be the human's turn.
+  local NEEDS_FILTER='(.blocked == true) or (.lane == "plan-review") or (.lane == "awaiting-review") or (.lane == "ready-to-merge") or (.lane == "kickback") or (.lane == "alpha-verify") or (.lane == "needs-me") or (.lane == "refined" and .plan_proposed == true and .worker == null)'
   # AWAITING OTHERS: a blocked ticket whose hold is on someone else (blocked_on set to
   # a non-"me" party — product/qa/reviewer/…). `blocked_on` defaults to "me" when absent,
   # so legacy holds stay in NEEDS YOU (backward-compatible). These split OUT of NEEDS YOU
@@ -245,6 +247,7 @@ render() {
         elif .lane == \"kickback\" then (if (.triage_doc // \"\") != \"\" then \"📝 triage ready in notes → \" + (.triage_doc | split(\"/\") | last) else (.question // \"kicked back (QA or review) — triage & address\") end)
         elif .lane == \"alpha-verify\"     then (.question // \"merged — smoke-test on alpha before QA handoff\")
         elif .lane == \"needs-me\"         then (.question // \"needs you\")
+        elif .lane == \"refined\"          then \"sprint ticket, no plan yet → mc plan \" + .ticket
         else \"needs you\" end;
       .tickets[] | select(($NEEDS_FILTER) and (($AWAIT_FILTER) | not))
       | (reason) as \$r
@@ -369,8 +372,9 @@ render() {
   # blocked, has a worker, or is committed to the sprint (cycle=="sprint") is NOT parked
   # (it stays in the table above); a cycle=="background" one lives in OUT OF CYCLE above,
   # not here — so this footer is the RAW, not-yet-vetted backlog (unvetted / not at the
-  # ready status). mc-poll.sh still folds sprint refined tickets into its parked count,
-  # because that split decides what the loop polls; the dash only changes what you see.
+  # ready status). mc-poll.sh parks a sprint refined ticket only when it is not the
+  # operator's; the dash cannot see assignees, so it rows every sprint refined ticket and
+  # lifts the operator's into NEEDS YOU once the loop has proposed it (plan_proposed).
   local parked_ids parked_n
   parked_ids=$(jq -r '[.tickets[] | select(.lane == "refined" and (.blocked | not) and .worker == null and (.cycle != "background") and (.cycle != "sprint")) | .ticket] | join(" ")' "$STATE")
   if [[ -n "$parked_ids" ]]; then

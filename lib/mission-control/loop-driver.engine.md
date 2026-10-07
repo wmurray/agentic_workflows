@@ -216,7 +216,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      Emit `tick @ HH:MM — ⏸ drain (finishing in-flight, no new intake)`.
      - **SKIP (intake = pulling NEW work into/across the human-gated pipeline entry):** ingest from
        `mc-inbound` (no new `refined` rows, no eager planner); background opportunistic planning
-       (Prep-write 1); and draining the `approve` / `plan` inbox verbs (no Gate-1→first-coder start, no
+       (Prep-write 1); the armed sprint plan pull (`SPRINT_PLAN_AUTO`); and draining the `approve` / `plan` inbox verbs (no Gate-1→first-coder start, no
        new planner pull). For each, print the normal PROPOSE line ("would ingest/plan/approve …") and
        leave it — do NOT act.
      - **KEEP (in-flight advancement + reconcile — none of it crosses a human gate):** board reconcile
@@ -259,6 +259,11 @@ this is what makes the loop killable/restartable with no lost work and bounds co
        idle tick WITHOUT waiting for `mc plan`. (This is the whole point of the `background` tier — treating
        it as parked is the bug that left the queue unplanned.) `mc plan` only *jumps the queue* for a
        specific one; it is NOT required for background planning to happen.
+     - **`cycle:"sprint"`** — the poller's **sprint plan queue** section: unblocked, no `worker`, and
+       assigned to the operator in the tracker (`tracker mine_of`). Each row is either `would plan ABC-N — new`
+       or `ABC-N proposed`. Feed it to Step 3's sprint plan proposal. Sprint `refined` rows that are
+       unassigned or assigned to someone else go to the parked footer as `ABC-N(sprint,not-yours)`: you do
+       NOT propose or act on them.
      - **A `blocked` refined row of any cycle** stays visible in the active table (a block needs eyes) but
        is never auto-planned until unblocked.
 1.5. **Health + heartbeat (housekeeping — always, even on an otherwise-empty tick).** This is how the
@@ -522,6 +527,24 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      or CI is `fail`, the `ready-to-merge` lane is stale → flag as drift, do NOT propose the merge)
    - **Do NOT propose anything for parked `refined` tickets** — they're backlog, waiting on the
      human to pull them in. (At most, the footer's count is enough; never per-ticket.)
+   - **Sprint plan proposal (the one `refined` exception; flag-gated: `SPRINT_PLAN_AUTO` file at
+     `$MC_SPRINT_PLAN_FILE`).** The poller's "sprint plan queue" lists sprint `refined` rows that are
+     unblocked, have no `worker`, and are assigned to the operator. Propose once per row:
+     - **`would plan ABC-N — new`** (mode `propose`, the default): print `would plan ABC-N (sprint, assigned
+       to you)` in the tick summary, then under the lock set `plan_proposed: true` on the row
+       (board-internal, like `gate1_proposed`) and log it once:
+       `worklog.sh add --source loop --ticket ABC-N "would plan: sprint ticket, no plan yet"`. The dash then
+       shows it in NEEDS YOU as "sprint ticket, no plan yet → mc plan ABC-N". Do NOT spawn anything; the
+       operator pulls it with `mc plan ABC-N`.
+     - **`ABC-N proposed`**: already said. Do not repeat it in the tick summary; NEEDS YOU carries it.
+     - **`plan_proposed to clear (no longer eligible): …`**: under the lock, delete `plan_proposed` from each
+       listed row. If the row becomes eligible again later, the poller lists it as new and you propose it
+       again.
+     - **`plan ABC-N — new`** (mode `auto`, flag present): pull it exactly as `mc plan ABC-N` would (Prep-write 1:
+       investigator first for a bug, then critic, then planner), at most one per tick and only with a
+       planner slot free. Under a drain pause, skip it and print the `would plan` line instead.
+     This proposal does not change background condition (a): a proposed sprint row still counts as
+     awaiting planning.
    Frame all of these as proposals, never actions — **the ingest path is the sole exception you act on.**
 
    **Derive every proposal from your own step-2 poll — NEVER echo the board's `question`/`result`
@@ -1068,7 +1091,7 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
   only while `mc-guard.sh check merge` passes (the operator set `mc guard off merge`), run with no flags.
 - **Flag-gated, propose-only when the flag is absent:** coder-spawn (`CODER_SPAWN_LIVE`, ≤1 coder in flight,
   Prep-write 4); Gate-1 auto-approve (`GATE1_AUTO`, Trigger C); kickback address (`KICKBACK_AUTO`,
-  Prep-write 5).
+  Prep-write 5); sprint plan pull (`SPRINT_PLAN_AUTO`, the Step 3 sprint plan proposal).
 - **Never:** tracker field writes; `qa`/`done` transitions; posting or resolving a review thread; reassigning
   a colleague-held ticket; originating a merge, a ready, or a review request; more than one coder in flight.
   Those stay human-gated; flag them.

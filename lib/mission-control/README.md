@@ -115,6 +115,16 @@ itself when `GATE1_AUTO` is present (`mc gate1 auto`). Without the file the loop
 "would auto-approve", which is the soak to compare against real approvals before arming.
 Gate 2 and merge are unchanged.
 
+## Sprint plan queue
+
+A `refined` ticket in the open sprint that is assigned to the operator, unblocked and has
+no worker is proposed for planning once: the poller lists it as "would plan", the loop
+records `plan_proposed` on the row, and the dash shows it under NEEDS YOU until the operator
+runs `mc plan`. Unassigned sprint tickets, and ones assigned to someone else, stay parked.
+The assignee check is the tracker adapter's `mine_of`; the operator's identity is
+`MC_TRACKER_OPERATOR`, or the CLI user when unset. When the `SPRINT_PLAN_AUTO` file
+(`MC_SPRINT_PLAN_FILE`) is present the loop pulls those tickets into planning itself.
+
 ## Kickback address
 
 After the loop triages new review comments on an open PR it can, when `KICKBACK_AUTO` is

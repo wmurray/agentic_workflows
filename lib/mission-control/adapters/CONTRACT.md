@@ -30,6 +30,7 @@ host()    { "$MC_ADAPTERS/host/${MC_HOST:-github}.sh"     "$@"; }
 |---|---|---|---|
 | `list_ready` | `<status> <cycle:in\|out\|any> [vetted]` | TSV `key⇥summary`, one per line | mc-inbound (×2 tiers) |
 | `fields_of` | `<key…>` (comma- or space-joined) | TSV `key⇥status⇥assignee` | mc-poll, mc-archive |
+| `mine_of` | `<key…>` | bare `key` per line — the subset assigned to the operator | mc-poll (sprint plan queue) |
 | `in_active_cycle` | `<key…>` | bare `key` per line — the subset in the active cycle | mc-promote *(optional: `cycles`)* |
 | `active_cycle` | — | TSV `id⇥name` of the open cycle (empty if none) | mc-archive *(optional: `cycles`)* |
 | `detail_of` | `<key>` | one ticket's full detail (description / AC / issue type / parent) as plain text | ingest (driver + SKILL), worker briefs |
@@ -44,6 +45,11 @@ adapter owns which field that is via `MC_POINTS_FIELD`). Tiers map cleanly:
 
 On a **cycle-less** provider `in` returns all ready, `out` returns empty — so the
 two-tier inbound collapses to one tier with no contract change (consequence A).
+
+**`mine_of`** answers "which of these are the operator's?" in one call. The operator is
+the adapter's notion of "me", the same identity `list_ready` filters on: `MC_TRACKER_OPERATOR`
+when the profile sets it, otherwise the CLI's authenticated user. mc-poll uses it to decide
+which sprint `refined` rows to propose for planning; a miss stays parked.
 
 **`fields_of`** folds the spec's separate `status_of` + `assignee_of` into one batch
 call (both consumers already fetch these together). mc-archive ignores the assignee
@@ -83,6 +89,7 @@ but callers must already branch on `capabilities` so a cycle-less fast-follow ad
 | `MC_TERMINAL_DONE` | statuses meaning shipped | mc-archive (pre-sweep guard) |
 | `MC_TICKET_KEY_REGEX` | ticket-key shape (`[A-Z]+-[0-9]+`) | mc-orphans, dash |
 | `MC_POINTS_FIELD` | the vetting field name | jira.sh `list_ready … vetted` |
+| `MC_TRACKER_OPERATOR` | the operator's tracker identity; empty = the CLI user | jira.sh `list_ready`, `mine_of` |
 
 ---
 

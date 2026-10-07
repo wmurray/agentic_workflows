@@ -10,12 +10,17 @@
 #   tracker list_ready "Ready for Dev" out vetted   # out of cycle + vetted (background tier)
 #   tracker fields_of KEY-1 KEY-2 KEY-3
 #   tracker in_active_cycle KEY-1 KEY-2
+#   tracker mine_of KEY-1 KEY-2
 #   tracker active_cycle
 #   tracker detail_of KEY-1
 #   tracker capabilities
 set -uo pipefail
 
 POINTS_FIELD="${MC_POINTS_FIELD:-Story Points}"
+# Who "me" is in assignee clauses. Empty → the CLI's authenticated user (currentUser()),
+# which is the operator on a personal setup; set MC_TRACKER_OPERATOR in the profile (an
+# account id or email) when the CLI runs as someone else.
+if [ -n "${MC_TRACKER_OPERATOR:-}" ]; then ME_JQL="\"$MC_TRACKER_OPERATOR\""; else ME_JQL="currentUser()"; fi
 
 op="${1:-}"; shift || true
 
@@ -32,7 +37,7 @@ case "$op" in
   list_ready)
     status="${1:-}"; cycle="${2:-any}"; vetted="${3:-}"
     [ -n "$status" ] || { echo "jira list_ready: need a status" >&2; exit 2; }
-    q="assignee = currentUser() AND status = \"$status\""
+    q="assignee = $ME_JQL AND status = \"$status\""
     case "$cycle" in
       in)  q="$q AND sprint in openSprints()" ;;
       out) q="$q AND sprint not in openSprints()" ;;
@@ -52,6 +57,13 @@ case "$op" in
   in_active_cycle)
     keys=$(_keylist "$@"); [ -n "$keys" ] || exit 0
     jira issue list ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} -q "key in ($keys) AND sprint in openSprints()" \
+      --plain --no-headers --columns key 2>/dev/null | tr -s '\t'
+    ;;
+
+  mine_of)
+    # The subset of <keys> assigned to the operator, one bare key per line.
+    keys=$(_keylist "$@"); [ -n "$keys" ] || exit 0
+    jira issue list ${JIRA_PROJECT:+-p "$JIRA_PROJECT"} -q "key in ($keys) AND assignee = $ME_JQL" \
       --plain --no-headers --columns key 2>/dev/null | tr -s '\t'
     ;;
 

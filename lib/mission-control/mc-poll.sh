@@ -22,6 +22,9 @@
 # human pulls it (`mc plan <key>`), which moves it into the live flow. A `refined`
 # ticket that is `blocked` OR has a worker assigned stays ACTIVE (a block always needs
 # eyes; a worker on a still-`refined` lane is in-flight drift to surface, not hide).
+# Two unblocked, worker-less `refined` splits are NOT parked: cycle:background (the
+# opportunistic queue) and cycle:sprint assigned to the operator (the sprint plan
+# queue, which the loop proposes to plan; see that section below).
 #
 #   ~/.claude/mission-control/mc-poll.sh
 #   MC_STATE=/path/to/state.scratch.json ~/.claude/mission-control/mc-poll.sh
@@ -43,7 +46,7 @@ STATUS_RANK="${MC_STATUS_RANK:-Backlog=0;To Do=1;In Progress=2;In Review=3;QA=4;
 FREEZE_RE="${MC_FREEZE_CHECK_PATTERN:-}"
 [ -f "$STATE" ] || { echo "no state at $STATE" >&2; exit 1; }
 
-# --- board rows: ticket\tlane\tpr\tblocked(0/1)\tworker\tphase_done(0/1)\tcycle\trunner.impl\trunner.handle ---
+# --- board rows: ticket\tlane\tpr\tblocked(0/1)\tworker\tphase_done(0/1)\tcycle\trunner.impl\trunner.handle\tplan_proposed(0/1) ---
 # Sentinel "-" for empty pr/worker: IFS=$'\t' read collapses consecutive tabs
 # (tab is whitespace), so empty middle fields would shift the columns.
 rows=$(jq -r '.tickets[]
@@ -53,12 +56,14 @@ rows=$(jq -r '.tickets[]
       (if .phase_done==true then "1" else "0" end),
       (.cycle // "-"),
       (.runner.impl // "-"),
-      (.runner.handle // "-") ]
+      (.runner.handle // "-"),
+      (if .plan_proposed==true then "1" else "0" end) ]
   | @tsv' "$STATE")
 
-active=""; parked=""; bgqueue=""; done_ids=""; regressed_ids=""
-while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle; do
+active=""; parked=""; bgqueue=""; sprintq=""; proposed=""; done_ids=""; regressed_ids=""
+while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle pp; do
   [ -z "$t" ] && continue
+  [ "$pp" = "1" ] && proposed="$proposed $t"
   if [ "$lane" = "done" ]; then
     done_ids="$done_ids $t"
   elif [ "$lane" = "refined" ] && [ "$blk" != "1" ] && [ "$wk" = "-" ]; then
@@ -67,10 +72,14 @@ while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle; do
     #    idle tick (background rule); it must SEE these, so surface them as an actionable
     #    section, NOT a silent parked count. (A worker-bearing refined row stays ACTIVE
     #    below — that's in-flight drift to surface, not hide.)
+    #  - cycle:sprint = a candidate for the sprint plan queue. Only the ones the tracker
+    #    says are the operator's qualify (mine_of, below); the rest fold back into parked.
     #  - anything else (cycle:backlog, or «absent» which now means backlog) = truly parked;
     #    it sits until `mc plan <key>`.
     if [ "$cyc" = "background" ]; then
       bgqueue="$bgqueue $t"
+    elif [ "$cyc" = "sprint" ]; then
+      sprintq="$sprintq $t"
     else
       parked="$parked $t"
     fi
@@ -78,6 +87,20 @@ while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle; do
     active="$active$t	$lane	$pr	$blk	$wk	$pd	$rimpl	$rhandle"$'\n'
   fi
 done <<< "$rows"
+
+# --- sprint plan queue: keep the candidates the tracker assigns to the operator ---
+# One extra tracker call, made only when a candidate exists. A candidate that is
+# unassigned or someone else's is parked, labelled so the footer says why.
+eligible=""
+if [ -n "$sprintq" ]; then
+  mine=" $(tracker mine_of $sprintq | tr '\n' ' ') "
+  for t in $sprintq; do
+    case "$mine" in
+      *" $t "*) eligible="$eligible $t" ;;
+      *)        parked="$parked $t(sprint,not-yours)" ;;
+    esac
+  done
+fi
 
 [ -z "$active" ] && { echo "no active tickets (all done or parked)"; }
 
@@ -227,9 +250,34 @@ done <<< "$active"
 bq=$(echo $bgqueue | wc -w | tr -d ' ')
 [ "$bq" -gt 0 ] && printf '\nbackground queue (PLANNABLE NOW — loop spawns ONE planner per idle tick per the background opportunistic rule; do NOT wait for `mc plan`): %s —%s\n' "$bq" "$bgqueue"
 
+# --- sprint plan queue: PROPOSE planning, once per ticket ---
+# Propose once: the loop prints "would plan <KEY>" for a row without plan_proposed, then
+# sets plan_proposed:true on it; a row that already carries it is listed, not re-proposed.
+# The flag is cleared (listed below) as soon as the row stops being eligible: it left
+# refined, got blocked or a worker, changed cycle, or is no longer the operator's. A row
+# that becomes eligible again is proposed again. MC_SPRINT_PLAN_FILE present = armed: the
+# loop plans these itself instead of proposing (the gate1/address flag-file pattern).
+spf="${MC_SPRINT_PLAN_FILE:-$HOME/.claude/mission-control/SPRINT_PLAN_AUTO}"
+if [ -f "$spf" ]; then sp_mode="auto"; sp_verb="plan"; else sp_mode="propose"; sp_verb="would plan"; fi
+sq=$(echo $eligible | wc -w | tr -d ' ')
+if [ "$sq" -gt 0 ]; then
+  printf '\nsprint plan queue (refined, cycle:sprint, assigned to you, no worker · mode: %s): %s\n' "$sp_mode" "$sq"
+  for t in $eligible; do
+    case " $proposed " in
+      *" $t "*) printf '  %-9s proposed — in NEEDS YOU until `mc plan %s`\n' "$t" "$t" ;;
+      *)        printf '  %s %s — new; set plan_proposed:true once said\n' "$sp_verb" "$t" ;;
+    esac
+  done
+fi
+stale=""
+for t in $proposed; do
+  case " $eligible " in *" $t "*) : ;; *) stale="$stale $t" ;; esac
+done
+[ -n "$stale" ] && printf 'plan_proposed to clear (no longer eligible):%s\n' "$stale"
+
 # --- footer: parked (cycle:backlog) + done (counted, NOT polled) ---
 pk=$(echo $parked | wc -w | tr -d ' '); dn=$(echo $done_ids | wc -w | tr -d ' ')
-[ "$pk" -gt 0 ] && printf '\nparked (refined backlog, cycle:backlog — not polled; `mc plan <key>` to pull one in): %s —%s\n' "$pk" "$parked"
+[ "$pk" -gt 0 ] && printf '\nparked (refined backlog, cycle:backlog or sprint-not-yours — not polled; `mc plan <key>` to pull one in): %s —%s\n' "$pk" "$parked"
 [ "$dn" -gt 0 ] && printf 'done (not polled): %s\n' "$dn"
 
 rm -f "$jira_tmp" "$gh_tmp"

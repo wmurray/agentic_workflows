@@ -21,3 +21,14 @@ ENG-204	In Progress	me	in	yes	Split the billing webhook handler
 ENG-205	Done	me	in	yes	Cache the plan comparison table
 # --- on the board, status went BACKWARDS vs its lane → mc-poll regression ---
 ENG-206	To Do	me	in	yes	Retry failed exports
+#
+# --- refined + cycle:sprint rows on the DERIVED sprint-refined board (smoke.sh builds it) ---
+# Not at the ready status, so mc-inbound never lists them; mc-poll's mine_of split does.
+ENG-208	To Do	me	in	yes	Sprint ticket awaiting a plan
+ENG-209	To Do		in	yes	Sprint ticket nobody has picked up
+ENG-210	To Do	teammate	in	yes	Sprint ticket a teammate owns
+ENG-211	To Do	me	in	yes	Sprint ticket on hold
+ENG-212	To Do	me	in	yes	Sprint ticket with a critic running
+ENG-213	To Do	me	out	yes	Background ticket awaiting a plan
+ENG-214	To Do	me	in	yes	Sprint ticket already proposed
+ENG-215	To Do	me	in	yes	Sprint ticket planned since it was proposed

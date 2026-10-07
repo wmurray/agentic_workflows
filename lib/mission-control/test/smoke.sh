@@ -36,6 +36,7 @@ LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/.loop-heartbeat" "$LIVE/mc-inbox"
   "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO" "$LIVE/KICKBACK_AUTO"
+  "$LIVE/SPRINT_PLAN_AUTO"
 )
 _stamp() {
   local f
@@ -241,6 +242,55 @@ says "dash rows a sprint refined ticket"     yes '^ +ENG-208 +refined '        d
 says "  … and keeps it out of parked"        no  'parked.*ENG-208'             dash_sr
 says "  … a non-sprint refined stays parked" yes 'parked.*: 1 — ENG-207'       dash_sr
 says "  … and gets no row"                   no  '^ +ENG-207 '                 dash_sr
+
+# --- 6b. sprint plan queue: propose planning for sprint refined tickets that are yours ---
+# Another derived board. Eligible = refined + cycle:sprint + no worker + not blocked +
+# assigned to the operator (tracker mine_of). The loop says "would plan" ONCE, records
+# plan_proposed on the row, and clears it when the row stops being eligible.
+jq '.tickets += [
+  {"ticket":"ENG-208","lane":"refined","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-209","lane":"refined","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-210","lane":"refined","cycle":"sprint","worker":null,"blocked":false,"plan_proposed":true},
+  {"ticket":"ENG-211","lane":"refined","cycle":"sprint","worker":null,"blocked":true},
+  {"ticket":"ENG-212","lane":"refined","cycle":"sprint","worker":"critic","blocked":false},
+  {"ticket":"ENG-213","lane":"refined","cycle":"background","worker":null,"blocked":false},
+  {"ticket":"ENG-214","lane":"refined","cycle":"sprint","worker":null,"blocked":false,"plan_proposed":true},
+  {"ticket":"ENG-215","lane":"plan-review","cycle":"sprint","worker":null,"blocked":false,"plan_proposed":true}]' \
+  "$WORK/state.json" > "$WORK/state.sprint-plan.json"
+poll_sp() { MC_STATE="$WORK/state.sprint-plan.json" MC_SPRINT_PLAN_FILE="$WORK/SPRINT_PLAN_AUTO" "$_MC_LIB/mc-poll.sh"; }
+run  "tracker mine_of"                        0 tracker mine_of ENG-208 ENG-209 ENG-210
+says "mine_of keeps the operator's ticket"   yes '^ENG-208$'                    tracker mine_of ENG-208 ENG-209 ENG-210
+says "  … drops the unassigned one"           no  'ENG-209'                      tracker mine_of ENG-208 ENG-209 ENG-210
+says "  … drops the teammate's"               no  'ENG-210'                      tracker mine_of ENG-208 ENG-209 ENG-210
+says "poll proposes a sprint refined ticket" yes '^  would plan ENG-208 '       poll_sp
+says "  … in propose mode by default"        yes 'sprint plan queue.*mode: propose'  poll_sp
+says "  … not an unassigned one"              no  'would plan ENG-209'           poll_sp
+says "  … which stays parked"                yes '^parked.*ENG-209\(sprint,not-yours\)'  poll_sp
+says "  … not a teammate's"                   no  'would plan ENG-210'           poll_sp
+says "  … which stays parked"                yes '^parked.*ENG-210\(sprint,not-yours\)'  poll_sp
+says "parked count counts tickets, not words" yes '^parked.*: 3 — '  poll_sp
+says "  … not a blocked one"                  no  'would plan ENG-211'           poll_sp
+says "  … not one a worker holds"             no  'would plan ENG-212'           poll_sp
+says "  … not a background one"               no  'would plan ENG-213'           poll_sp
+says "background queue is unchanged"         yes '^background queue.*: 1 — ENG-213$'  poll_sp
+says "a proposed ticket is not re-proposed"   no  'would plan ENG-214'           poll_sp
+says "  … but stays listed as proposed"      yes '^  ENG-214 +proposed'         poll_sp
+says "a stale proposal is cleared"           yes '^plan_proposed to clear.*ENG-210'  poll_sp
+says "  … including one that left refined"   yes '^plan_proposed to clear.*ENG-215'  poll_sp
+says "  … but not a live one"                 no  '^plan_proposed to clear.*ENG-214'  poll_sp
+# The second tick: the loop has set plan_proposed on ENG-208, so nothing new is proposed.
+jq '(.tickets[] | select(.ticket=="ENG-208")).plan_proposed = true' "$WORK/state.sprint-plan.json" > "$WORK/state.sprint-plan.2.json"
+poll_sp2() { MC_STATE="$WORK/state.sprint-plan.2.json" MC_SPRINT_PLAN_FILE="$WORK/SPRINT_PLAN_AUTO" "$_MC_LIB/mc-poll.sh"; }
+says "second tick does not re-propose"        no  'would plan'                   poll_sp2
+says "  … and lists it as proposed"          yes '^  ENG-208 +proposed'         poll_sp2
+# Armed (the flag file present), the same row reads as an action, not a proposal.
+touch "$WORK/SPRINT_PLAN_AUTO"
+says "armed mode plans instead of proposing" yes '^  plan ENG-208 '             poll_sp
+says "  … and says so in the header"         yes 'sprint plan queue.*mode: auto'  poll_sp
+rm -f "$WORK/SPRINT_PLAN_AUTO"
+dash_sp() { MC_STATE="$WORK/state.sprint-plan.2.json" MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_ADDRESS_FILE="$WORK/KICKBACK_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh"; }
+says "dash puts a proposed ticket in NEEDS YOU" yes '^ +ENG-208 +\[refined\].*mc plan ENG-208'  dash_sp
+says "  … but not an unproposed sprint one"     no  '^ +ENG-209 +\[refined\]'                    dash_sp
 
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
