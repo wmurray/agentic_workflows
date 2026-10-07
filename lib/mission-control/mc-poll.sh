@@ -60,7 +60,7 @@ rows=$(jq -r '.tickets[]
       (if .plan_proposed==true then "1" else "0" end) ]
   | @tsv' "$STATE")
 
-active=""; parked=""; bgqueue=""; sprintq=""; proposed=""; done_ids=""; regressed_ids=""
+active=""; parked=""; bgqueue=""; sprintq=""; sprintrun=""; proposed=""; done_ids=""; regressed_ids=""
 while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle pp; do
   [ -z "$t" ] && continue
   [ "$pp" = "1" ] && proposed="$proposed $t"
@@ -84,6 +84,9 @@ while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle pp; do
       parked="$parked $t"
     fi
   else
+    # A sprint refined row a planning worker already holds is mid-planning: it keeps
+    # background condition (a) held without an assignee check (pulling it made it ours).
+    [ "$lane" = "refined" ] && [ "$blk" != "1" ] && [ "$cyc" = "sprint" ] && sprintrun="$sprintrun $t"
     active="$active$t	$lane	$pr	$blk	$wk	$pd	$rimpl	$rhandle"$'\n'
   fi
 done <<< "$rows"
@@ -248,7 +251,18 @@ done <<< "$active"
 
 # --- background queue: PLANNABLE now (loop acts), listed not just counted ---
 bq=$(echo $bgqueue | wc -w | tr -d ' ')
-[ "$bq" -gt 0 ] && printf '\nbackground queue (PLANNABLE NOW — loop spawns ONE planner per idle tick per the background opportunistic rule; do NOT wait for `mc plan`): %s —%s\n' "$bq" "$bgqueue"
+# Condition (a) of the background rule: sprint planning goes first while any of the
+# operator's sprint refined rows awaits planning (eligible, proposed or not) or a planning
+# worker holds one. Sprint rows that are unassigned or someone else's do not count.
+cond_a=$(echo $eligible $sprintrun)
+if [ "$bq" -gt 0 ]; then
+  if [ -n "$cond_a" ]; then
+    printf '\nbackground condition (a): held — %s (sprint planning first)\n' "$cond_a"
+  else
+    printf '\nbackground condition (a): clear — no sprint refined ticket of yours awaiting planning\n'
+  fi
+fi
+[ "$bq" -gt 0 ] && printf 'background queue (PLANNABLE NOW — loop spawns ONE planner per idle tick per the background opportunistic rule; do NOT wait for `mc plan`): %s —%s\n' "$bq" "$bgqueue"
 
 # --- sprint plan queue: PROPOSE planning, once per ticket ---
 # Propose once: the loop prints "would plan <KEY>" for a row without plan_proposed, then

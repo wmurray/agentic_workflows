@@ -278,6 +278,29 @@ says "  … but stays listed as proposed"      yes '^  ENG-214 +proposed'       
 says "a stale proposal is cleared"           yes '^plan_proposed to clear.*ENG-210'  poll_sp
 says "  … including one that left refined"   yes '^plan_proposed to clear.*ENG-215'  poll_sp
 says "  … but not a live one"                 no  '^plan_proposed to clear.*ENG-214'  poll_sp
+# Background condition (a): only the operator's sprint refined rows (and ones a planning
+# worker already holds) put sprint planning ahead of background. A not-yours row does not.
+says "condition (a) is held by the operator's sprint rows" yes '^background condition \(a\): held —.* ENG-208'  poll_sp
+says "  … including a proposed one"           yes '^background condition \(a\): held —.* ENG-214'  poll_sp
+says "  … and one a planning worker holds"    yes '^background condition \(a\): held —.* ENG-212'  poll_sp
+says "  … but not an unassigned one"          no  '^background condition \(a\).*ENG-209'  poll_sp
+says "  … nor a teammate's"                   no  '^background condition \(a\).*ENG-210'  poll_sp
+says "  … nor a blocked one"                  no  '^background condition \(a\).*ENG-211'  poll_sp
+jq '.tickets += [
+  {"ticket":"ENG-209","lane":"refined","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-210","lane":"refined","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-213","lane":"refined","cycle":"background","worker":null,"blocked":false}]' \
+  "$WORK/state.json" > "$WORK/state.cond-a.notmine.json"
+jq '.tickets += [
+  {"ticket":"ENG-209","lane":"refined","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-213","lane":"refined","cycle":"background","worker":null,"blocked":false},
+  {"ticket":"ENG-214","lane":"refined","cycle":"sprint","worker":null,"blocked":false,"plan_proposed":true}]' \
+  "$WORK/state.json" > "$WORK/state.cond-a.mine.json"
+poll_ca1() { MC_STATE="$WORK/state.cond-a.notmine.json" MC_SPRINT_PLAN_FILE="$WORK/SPRINT_PLAN_AUTO" "$_MC_LIB/mc-poll.sh"; }
+poll_ca2() { MC_STATE="$WORK/state.cond-a.mine.json" MC_SPRINT_PLAN_FILE="$WORK/SPRINT_PLAN_AUTO" "$_MC_LIB/mc-poll.sh"; }
+says "not-yours sprint rows leave condition (a) clear" yes '^background condition \(a\): clear'  poll_ca1
+says "  … so background stays plannable"      yes '^background queue.*: 1 — ENG-213$'  poll_ca1
+says "a mine+proposed sprint row still holds (a)" yes '^background condition \(a\): held — ENG-214'  poll_ca2
 # The second tick: the loop has set plan_proposed on ENG-208, so nothing new is proposed.
 jq '(.tickets[] | select(.ticket=="ENG-208")).plan_proposed = true' "$WORK/state.sprint-plan.json" > "$WORK/state.sprint-plan.2.json"
 poll_sp2() { MC_STATE="$WORK/state.sprint-plan.2.json" MC_SPRINT_PLAN_FILE="$WORK/SPRINT_PLAN_AUTO" "$_MC_LIB/mc-poll.sh"; }

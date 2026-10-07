@@ -88,7 +88,7 @@ The FIVE internal writes you hold today:
    tick, both stop at Gate 1. Do NOT collapse them — (b) is the one that was silently never firing:
    (a) **Ingest off-board ready tickets** (`mc-inbound`): cycle-committed = eager; vetted background = capture.
    (b) **Background opportunistic planning — EACH TICK, independent of `mc-inbound`:** if capacity permits
-   (no `cycle:sprint` row actively awaiting planning · a planner slot free · no background planner running),
+   (the poller's `background condition (a)` line says `clear` · a planner slot free · no background planner running),
    spawn ONE planner for a `cycle:background` on-board `refined` row taken from the **poller's "background
    queue (PLANNABLE NOW)" section**. This does NOT wait for `mc plan`, and you must NOT skip it just because
    `inbound` is none — on-board background rows never appear in `mc-inbound`. This is the recurring action
@@ -454,7 +454,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      no background planner already running) — spawn a planner for ONE eligible `cycle:"background"` unblocked
      row** (ordered future-cycle-committed first, then nearest due date). Lock-wrapped, hard stop at
      `plan-review`. If no row is eligible or capacity is full, do nothing (not an error). A `cycle:"backlog"`
-     or `blocked` row is never eligible and never counts toward condition (a).
+     or `blocked` row is never eligible and never counts toward condition (a). Read (a) from the poller's
+     `background condition (a): held — KEYS | clear` line; do not recompute it from `state.json`.
    - `implement` with no worker (FLAGS has no `●`) → **coder-spawn (flag-gated, Prep-write 4):** if
      `CODER_SPAWN_LIVE` is armed AND a coder slot is free (≤1 coder in flight), spawn the coder
      (Trigger B); else "would spawn a coder" (propose only).
@@ -543,8 +544,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - **`plan ABC-N — new`** (mode `auto`, flag present): pull it exactly as `mc plan ABC-N` would (Prep-write 1:
        investigator first for a bug, then critic, then planner), at most one per tick and only with a
        planner slot free. Under a drain pause, skip it and print the `would plan` line instead.
-     This proposal does not change background condition (a): a proposed sprint row still counts as
-     awaiting planning.
+     A proposed sprint row that is still the operator's keeps background condition (a) held, so sprint
+     work stays first.
    Frame all of these as proposals, never actions — **the ingest path is the sole exception you act on.**
 
    **Derive every proposal from your own step-2 poll — NEVER echo the board's `question`/`result`
@@ -676,7 +677,11 @@ Put ready work in flight without a prompt. Misfire cost: a wrong-ticket plan you
 **Background opportunistic-planning rule (the WIP bound):** on a tick, you may spawn a planner for **ONE**
 `cycle: "background"` `refined` ticket ONLY when **(a)** no `cycle: "sprint"` ticket is **actively awaiting
 planning** — meaning a `cycle: "sprint"` `refined` row that is unblocked and has no planner yet (or whose
-planner is mid-run). **Parked rows (`cycle: "backlog"` OR untagged/absent — absent now means backlog, NOT
+planner is mid-run) **and is assigned to the operator**. The poller computes this and prints
+`background condition (a): held — KEYS` or `clear`: held by the sprint plan queue rows (proposed or not)
+and by unblocked sprint `refined` rows a planning worker holds. **Sprint rows that are unassigned or
+assigned to someone else (`ABC-N(sprint,not-yours)` in the parked footer) do NOT count** — they are not
+the operator's to plan, so they must not hold the background queue. **Parked rows (`cycle: "backlog"` OR untagged/absent — absent now means backlog, NOT
 sprint) and `blocked` rows do NOT count toward (a)** — they are not in the planning pipeline and must never
 gate background planning; an untagged backlog row counted as in-cycle would trip (a) forever and starve
 the background queue. **(b)** a planner
