@@ -252,6 +252,103 @@ says   "jira-status: already there is a no-op" 'no-op' js "In Progress" implemen
 [ -z "$(cat "$JS/calls")" ] && ok "jira-status: no-op makes no REST call" || bad "jira-status: no-op called REST"
 rm -f "${JS:?}"/bin/* "${JS:?}"/{calls,status,flow.json,novia.env}; rmdir "${JS:?}/bin" "${JS:?}"
 
+echo "qa-transition against a stub jira + curl (no network)"
+# $FX/fields.json is the issue's field values (distinct ids via qa.env); a PUT merges into it.
+# $FX/trans.json is what the issue offers. Every REST call is logged to $FX/calls in order.
+QA="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-qa.XXXXXX")"
+mkdir "$QA/bin"
+cat > "$QA/bin/jira" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list") printf 'ABC-1\t%s\n' "$(cat "$FX/status")" ;;
+  *) echo "stub jira: unexpected $*" >&2; exit 1 ;;
+esac
+STUB
+cat > "$QA/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=''; method=GET; data=''
+while [ $# -gt 1 ]; do
+  case "$1" in -o) out="$2"; shift ;; -X) method="$2"; shift ;; --data) data="$2"; shift ;; -w|-u|-H) shift ;; esac
+  shift
+done
+path="${1#*atlassian.net}"
+echo "$method $path $data" >> "$FX/calls"
+case "$method $path" in
+  "GET /rest/api/2/issue/"*)          jq '{fields: .}' "$FX/fields.json" > "$out"; printf 200 ;;
+  "GET /rest/api/3/issue/"*/transitions) cp "$FX/trans.json" "$out"; printf 200 ;;
+  "PUT /rest/api/3/issue/"*)
+    jq --argjson d "$data" '. + $d.fields' "$FX/fields.json" > "$FX/f.tmp" && mv "$FX/f.tmp" "$FX/fields.json"
+    : > "$out"; printf 204 ;;
+  "POST /rest/api/3/issue/"*/transitions) printf '%s' "$data" | jq -r .transition.id > "$FX/fired"; : > "$out"; printf 204 ;;
+  *) echo '{}' > "$out"; printf 404 ;;
+esac
+STUB
+chmod +x "$QA/bin/jira" "$QA/bin/curl"
+sed -e 's/^JIRA_FIELD_RELEASE_NOTE=.*/JIRA_FIELD_RELEASE_NOTE="cf_rn"/' -e 's/^JIRA_FIELD_TESTING_NOTES=.*/JIRA_FIELD_TESTING_NOTES="cf_tn"/' \
+    -e 's/^JIRA_FIELD_FEATURE_FLAGS=.*/JIRA_FIELD_FEATURE_FLAGS="cf_ff"/' -e 's/^JIRA_FIELD_STORY_POINTS=.*/JIRA_FIELD_STORY_POINTS="cf_sp"/' \
+    "$T/example.env" > "$QA/qa.env"
+sed 's/^JIRA_TRANSITION_QA_ID=.*/JIRA_TRANSITION_QA_ID="12"/' "$QA/qa.env" > "$QA/qa-id.env"
+# qa_fixture <fields json> [<transitions json>]: ticket in Code Review; default offers QA via 31.
+QA_TRANS='{"transitions":[{"id":"31","to":{"name":"QA Review"}},{"id":"5","to":{"name":"Done"}}]}'
+qa_fixture() {
+  printf 'Code Review' > "$QA/status"; : > "$QA/calls"; rm -f "$QA/fired"
+  printf '%s' "$1" > "$QA/fields.json"
+  printf '%s' "${2:-$QA_TRANS}" > "$QA/trans.json"
+}
+qa() { (PATH="$QA/bin:$PATH" FX="$QA" JIRA_TOOLKIT_ENV="${QA_ENV:-$QA/qa.env}" JIRA_API_TOKEN=$stub_token "$T/qa-transition.sh" ABC-1 "$@" 2>&1); }
+qa_writes() { grep -E '^(PUT|POST)' "$QA/calls" | cut -d' ' -f1-2 | paste -sd';' -; }
+FULL='{"cf_rn":"Internal: tidy","cf_tn":"1. open it","cf_ff":["not-feature-flagged"],"cf_sp":2}'
+SPARSE='{"cf_rn":null,"cf_tn":"  ","cf_ff":[],"cf_sp":3}'
+
+qa_fixture "$SPARSE"
+expect "qa-transition: empty fields refuse with exit 3" 3 qa
+says   "qa-transition: refusal names each empty field" 'fields missing: release note, testing notes, feature flags\.' qa
+[ -z "$(qa_writes)" ] && ok "qa-transition: refusal writes nothing" || bad "qa-transition: refusal wrote — $(qa_writes)"
+qa_fixture '{"cf_rn":"x","cf_tn":"y","cf_ff":["f"],"cf_sp":null}'
+says   "qa-transition: empty points refuse too" 'fields missing: story points\.' qa
+[ ! -f "$QA/fired" ] && ok "qa-transition: points-empty refusal fires nothing" || bad "qa-transition: points-empty fired $(cat "$QA/fired")"
+
+qa_fixture "$SPARSE"
+says   "qa-transition: --force says what it overrode" 'force: transitioning ABC-1 with fields missing: release note, testing notes, feature flags' qa --force
+[ "$(cat "$QA/fired" 2>/dev/null)" = 31 ] && ok "qa-transition: --force fires the QA transition" || bad "qa-transition: --force fired '$(cat "$QA/fired" 2>/dev/null)'"
+[ -z "$(grep '^PUT' "$QA/calls")" ] && ok "qa-transition: --force writes no field" || bad "qa-transition: --force wrote a field"
+
+qa_fixture "$SPARSE"
+expect "qa-transition: --check exits 3 when fields are empty" 3 qa --check
+says   "qa-transition: --check names the empty fields" 'fields missing: release note, testing notes, feature flags — would refuse' qa --check
+[ -z "$(qa_writes)" ] && ok "qa-transition: --check writes nothing" || bad "qa-transition: --check wrote — $(qa_writes)"
+qa_fixture "$FULL"
+says   "qa-transition: --check passes when all four are set" "would transition to 'QA Review' \(id 31" qa --check
+[ -z "$(qa_writes)" ] && ok "qa-transition: passing --check writes nothing" || bad "qa-transition: passing --check wrote — $(qa_writes)"
+qa_fixture '{"cf_rn":"x","cf_tn":"","cf_ff":["f"],"cf_sp":1}'
+expect "qa-transition: --check counts --notes as written" 0 qa --check --notes "1. open it"
+[ -z "$(qa_writes)" ] && ok "qa-transition: --check --notes writes nothing" || bad "qa-transition: --check --notes wrote — $(qa_writes)"
+
+qa_fixture '{"cf_rn":"x","cf_tn":"","cf_ff":["f"],"cf_sp":1}'
+expect "qa-transition: --notes fills the only gap, then transitions" 0 qa --notes "1. open it"
+put=$(grep -n '^PUT' "$QA/calls" | head -1 | cut -d: -f1)
+chk=$(grep -n "^GET /rest/api/2/issue/ABC-1?fields=cf_rn,cf_tn,cf_ff,cf_sp" "$QA/calls" | head -1 | cut -d: -f1)
+[ -n "$put" ] && [ -n "$chk" ] && [ "$put" -lt "$chk" ] && ok "qa-transition: notes are written before the field check" \
+  || bad "qa-transition: order — $(cut -d' ' -f1-2 "$QA/calls" | paste -sd';' -)"
+[ "$(cat "$QA/fired" 2>/dev/null)" = 31 ] && ok "qa-transition: transitions after the notes" || bad "qa-transition: notes path fired '$(cat "$QA/fired" 2>/dev/null)'"
+
+qa_fixture "$FULL"
+QA_ENV="$QA/qa-id.env" qa >"$QA/out"
+grep -q 'JIRA_TRANSITION_QA_ID=12 is not offered for ABC-1; the live id is 31' "$QA/out" && ok "qa-transition: a stale configured id prints the live one" \
+  || bad "qa-transition: stale id — $(head -1 "$QA/out")"
+[ "$(cat "$QA/fired" 2>/dev/null)" = 31 ] && ok "qa-transition: fires the live id, not the stale one" || bad "qa-transition: stale id fired '$(cat "$QA/fired" 2>/dev/null)'"
+qa_fixture "$FULL" '{"transitions":[{"id":"12","to":{"name":"QA Review"}}]}'
+QA_ENV="$QA/qa-id.env" qa >"$QA/out"
+! grep -q 'not offered' "$QA/out" && [ "$(cat "$QA/fired" 2>/dev/null)" = 12 ] && ok "qa-transition: a matching configured id is used silently" \
+  || bad "qa-transition: matching id — $(head -1 "$QA/out")"
+qa_fixture "$FULL" '{"transitions":[{"id":"5","to":{"name":"Done"}}]}'
+expect "qa-transition: no QA transition offered fails" 1 qa
+says   "qa-transition: and names what is reachable" 'reachable: Done' qa
+qa_fixture "$FULL"; printf 'QA Review' > "$QA/status"
+says   "qa-transition: already in QA is a no-op" 'no-op' qa
+[ -z "$(cat "$QA/calls")" ] && ok "qa-transition: no-op makes no REST call" || bad "qa-transition: no-op called REST"
+rm -f "${QA:?}"/bin/* "${QA:?}"/{calls,status,fields.json,trans.json,fired,out,qa.env,qa-id.env}; rmdir "${QA:?}/bin" "${QA:?}"
+
 echo "dependabot-triage skill"
 # Claude Code substitutes positional placeholders anywhere in a skill's text, so a shell or awk
 # snippet using them breaks silently when the skill gets arguments; they belong in scripts/.
