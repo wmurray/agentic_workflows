@@ -43,6 +43,8 @@ expect "dependabot-merge: bad pr"  2 "$T/dependabot-merge.sh" . abc
 expect "dependabot-merge: bad sha" 2 "$T/dependabot-merge.sh" . 7@not-a-sha
 expect "assign: lane guard"        4 "$T/assign.sh" ABC-1 --lane qa
 expect "assign: refined refused"    4 "$T/assign.sh" ABC-1 --lane refined
+expect "post-release-note: no key"  2 "$T/post-release-note.sh"
+expect "post-release-note: no note" 2 "$T/post-release-note.sh" ABC-1
 
 echo "dependabot-merge against a stub gh (no network)"
 # The stub serves canned JSON from $FX and logs every call to $FX/calls. Without --paginate the
@@ -348,6 +350,37 @@ qa_fixture "$FULL"; printf 'QA Review' > "$QA/status"
 says   "qa-transition: already in QA is a no-op" 'no-op' qa
 [ -z "$(cat "$QA/calls")" ] && ok "qa-transition: no-op makes no REST call" || bad "qa-transition: no-op called REST"
 rm -f "${QA:?}"/bin/* "${QA:?}"/{calls,status,fields.json,trans.json,fired,out,qa.env,qa-id.env}; rmdir "${QA:?}/bin" "${QA:?}"
+
+echo "post-release-note against a stub curl (no network)"
+# $FX/comments.json holds the ticket's comments as plain strings (REST v2 shape); a POSTed ADF
+# comment is flattened to its text and appended.
+PR="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-pr.XXXXXX")"
+mkdir "$PR/bin"
+cat > "$PR/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=''; method=GET; data=''
+while [ $# -gt 1 ]; do
+  case "$1" in -o) out="$2"; shift ;; -X) method="$2"; shift ;; --data) data="$2"; shift ;; -w|-u|-H) shift ;; esac
+  shift
+done
+echo "$method ${1#*atlassian.net}" >> "$FX/calls"
+case "$method" in
+  GET)  cp "$FX/comments.json" "$out"; printf 200 ;;
+  POST) t=$(printf '%s' "$data" | jq -r '[.body | .. | .text? // empty] | join("")')
+        jq --arg t "$t" '.comments += [{body: $t}]' "$FX/comments.json" > "$FX/c.tmp" && mv "$FX/c.tmp" "$FX/comments.json"
+        echo '{}' > "$out"; printf 201 ;;
+esac
+STUB
+chmod +x "$PR/bin/curl"
+echo '{"comments":[{"body":"Looks good."}]}' > "$PR/comments.json"; : > "$PR/calls"
+prn() { (PATH="$PR/bin:$PATH" FX="$PR" JIRA_API_TOKEN=$stub_token "$T/post-release-note.sh" ABC-1 "$@" 2>&1); }
+says   "post-release-note: --check says what it would post" 'would comment: Post-release task: run the backfill' prn --note "run the backfill" --check
+! grep -q '^POST' "$PR/calls" && ok "post-release-note: --check posts nothing" || bad "post-release-note: --check posted"
+says   "post-release-note: posts a marked comment" 'commented: Post-release task: run the backfill' prn --note "run the backfill"
+[ "$(jq '.comments | length' "$PR/comments.json")" = 2 ] && ok "post-release-note: one comment added" || bad "post-release-note: comments — $(jq -c . "$PR/comments.json")"
+says   "post-release-note: the same task again is a no-op" 'already has this post-release task' prn --note "run  the backfill"
+[ "$(grep -c '^POST' "$PR/calls")" = 1 ] && ok "post-release-note: no duplicate comment" || bad "post-release-note: posted $(grep -c '^POST' "$PR/calls") times"
+rm -f "${PR:?}"/bin/* "${PR:?}"/{calls,comments.json}; rmdir "${PR:?}/bin" "${PR:?}"
 
 echo "dependabot-triage skill"
 # Claude Code substitutes positional placeholders anywhere in a skill's text, so a shell or awk

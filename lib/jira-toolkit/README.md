@@ -26,6 +26,7 @@ done-transition.sh     REST transition to Done with resolution + release note as
 release-note.sh        write / verify the release-note field (populate-when-empty; --force)
 testing-notes.sh       write the testing-notes field (populate-when-empty; --force)
 feature-flags.sh       write / verify the feature-flags labels field
+post-release-note.sh   comment a post-release task on the ticket (marked, never duplicated, never a sub-task)
 sprint-add.sh          add a ticket to the active sprint
 request-review.sh      draft → ready + request the reviewer team; on a reviewed PR, re-request its reviewers
 merge.sh               guarded PR merge: approved, approval current, CI green, not frozen, no veto label
@@ -61,6 +62,7 @@ are always found next to the real files. The `jira` CLI (ankitpokhrel/jira-cli),
 | `JIRA_TRANSITION_QA_ID`, `JIRA_TRANSITION_DONE_ID`, `JIRA_DONE_RESOLUTION` | qa, done | Transition ids for the two moves the CLI cannot drive by name. Find them with `GET /rest/api/3/issue/<KEY>/transitions`. The QA id is optional: empty means match by target status, and a configured id the issue does not offer is reported with the live id. |
 | `JIRA_FIELD_RELEASE_NOTE`, `JIRA_FIELD_TESTING_NOTES`, `JIRA_FIELD_FEATURE_FLAGS` | field writers, qa, done | Custom field ids. `GET /rest/api/3/field` lists them. The first two are rich text (written as ADF), the third is a labels field. |
 | `JIRA_FIELD_STORY_POINTS` | qa | The story points field id. Read only: qa-transition refuses while it is empty, and no wrapper writes it. |
+| `JIRA_POST_RELEASE_MARKER` | post-release-note | Optional. The text a post-release comment starts with, and the key for skipping a duplicate. Default `Post-release task:`. |
 | `JIRA_ASSIGNEE_DEFAULT`, `JIRA_ASSIGNEE_DEFAULT_ID` | assign | Who `assign.sh` claims for; the accountId makes the already-assigned check exact. |
 | `GH_REVIEW_TEAM` | request-review | Default reviewer team, `org/team`. |
 | `GH_REVIEW_BOTS` | request-review | Space-separated logins never re-requested for review (`*[bot]` logins always skipped). |
