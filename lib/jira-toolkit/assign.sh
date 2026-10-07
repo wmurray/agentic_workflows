@@ -6,8 +6,9 @@
 #
 #   assign.sh <KEY> [--to <email|accountId>] [--lane <lane>] [--check]
 #     --to     assignee to claim for (default: $JIRA_ASSIGNEE_DEFAULT).
-#     --lane   the board lane; a GUARD that refuses the lanes where a QA person or product
-#              owner is the legitimate assignee: qa / product-review / done (exit 4).
+#     --lane   the board lane; a GUARD (exit 4) that refuses the lanes where a QA person or
+#              product owner is the legitimate assignee (qa / product-review / done), and
+#              refined, where the ticket is not pulled in yet and so is not ours to claim.
 #     --check  read-only: print current assignee + what would happen, change nothing.
 #   Behavior: already the target → no-op (0) · unassigned → assign (0) · assigned to someone
 #   else → REFUSE (5) so the caller flags it for a human.
@@ -31,6 +32,9 @@ done
 case "$lane" in
   qa|product-review|done)
     echo "assign: lane '$lane' — QA/product owns the assignee here; refusing (use a human flag if truly needed)." >&2
+    exit 4 ;;
+  refined)
+    echo "assign: lane 'refined' — not pulled in yet, so not ours to claim; refusing. It is claimed once planning starts (plan-review onward)." >&2
     exit 4 ;;
 esac
 

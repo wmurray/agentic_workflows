@@ -42,6 +42,7 @@ expect "dependabot-merge: usage"   2 "$T/dependabot-merge.sh"
 expect "dependabot-merge: bad pr"  2 "$T/dependabot-merge.sh" . abc
 expect "dependabot-merge: bad sha" 2 "$T/dependabot-merge.sh" . 7@not-a-sha
 expect "assign: lane guard"        4 "$T/assign.sh" ABC-1 --lane qa
+expect "assign: refined refused"    4 "$T/assign.sh" ABC-1 --lane refined
 
 echo "dependabot-merge against a stub gh (no network)"
 # The stub serves canned JSON from $FX and logs every call to $FX/calls. Without --paginate the
@@ -174,13 +175,19 @@ case "$1 $2" in
 esac
 STUB
 chmod +x "$JA/bin/jira"
-ja() { : > "$JA/calls"; (PATH="$JA/bin:$PATH" FX="$JA" "$T/assign.sh" ABC-1 >/dev/null 2>&1); }
+ja() { : > "$JA/calls"; (PATH="$JA/bin:$PATH" FX="$JA" "$T/assign.sh" ABC-1 "$@" >/dev/null 2>&1); }
 JIRA_PROJECT=ABC ja
 if grep -qx 'issue assign -p ABC ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: exported JIRA_PROJECT is passed as -p"
 else bad "assign: with JIRA_PROJECT — $(tr '\n' ';' < "$JA/calls")"; fi
 (unset JIRA_PROJECT; ja)
 if grep -qx 'issue assign ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: no -p when JIRA_PROJECT is unset"
 else bad "assign: without JIRA_PROJECT — $(tr '\n' ';' < "$JA/calls")"; fi
+(unset JIRA_PROJECT; ja --lane refined)
+[ -s "$JA/calls" ] && bad "assign: refined still called jira — $(tr '\n' ';' < "$JA/calls")" \
+  || ok "assign: an unassigned refined ticket is left alone (no jira call)"
+(unset JIRA_PROJECT; ja --lane plan-review)
+if grep -qx 'issue assign ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: an unassigned plan-review ticket is still claimed"
+else bad "assign: plan-review — $(tr '\n' ';' < "$JA/calls")"; fi
 rm -f "${JA:?}/bin/jira" "${JA:?}/calls"; rmdir "${JA:?}/bin" "${JA:?}"
 
 echo "jira-status against a stub jira + curl (no network)"

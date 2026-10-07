@@ -30,7 +30,7 @@ alone.
 | Role | What it does | Referenced in |
 |---|---|---|
 | **status-sync wrapper** | move a ticket's tracker status to match a board lane; refuses `qa`/`done` (exit 4) | reconcile, Prep-write 4 |
-| **assign wrapper** | claim an UNASSIGNED our-turn ticket for the operator; refuses `qa`/`product-review`/`done` (exit 4); colleague-held → exit 5 | reconcile |
+| **assign wrapper** | claim an UNASSIGNED our-turn ticket for the operator; refuses `refined` and `qa`/`product-review`/`done` (exit 4); colleague-held → exit 5 | reconcile |
 | **qa-transition wrapper** | the field-bearing `qa` transition — **MANUAL, never yours** | reconcile (flag only) |
 | **done-transition wrapper** | the field-bearing `done` transition — **MANUAL, never yours** | reconcile (flag only) |
 | **ticket-detail command** | the raw CLI command a WORKER brief gets as `{TICKET_DETAIL_CMD}`; the engine itself reads detail through `tracker detail_of <KEY>` | Prep-write 1, planner template |
@@ -144,8 +144,10 @@ Plus the earned OUTWARD writes:
    Reflecting an already-human-decided board state, not originating one; excludes `qa`/`done` (wrapper
    refuses → FLAG). Detailed in the reconcile step.
 7. **Assignee-fix → claim an UNASSIGNED ticket for the operator** — when a board ticket in an
-   our-turn lane is UNASSIGNED in the tracker, run the overlay's **assign wrapper** `<KEY> --lane <lane>` (BARE)
-   to claim it. Excludes `qa`/`product-review`/`done` (wrapper refuses → FLAG); a **colleague**-held
+   our-turn lane (`plan-review` → `alpha-verify`) is UNASSIGNED in the tracker, run the overlay's **assign
+   wrapper** `<KEY> --lane <lane>` (BARE) to claim it. **Not `refined`:** an unassigned or colleague-held
+   `refined` ticket is not pulled in yet, so leave it alone (no assign, no drift line; it stays parked and
+   is never proposed). Excludes `qa`/`product-review`/`done` (wrapper refuses → FLAG); a **colleague**-held
    ticket → wrapper exits 5 → FLAG (never reassign away from a person). Reflects the board's ownership.
 
 And the flag-gated code-writing grant:
@@ -385,9 +387,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - **Never touch a `blocked`/held ticket's status.**
      - Record each as an APPLIED `drift[]` line: `"ABC-N the tracker <old>→<new> (synced to board lane)"`.
    - **OUTWARD — assignee-fix (UNASSIGNED-only):** an **unassigned** ticket in an
-     our-turn lane → **run the overlay's **assign wrapper** `<KEY> --lane <lane>` (BARE — no pipe/compound,
+     our-turn lane from `plan-review` on (never `refined`: skip it, no assign and no drift line) → **run the overlay's **assign wrapper** `<KEY> --lane <lane>` (BARE — no pipe/compound,
      or the allow-prefix is missed)**. The wrapper claims it for the operator ONLY if currently unassigned; its
-     `--lane` guard refuses `qa`/`product-review`/`done` (exit 4 → leave it, QA/product legitimately owns
+     `--lane` guard refuses `refined` and `qa`/`product-review`/`done` (exit 4 → leave it, QA/product legitimately owns
      the assignee there). A ticket assigned to a **colleague** → the wrapper exits 5 → **FLAG only**
      (`"would reassign ABC-N off <name> (manual)"`); auto-claim NEVER pulls a ticket off a person. Record an
      APPLIED `drift[]` line `"ABC-N assignee ∅→the operator (claimed)"` (or the flagged line for the colleague case).
@@ -1003,7 +1005,7 @@ marker only), and the **`note`/`hold` inbox drain** (apply the annotation + remo
 the ONLY unconditional inbox write you may make) — PLUS **two earned outward writes**: **tracker status
 SYNC** (the **status-sync wrapper** `<KEY> <lane>`, mirroring a board lane onto the tracker; excludes `qa`/`done`) and
 **assignee-fix** (`assign.sh <KEY> --lane <lane>` — claims an **UNASSIGNED** our-turn ticket for the operator;
-excludes `qa`/`product-review`/`done`; a **colleague**-held ticket → FLAG, never reassign) — and, **ONLY
+excludes `refined` and `qa`/`product-review`/`done`; a **colleague**-held ticket → FLAG, never reassign) — and, **ONLY
 while `CODER_SPAWN_LIVE` is armed**, the **coder-spawn** path (Prep-write 4: drain `approve` → coder →
 bounded review → draft PR, parking at Gate 2, plus draining the `approve` line). That is the whole
 grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
@@ -1089,7 +1091,7 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
   notes vault; the cycle archive on a true rollover (`mc-archive.sh --commit`, lock-wrapped); the
   `note` / `hold` / `unblock` inbox drain. Every write is lock-wrapped and yields to a live manual session.
 - **Outward, unconditional:** tracker status-sync (the status-sync wrapper; excludes `qa`/`done`);
-  assignee-fix for an UNASSIGNED ticket in an our-turn lane (the assign wrapper; a colleague-held ticket
+  assignee-fix for an UNASSIGNED ticket in an our-turn lane from `plan-review` on (the assign wrapper; a colleague-held ticket
   is a flag).
 - **Outward, on the operator's queued word:** `mc ready` (the request-review wrapper: Gate 2 on a draft
   in `awaiting-review`, or a re-review request on a non-draft in `kickback`); `mc merge`, drained
