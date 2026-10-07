@@ -184,7 +184,7 @@ prompts (post/push/merge) are escalated, not answered — see DESIGN.md.
 | Var | Meaning | Consumer |
 |---|---|---|
 | `MC_RUNNER_<ROLE>[_<CYCLE>]` | impl per role, optionally per cycle (`PLANNER_SPRINT`, `PLANNER_BACKGROUND`, `CODER`, `REVIEWER`, `INVESTIGATOR`) | `runner_for` |
-| `MC_HERDR_WS_SPRINT` / `MC_HERDR_WS_BACKGROUND` | herdr workspace id per cycle | herdr.sh spawn |
+| `MC_HERDR_WS_SPRINT` / `MC_HERDR_WS_BACKGROUND` | herdr workspace label (preferred) or id per cycle; resolved to the live id at spawn, `herdr.sh workspace <value>` checks it | herdr.sh spawn, list |
 | `MC_HERDR_SETTLE_S` | debounce window for `wait` (default 20) | herdr.sh wait |
 | `MC_MODEL_<ROLE>` | model flag per role (e.g. `opus`) | herdr.sh spawn |
 | `MC_RUNNER_DIR` | where result files and in-process spawn markers live; relative handle paths resolve here | inprocess.sh, the driver |

@@ -84,7 +84,7 @@ herdr tab close <tab_id>                             # teardown; not blocked by 
 - Agent names must be lowercase.
 - Handle = `<agent-name>|<tab_id>|<pane_id>`.
 - Workspace choice: `cycle:sprint` → sprint workspace, `cycle:background` → out-of-cycle
-  workspace. Workspace ids come from the profile (`MC_HERDR_WS_SPRINT`, `MC_HERDR_WS_BACKGROUND`).
+  workspace. Workspaces come from the profile (`MC_HERDR_WS_SPRINT`, `MC_HERDR_WS_BACKGROUND`) as a label or an id, resolved to the live id at spawn; herdr renumbers workspaces as they close and reopen, so a label is the stable choice.
 - `herdr agent prompt` carries no reply address. With the result-file return this no
   longer matters; do not rely on the worker `SendMessage`-ing anyone.
 - herdr has no compact/clear verb. Context is managed by keeping one author session per

@@ -137,6 +137,19 @@ if command -v herdr >/dev/null 2>&1; then
 else
   dim "  SKIP  herdr CLI not installed — status/spawn assertions skipped (capabilities still checked)"
 fi
+# Workspace lookup by label runs against a stub herdr, so it is checked on every machine.
+# herdr renumbers workspaces as they close and reopen; a label in the profile survives that.
+HSTUB="$WORK/herdr-stub"; mkdir -p "$HSTUB"
+cat > "$HSTUB/herdr" <<'STUB'
+#!/usr/bin/env bash
+[ "$1 $2" = "workspace list" ] && printf '%s' '{"result":{"workspaces":[{"workspace_id":"ws7","label":"sprint"},{"workspace_id":"ws9","label":"out of cycle"}]}}'
+exit 0
+STUB
+chmod +x "$HSTUB/herdr"
+says "herdr workspace resolves a label"       yes '^ws7$' env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace sprint
+says "herdr workspace label ignores case"     yes '^ws9$' env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace "Out Of Cycle"
+says "herdr workspace keeps a live id"        yes '^ws9$' env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace ws9
+run  "herdr workspace refuses an unknown one" 1 env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace w11
 
 # The fixture adapters' DEFAULT data dir, with MC_FIXTURES unset. Worth pinning: the
 # default is dead code in every normal run (the profile always sets MC_FIXTURES), so a

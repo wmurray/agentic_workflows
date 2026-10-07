@@ -8,13 +8,17 @@
 #   harvest <handle>           → result-file JSON on stdout (empty if absent)
 #   teardown <handle>          → closes the tab
 #   list                       → "<name>\t<status>\t<tab_id>" per agent in the configured workspaces
+#   workspace <id-or-label>    → the live workspace id it resolves to (exit 1 if none)
 #   capabilities               → "reuse visible answer"
 #
 # Handle = "<agent-name>|<tab_id>|<pane_id>|<result-file>". Opaque to callers.
 #
 # Env (profile-set, all optional except the workspace for spawn):
-#   MC_HERDR_WS_SPRINT / MC_HERDR_WS_BACKGROUND  workspace ids; MC_CYCLE picks which
+#   MC_HERDR_WS_SPRINT / MC_HERDR_WS_BACKGROUND  workspace label or id; MC_CYCLE picks which
 #   MC_HERDR_WORKSPACE                           explicit override of the above
+#     herdr renumbers workspaces as they are closed and reopened, so prefer the label
+#     ("sprint"). A value matching a live workspace id is used as is; otherwise it must
+#     match exactly one workspace label, ignoring case.
 #   MC_HERDR_SETTLE_S                            debounce after wait returns (default 20)
 #   MC_HERDR_START_TIMEOUT_MS                    agent start readiness (default 60000)
 #   MC_MODEL_<ROLE>                              model per role (e.g. MC_MODEL_CODER=opus)
@@ -43,6 +47,26 @@ jget() { # jget '<python expr on d>' <<< json ; prints "" on any failure
 try:
     d=json.load(sys.stdin); print(eval(sys.argv[1]))
 except Exception: print("")' "$1"
+}
+
+# resolve_ws <id-or-label>: prints the live workspace id, or nothing when no workspace
+# matches or the label is ambiguous. ws_labels prints the live labels for error messages.
+resolve_ws() {
+  [ -n "${1:-}" ] || return 0
+  hj workspace list | python3 -c 'import json,sys
+v=sys.argv[1].strip()
+try:
+    wss=json.load(sys.stdin)["result"]["workspaces"]
+except Exception: sys.exit(0)
+if any(w.get("workspace_id")==v for w in wss): print(v); sys.exit(0)
+hits=[w["workspace_id"] for w in wss if (w.get("label") or "").strip().lower()==v.lower()]
+if len(hits)==1: print(hits[0])' "$1"
+}
+ws_labels() {
+  hj workspace list | python3 -c 'import json,sys
+try:
+    print(", ".join("%s (%s)" % (w.get("label",""), w.get("workspace_id","")) for w in json.load(sys.stdin)["result"]["workspaces"]))
+except Exception: print("none")'
 }
 
 agent_status() { # raw herdr status or "gone"
@@ -99,6 +123,9 @@ op_spawn() {
     esac
   fi
   [ -n "$ws" ] || die "spawn: no herdr workspace configured for cycle '${MC_CYCLE:-sprint}' (set MC_HERDR_WS_SPRINT / MC_HERDR_WS_BACKGROUND)"
+  local ws_id; ws_id="$(resolve_ws "$ws")"
+  [ -n "$ws_id" ] || die "spawn: no single herdr workspace matches '$ws' by id or label. Live: $(ws_labels)"
+  ws="$ws_id"
 
   # Model: --model wins, else MC_MODEL_<ROLE>, else the session default.
   if [ -z "$model" ]; then
@@ -227,8 +254,10 @@ op_peek() {
 # per line. mc-orphans subtracts the board's runner handles from this to find sessions
 # nothing is tracking. Read-only.
 op_list() {
-  local wss out
-  wss="$(printf '%s\n' ${MC_HERDR_WORKSPACE:-} ${MC_HERDR_WS_SPRINT:-} ${MC_HERDR_WS_BACKGROUND:-} | awk 'NF && !seen[$0]++' | paste -sd, -)"
+  local wss out v
+  # Each value may be a label with spaces, so resolve them one at a time, never word-split.
+  wss="$(for v in "${MC_HERDR_WORKSPACE:-}" "${MC_HERDR_WS_SPRINT:-}" "${MC_HERDR_WS_BACKGROUND:-}"; do
+    resolve_ws "$v"; echo; done | awk 'NF && !seen[$0]++' | paste -sd, -)"
   [ -n "$wss" ] || return 0
   out="$(hj agent list)"
   python3 -c 'import json,sys
@@ -243,6 +272,7 @@ except Exception: pass' "$wss" <<<"$out"
 case "$op" in
   spawn)        op_spawn "$@" ;;
   list)         op_list "$@" ;;
+  workspace)    v="$(resolve_ws "${1:?id or label}")"; [ -n "$v" ] || die "no single herdr workspace matches '$1'. Live: $(ws_labels)"; echo "$v" ;;
   status)       op_status "$@" ;;
   wait)         op_wait "$@" ;;
   harvest)      op_harvest "$@" ;;
