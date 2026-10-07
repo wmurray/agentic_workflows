@@ -116,6 +116,7 @@ orchestrator (loop or manual session) substitutes the values below when it build
 | `{VAULT_PROJECTS_DIR}` | `<vault>/Projects` |
 | `{CATCH_ALL_GROUP}` | `Standalone Tickets` (the catch-all folder below) |
 | `{STYLE_GUIDE}` | path to your prose style guide, or `(none)` |
+| `{SURFACES}` | the Surfaces section below, pasted in (the field-check worker uses it to name the app in QA cases) |
 | `{CONTEXT_DOCS}` | what the pre-plan critic may resolve ambiguity from: your domain glossary, project context docs, ADR folders (paths, one per line) |
 
 ### `{TEST_CONVENTIONS}` per repo (optional)
