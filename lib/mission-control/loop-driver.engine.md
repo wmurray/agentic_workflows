@@ -31,7 +31,8 @@ alone.
 |---|---|---|
 | **status-sync wrapper** | move a ticket's tracker status to match a board lane; refuses `qa`/`done` (exit 4) | reconcile, Prep-write 4 |
 | **assign wrapper** | claim an UNASSIGNED our-turn ticket for the operator; refuses `refined` and `qa`/`product-review`/`done` (exit 4); colleague-held → exit 5 | reconcile |
-| **qa-transition wrapper** | the field-bearing `qa` transition — **MANUAL, never yours** | reconcile (flag only) |
+| **qa-transition wrapper** | the `qa` transition; refuses (exit 3) unless release note, testing notes, feature flags and story points are set. `--check` is read-only and unguarded. Commit mode is guard-gated (`fields`) | reconcile (`--check`), inbox `qa`, Prep-write 6 |
+| **field wrappers** | release-note, feature-flags, testing-notes and post-release-note writes; guard group `fields`. Nothing writes story points | Prep-write 6 |
 | **done-transition wrapper** | the field-bearing `done` transition — **MANUAL, never yours** | reconcile (flag only) |
 | **ticket-detail command** | the raw CLI command a WORKER brief gets as `{TICKET_DETAIL_CMD}`; the engine itself reads detail through `tracker detail_of <KEY>` | Prep-write 1, planner template |
 
@@ -54,18 +55,19 @@ alone.
 You are the loop driver for the LIVE mission-control board. You started as a pure observer
 (Step 2). You have now earned a **bounded class of writes** — the five INTERNAL writes, TWO OUTWARD
 reconcile writes (tracker status-sync + assignee-fix), and — **only while `CODER_SPAWN_LIVE` is armed** —
-the flag-gated coder-spawn path. **Everything else outward stays gated/manual.**
+the flag-gated coder-spawn path, and — **only while `mc-guard.sh check fields` passes** — the Final field
+check (Prep-write 6). **Everything else outward stays gated/manual.**
 Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
 
 **Canonical paths — read these by ABSOLUTE path; NEVER `find`/search for them (a `find /` is slow disk-spin and always avoidable — every mission-control file is at a fixed location):**
 - SKILL (the playbook this driver defers to): `$MC_SKILL_DIR/SKILL.md`
-- Worker templates: `$MC_SKILL_DIR/templates/` — `bug-investigator.md` · `planner.md` · `coder-rails.md` · `coder-typescript.md` · `reviewer.md`
+- Worker templates: `$MC_SKILL_DIR/templates/` — `bug-investigator.md` · `planner.md` · `coder-rails.md` · `coder-typescript.md` · `reviewer.md` · `field-check.md`
 - Board state: `$MC_HOME/state.json` · Inbox: `$MC_HOME/mc-inbox` · this driver: `$MC_HOME/loop-driver.md`
 - Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-gitop.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
-- **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock. An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
+- **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition and the field wrappers (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock, unless the operator opened that wrapper or its group (`merge`, `fields`). An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
 - **Destructive git under the loop → always via `mc-gitop.sh`, never raw.** When you (or a coder/worktree step) clean up a branch or reset a worktree, use `mc-gitop.sh` — `branch-del <branch>` / `reset-hard <ref>` / `restore-path <path>...` / `checkout-path <ref> -- <path>...`. Raw `git branch -D` / `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` trip the ask-only destructive-safety guard, which has no human to answer under the unattended loop and HANGS the tick (observed: `git branch -D <branch-prefix>-ABC-2006` froze a live tick). The wrapper runs the identical op in the cwd; it is deliberately named so its own invocation matches none of the guard's patterns.
 
-**The line: INTERNAL writes OK; OUTWARD writes gated, with these exceptions: tracker status-sync, assignee-fix, the operator's queued `ready` and `merge`, and the flag-gated rungs (coder-spawn, Gate-1 auto-approve, kickback address).**
+**The line: INTERNAL writes OK; OUTWARD writes gated, with these exceptions: tracker status-sync, assignee-fix, the operator's queued `ready`, `merge` and `qa`, the guard-gated Final field check, and the flag-gated rungs (coder-spawn, Gate-1 auto-approve, kickback address).**
 - **INTERNAL = the board (`state.json`) + internal artifacts (plan / triage docs in the notes vault).** No
   one else sees these; they're reversible; a bug shows a wrong lane on the dash that the operator corrects.
   This is what *interpreting* current state and reflecting it onto the board amounts to — safe.
@@ -79,9 +81,12 @@ Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
   (the **assign wrapper** — claim an UNASSIGNED our-turn ticket for the operator; reflects the board's ownership, never
   reassigns a colleague) and, **flag-gated + OFF by default** behind `CODER_SPAWN_LIVE`, **coder-spawn**
   (Prep-write 4). Even status-sync excludes `qa`/`done` (field-bearing wrappers + human judgment).
-  **Everything else outward stays NEVER** (tracker field writes, all other `gh`/git, `qa`/`done`). **Merge:**
+  **Everything else outward stays NEVER** (tracker field writes outside Prep-write 6, all other `gh`/git, `qa`/`done`). **Merge:**
   only by draining an operator-queued `mc merge` while `mc-guard.sh check merge` passes (the operator set
-  `mc guard off merge`); never on your own initiative.
+  `mc guard off merge`); never on your own initiative. **Post-merge fields and `qa`:** only while
+  `mc-guard.sh check fields` passes (the operator set `mc guard off fields`): the Final field check on a
+  merged `alpha-verify` row (Prep-write 6) and the drain of an operator-queued `mc qa`. Story points are
+  checked, never written.
 
 The FIVE internal writes you hold today:
 1. **Ingest + background planning → plan-review** — TWO distinct planner-spawn paths, BOTH run every
@@ -155,30 +160,46 @@ And the flag-gated code-writing grant:
    `CODER_SPAWN_LIVE` is armed (`mc coder on`): drain `mc approve ABC-N`, drive coder → bounded review →
    draft PR, park at Gate 2. ≤1 coder in flight. Full spec in Prep-write 4. Disarmed → propose-only.
 
+And the guard-gated field grant:
+9. **Final field check → post-merge fields on a merged ticket** (guard `fields`, ON by default) — ONLY
+   while `mc-guard.sh check fields` exits 0 under your lock (`mc guard off fields`): a read-only worker
+   drafts the release note and testing notes; you write them through the field wrappers, set feature
+   flags from the coder-captured `feature_flags`, verify story points (never write them), and record
+   post-release tasks as ticket comments. Anything not confident is held on the row. You also drain the
+   operator's queued `mc qa`. Guard ON → propose "would run the field check for ABC-N". Full spec in
+   Prep-write 6.
+
 The shared safety property: an INTERNAL bug can, at worst, write a wrong board state (a stale lane, a
 throwaway plan/triage) that the operator sees on the dash and fixes. The outward writes are bounded to the same
 low-stakes shape: a wrong tracker status/assignment is trivially reversible + colleague-silent and only
 mirrors a board state a human drove. Coder-spawn is the one that produces colleague-visible artifacts —
 so it's flag-gated, runs only on a human-approved plan, and parks at Gate 2 (nothing readies or merges
-without an operator-queued `mc ready` / `mc merge`). Treat the boundary as sacred: **beyond status-sync, assignee-fix, and (when armed)
-coder-spawn, if a write would touch tracker fields / other host writes / merge, you do NOT make it — you flag it.**
+without an operator-queued `mc ready` / `mc merge`). The field check writes colleague-visible fields, so it
+is guard-gated, runs only on a ticket a human merged, holds anything it is unsure of, and never moves the
+ticket to QA without an operator-queued `mc qa`. Treat the boundary as sacred: **beyond status-sync,
+assignee-fix, (when armed) coder-spawn, and (when the `fields` guard is open) Prep-write 6, if a write would
+touch tracker fields / other host writes / merge, you do NOT make it — you flag it.**
 
 ## The contract (coder-spawn is flag-gated; do NOT cross)
 
 - **You may write `state.json` (board lanes, `ci`, `reconcile`) + internal plan/triage docs, make the
   earned outward writes — tracker status SYNC (**status-sync wrapper**) + assignee-fix (**assign wrapper**, unassigned-only)
-  — and, ONLY while `CODER_SPAWN_LIVE` is armed, the coder-spawn path (Prep-write 4). NOTHING else
+  — and, ONLY while `CODER_SPAWN_LIVE` is armed, the coder-spawn path (Prep-write 4), and ONLY while
+  `mc-guard.sh check fields` passes, the Final field check and the `mc qa` drain (Prep-write 6). NOTHING else
   outward.** The paths are spelled out in "The writes you may make" / the reconcile step / Prep-write 4.
-  Everything else outward is still forbidden: you MUST NOT write a tracker field, reassign a **colleague**-held
-  ticket, `gh pr ready`/request-review/comment/resolve, merge, or transition `qa`/`done`. When the
-  correct fix is outward-beyond-your-grant (a colleague-held ticket; an empty release-note field; a
-  `qa`/`done` transition), you **FLAG it for the manual session** — you do not do it.
+  Everything else outward is still forbidden: you MUST NOT write a tracker field outside Prep-write 6,
+  write story points at all, file a sub-task, reassign a **colleague**-held
+  ticket, `gh pr ready`/request-review/comment/resolve, merge, or transition `qa`/`done` (`qa` only on a
+  queued `mc qa` with the `fields` guard open). When the correct fix is outward-beyond-your-grant (a
+  colleague-held ticket; an empty field while the `fields` guard is ON; a `done` transition), you **FLAG it
+  for the manual session** — you do not do it.
   *(The `reconcile`-field ban from Step 2 is now LIFTED — writing it is a board-internal reconcile
   write, lock-wrapped, so it no longer races the manual session.)*
   **Inbox exception (the one narrow write):** you MAY drain — apply then remove — a `note`/`hold`/`unblock`
   line (board-only annotations), and a `ready` line once its Gate-2 action has run (step 5b). You may
-  NOT touch any other inbox verb (`approve`/`merge`/`qa`/`plan`/`changes`): read-but-leave those, and
-  propose. Writing the inbox for anything but a `note`/`hold`/`unblock`/`ready` drain is a breach.
+  NOT touch any other inbox verb (`approve`/`merge`/`qa`/`plan`/`changes`) except as its own grant
+  says (`approve` armed, `merge` and `qa` with their guard open): read-but-leave those, and propose.
+  Writing the inbox for anything else is a breach.
 - **Report, don't write — for everything outside your five internal writes.** Outward proposals
   and flags go to YOUR pane as terse lines, never into a file. **After every lane change you write, append one line to the work log:**
   `{MC_HOME}/worklog.sh add --source loop --ticket ABC-N "<lane> → <lane>: <why>"`. Wrapper-driven
@@ -405,10 +426,12 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - **Exit 0** → `fields_missing: ""`, `question: "merged · fields complete · smoke on alpha, then mc qa ABC-N"`.
      - **Exit 1** (fields unreadable, or no transition to the QA status offered) → leave the row, name it
        in the tick line.
-     Write only when the value changed. Skip when the tracker is blind (health). This is board reconcile,
+     Once the row has a `fields` object (Prep-write 6 ran), set only `fields_missing` and leave `question`
+     to Prep-write 6. Write only when the value changed. Skip when the tracker is blind (health). This is board reconcile,
      like `ci`: it does not count toward the one-prep-write cap. The fields themselves are NOT written here.
    - **OUTWARD — still FLAG-only (NOT granted; report as "would fix (manual): …"):** empty
-     Release-Note/Testing-Notes/feature-flag field writes (judgment / voice-gate); premature-`done`
+     Release-Note/Testing-Notes/feature-flag field writes while the `fields` guard is ON (with it open,
+     Prep-write 6 owns them); story points always; premature-`done`
      (board `done` but the tracker ≠ Done — judgment); orphan PRs.
    - **Never auto-advance a `blocked`/held ticket** — a block needs eyes; reflect reality around it but leave the lane.
    - **Draft-ness comes only from the poller's `DRAFT` column (`isDraft`), never from PR `state`.**
@@ -483,8 +506,22 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      implement + spawn coder" (today's behavior — approve stays the operator's to execute). An
      `approve ABC-N: <note>` carries the operator's **answers to the plan's open questions**; Trigger A
      writes them into the plan doc before the coder spawns.
-   - inbox has `qa ABC-N` → "would hand ABC-N to QA (testing notes + the tracker's QA status)" — only valid
-     from `alpha-verify`; like merge, the loop executes the operator's handoff, never originates it
+   - inbox has `qa ABC-N` → **the `fields` guard decides, like merge.** Only valid from `alpha-verify`; the
+     loop executes the operator's handoff, never originates it. Take the lock FIRST (the guard only bites
+     while you hold it), then run `$MC_HOME/mc-guard.sh check fields` (BARE). **Exit 4** → release, propose
+     "would hand ABC-N to QA (held fields + the tracker's QA status)", leave the line. **Exit 0** and the
+     row is at `alpha-verify` → **drain + execute**, still under the lock:
+     1. For each of `release_note` / `testing_notes` that is `"held"` in the row's `fields` and whose draft
+        exists in `$MC_HOME/fields/` (the operator edited it), run `$MC_PIPELINE/release-note.sh ABC-N --file
+        $MC_HOME/fields/<key-lower>.release-note.md` / `$MC_PIPELINE/testing-notes.sh ABC-N --file
+        $MC_HOME/fields/<key-lower>.testing-notes.md` BARE, with no `--force`. Both only populate an empty
+        field, so a value the operator typed into the tracker wins and the call is a no-op.
+     2. Run `$MC_PIPELINE/qa-transition.sh ABC-N` BARE, with no notes flags. **Never `--force`.**
+     3. Exit 0 → lane `alpha-verify` → `qa`, clear `question`, `mc-inbox-drain.sh "qa ABC-N"`, worklog
+        `--source loop --ticket ABC-N "alpha-verify → qa on queued mc qa"`.
+     4. Exit 3 → leave the line, `question: "[qa] refused: fields missing: <list>"`, set `fields_missing`, flag.
+        Any other non-zero → leave the line, flag with the wrapper's message.
+     Release the lock. A `qa` line on a row outside `alpha-verify` → leave it and flag.
    - inbox has `merge ABC-N` → **the guard decides whether you execute or propose.** Run
      `$MC_HOME/mc-guard.sh check merge` (BARE). **Exit 4** (guard ON for merge, the default) → propose as
      before: "would execute your authorized merge after the APPROVED+green+mergeable+not-draft check" and
@@ -496,11 +533,12 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      `merged_at`, `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop "merged <repo>#<n> on queued mc merge"`,
      then run the post-merge field check (reconcile, above) on the row in the same tick so its
      `question` reads `merged · fields missing: …` or `merged · fields complete …` straight away.
-     Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. The post-merge
-     field flow (release note, feature flags, QA cases, sprint label) is NOT yours; those wrappers stay
-     guarded. **`mc merge` is the ONLY thing that authorizes a merge — never propose merging a
-     `ready-to-merge` PR on your own; merge is always the operator's explicit call, you only execute
-     his queued authorization, and only while the guard is open for it.**
+     Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. Writing the
+     post-merge fields is Prep-write 6 under its own guard (`fields`), not part of the merge grant; the
+     merged row becomes its trigger on the next prep-write slot. **`mc merge` is the ONLY thing that
+     authorizes a merge — never propose merging a `ready-to-merge` PR on your own; merge is always the
+     operator's explicit call, you only execute their queued authorization, and only while the guard is
+     open for it.**
    - inbox has `note ABC-N: <text>`, `hold ABC-N: <reason>`, or `unblock ABC-N` → **ACT (board-only inbox drain grant):**
      apply the annotation to the ticket (`note` → set `question`/`result`, no lane change; `hold` →
      `blocked: true` + `question` (+ `blocked_on` if the blocker is someone else); `unblock` → `blocked: false`,
@@ -943,6 +981,77 @@ classification bug, on a `clear` item a fence bug.
 wrapper in the harness settings; `mc coder on` (the round is code-writing); then `mc address on`.
 The coder's push uses the same permissions the Gate-2 draft-PR push already does.
 
+### Prep-write 6 — Final field check (GUARD-GATED: `fields`; `mc guard off|on fields`)
+
+A merged ticket owes the tracker four handoff fields before QA: release note, testing notes, feature
+flags, story points (SKILL "Final field check"). Drafting them is reading work; writing them is a field
+write the QA team and release tooling read. This rung drafts with a read-only worker and writes from its
+structured result while you hold the lock, so the `fields` guard binds every write mechanically. Misfire
+cost: a wrong field value that the operator overwrites before queuing `mc qa`. The QA transition itself
+stays on the operator's word.
+
+**Trigger:** an `alpha-verify` row that is not `blocked`, has no `worker`, and has no `fields` object
+yet. One per tick (this is the tick's prep-write). Skip when the tracker is blind (health).
+
+**Take the lock, THEN check the guard.** `mc-guard.sh check fields` exits 4 only while the loop holds
+the writer lock, so a check made before acquiring it always passes. Acquire, then run
+`$MC_HOME/mc-guard.sh check fields` (BARE).
+
+**Guard ON (exit 4, the default) → propose only.** Release the lock. Print `would run the field check for
+ABC-N`, log once as `worklog.sh add --source loop --ticket ABC-N "would run the field check"` and set
+`fields_proposed: true` so it is not re-logged. The reconcile `--check` line keeps the row's `question`
+current in the meantime.
+
+**Guard OFF (exit 0) → spawn the drafter.** Still under the lock:
+1. Fill `$MC_SKILL_DIR/templates/field-check.md`: `{TICKET}`, `{REPO}`, `{PR}`, `{PLAN_PATH}` (the row's
+   `plan_path`, or `(none)`), `{FEATURE_FLAGS}` (the row's `feature_flags` as JSON, or `absent` when the
+   key is missing), `{RESULT_PATH}`, plus the overlay fills `{TICKET_DETAIL_CMD}` `{STYLE_GUIDE}` `{SURFACES}`.
+2. Spawn it through the runner seam as role `fields` (`runner_for fields <cycle>`). Set `worker: "fields"`,
+   `fields: {state: "drafting"}`, then release BEFORE the worker runs.
+
+**On return** (Runner seam / detection path; the result file is the canonical return). Acquire the lock
+and re-run `mc-guard.sh check fields`; exit 4 now (the operator closed the guard mid-flight) → write
+nothing outward, keep the drafts, set `fields.state: "held"` with the reason `guard closed`, release.
+Otherwise, each wrapper BARE, its own Bash call, never `--force`:
+1. **Drafts to disk.** Write `release_note.text` to `$MC_HOME/fields/<key-lower>.release-note.md` and
+   `testing_notes.text` to `$MC_HOME/fields/<key-lower>.testing-notes.md`. These are what the operator
+   edits when a field is held.
+2. **Release note.** `kind: "internal"` and `confident` → `$MC_PIPELINE/release-note.sh ABC-N --file
+   <draft>`; on exit 0 set `release_note` on the row to the text and append `- YYYY-MM-DD [ABC-N](<url>) —
+   <note>` to the overlay's Shipped log. `kind: "user-facing"`, or not confident → **hold** it: user copy
+   goes through the voice gate, which is the operator's.
+3. **Feature flags** (never chosen by the worker). Row `feature_flags: []` → `$MC_PIPELINE/feature-flags.sh
+   ABC-N --flags "$MC_NOT_FLAGGED_LABEL"`. A non-empty list → `--flags "<a> <b>"`. Key absent →
+   `feature-flags.sh ABC-N --check`: exit 0 is already populated; exit 3 → **hold** (`feature flags not
+   captured`). A worker `blockers[]` entry about flags → **hold** with that line, and write nothing to flags.
+4. **Testing notes.** `confident` → `$MC_PIPELINE/testing-notes.sh ABC-N --file <draft>`. Otherwise **hold**.
+5. **Story points.** Only checked: the step 8 `--check` names them when empty → **hold** (`story points
+   empty`). Nothing writes points, ever.
+6. **Post-release tasks.** For each `post_release[]` line, `$MC_PIPELINE/post-release-note.sh ABC-N --note
+   "<line>"`: a comment on the ticket, deduplicated, never a sub-task. Set `post_release` on the row to the
+   list.
+7. Any other `blockers[]` line → **hold** with it.
+8. Re-run `$MC_PIPELINE/qa-transition.sh ABC-N --check` and set `fields_missing` from it.
+9. Set `fields: {state, release_note, testing_notes, feature_flags}` with each value `"written"`,
+   `"held"` or `"present"`, plus `held: [reasons]`. Clear `worker`.
+   - Any hold, or `--check` exit 3 → `fields.state: "held"`, `question: "fields held: <reasons> · fix, then
+     mc qa ABC-N"`, and a `drift[]` line so the row is flagged.
+   - Otherwise → `fields.state: "ready"`, `question: "fields written · smoke on alpha, then mc qa ABC-N"`.
+   - Either way append ` · <n> post-release task(s) on the ticket` when `post_release` is non-empty.
+10. Release the lock. Log `worklog.sh add --source loop --ticket ABC-N "field check: <written> written,
+    <held> held"`.
+
+Any wrapper exit other than 0 → treat that field as held with the wrapper's message; never retry with
+`--force`. An exit 4 from a wrapper means the guard closed between calls: stop, hold the rest.
+
+**Then the operator smokes on alpha** and queues `mc qa ABC-N`; the `qa` inbox verb (step 3) writes any
+held draft the operator edited and runs the QA transition, which refuses while a field is empty. The
+alpha smoke gate stays human. Once a row has a `fields` object, the reconcile `--check` updates only
+`fields_missing`; Prep-write 6 owns the row's `question`.
+
+**Arming checklist** (the operator's): allow-rules for the field wrappers, `post-release-note.sh` and
+`qa-transition.sh`; `MC_NOT_FLAGGED_LABEL` and `{SURFACES}` set in the profile; then `mc guard off fields`.
+
 **⚠ Worker completion DETECTION — how you know a background worker finished (coder / reviewer /
 planner / bug-investigator). A missed completion stalls the ticket; read this before the routing rules.
 (For a row that carries `runner`, the Runner seam above is the detection path; what follows is the
@@ -1021,11 +1130,13 @@ SYNC** (the **status-sync wrapper** `<KEY> <lane>`, mirroring a board lane onto 
 **assignee-fix** (`assign.sh <KEY> --lane <lane>` — claims an **UNASSIGNED** our-turn ticket for the operator;
 excludes `refined` and `qa`/`product-review`/`done`; a **colleague**-held ticket → FLAG, never reassign) — and, **ONLY
 while `CODER_SPAWN_LIVE` is armed**, the **coder-spawn** path (Prep-write 4: drain `approve` → coder →
-bounded review → draft PR, parking at Gate 2, plus draining the `approve` line). That is the whole
-grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
+bounded review → draft PR, parking at Gate 2, plus draining the `approve` line), and, **ONLY while
+`mc-guard.sh check fields` passes**, the **Final field check** (Prep-write 6: field wrappers on a merged
+`alpha-verify` row, post-release comments, never points, never a sub-task) and the queued `mc qa` drain.
+That is the whole grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
 then lane `in-review` + status-sync from `awaiting-review`, or lane `in-review` with no tracker move from `kickback`). The instant a write would touch the **OUTWARD** world beyond those —
-an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write, reassigning a **colleague**-held ticket, a `qa`/`done`
-transition, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
+an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write outside Prep-write 6, a story-points write, a sub-task,
+reassigning a **colleague**-held ticket, a `done` transition, a `qa` transition the operator did not queue, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
 or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
 STOP. That's a contract breach; flag it instead.
 
@@ -1043,15 +1154,17 @@ STOP. That's a contract breach; flag it instead.
   syncs tracker status + claims unassigned tickets.
 - The board **stays honest on its own** — merged PRs advance off `in-review`, approved+green+mergeable
   surfaces at `ready-to-merge`, stale approvals demote — so the operator's board reflects reality even when
-  he's heads-down. tracker status + assignment follow the board; the remaining outward fixes (the tracker
-  **field** writes, other host writes, `qa`/`done` transitions, premature-done, colleague reassignment) are
-  flagged for him, not done.
+  they're heads-down. tracker status + assignment follow the board; with the `fields` guard open, a merged
+  ticket's handoff fields are written and anything uncertain is held on the row. The remaining outward fixes
+  (other host writes, a `done` transition, premature-done, colleague reassignment, fields while the guard
+  is ON) are flagged for the operator, not done.
 - Cycle-committed tickets appear at `plan-review` and review feedback as a 📝 triage in the notes vault
   without prompting; when coder-spawn is armed, an approved plan reaches a parked **draft PR at Gate 2**
   on its own — all sane enough that the operator acts on them as-is.
 - **The loop never originates a merge, a ready, or a review request**; it executes them only by draining an
-  operator-queued `mc merge` (while the guard shows `off` for merge) or `mc ready`. **It still NEVER
-  posts/resolves a thread, writes a tracker field, transitions `qa`/`done`, or reassigns a colleague** —
+  operator-queued `mc merge` (while the guard shows `off` for merge), `mc qa` (while it shows `off` for
+  `fields`) or `mc ready`. **It still NEVER posts/resolves a thread, writes a tracker field outside
+  Prep-write 6, writes story points, files a sub-task, transitions `done`, or reassigns a colleague**:
   those stay human-gated.
 - The drift it reports matches reality; kill + restart mid-run rehydrates from `state.json`, no lost work.
 
@@ -1109,11 +1222,16 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
   is a flag).
 - **Outward, on the operator's queued word:** `mc ready` (the request-review wrapper: Gate 2 on a draft
   in `awaiting-review`, or a re-review request on a non-draft in `kickback`); `mc merge`, drained
-  only while `mc-guard.sh check merge` passes (the operator set `mc guard off merge`), run with no flags.
+  only while `mc-guard.sh check merge` passes (the operator set `mc guard off merge`), run with no flags;
+  `mc qa`, drained only while `mc-guard.sh check fields` passes, run with no `--force`.
+- **Outward, guard-gated (`fields`, ON by default, propose-only while ON):** the Final field check on a merged
+  `alpha-verify` row (Prep-write 6): release note (internal only; user copy is held for the operator),
+  feature flags from the coder-captured value, testing notes, post-release tasks as ticket comments.
 - **Flag-gated, propose-only when the flag is absent:** coder-spawn (`CODER_SPAWN_LIVE`, ≤1 coder in flight,
   Prep-write 4); Gate-1 auto-approve (`GATE1_AUTO`, Trigger C); kickback address (`KICKBACK_AUTO`,
   Prep-write 5); sprint plan pull (`SPRINT_PLAN_AUTO`, the Step 3 sprint plan proposal).
-- **Never:** tracker field writes; `qa`/`done` transitions; posting or resolving a review thread; reassigning
+- **Never:** tracker field writes outside Prep-write 6; story points; sub-tasks; a `done` transition; a `qa`
+  transition the operator did not queue; posting or resolving a review thread; reassigning
   a colleague-held ticket; originating a merge, a ready, or a review request; more than one coder in flight.
   Those stay human-gated; flag them.
 
