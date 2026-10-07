@@ -91,11 +91,27 @@ jt_field() {
   [ "$code" = "200" ] && jt_resp | jq -r ".fields.$2 // \"\""
 }
 
+# jt_missing_fields KEY — one read of the four QA-handoff fields; prints the labels of the
+# empty ones, comma-separated (empty output = all populated). Empty means null, "", a
+# whitespace-only string, or a labels field with no tokens. Returns 1 when the read fails.
+jt_missing_fields() {
+  local code
+  code=$(jt_rest GET "/rest/api/2/issue/$1?fields=$JIRA_FIELD_RELEASE_NOTE,$JIRA_FIELD_TESTING_NOTES,$JIRA_FIELD_FEATURE_FLAGS,$JIRA_FIELD_STORY_POINTS")
+  [ "$code" = "200" ] || return 1
+  jt_resp | jq -r --arg rn "$JIRA_FIELD_RELEASE_NOTE" --arg tn "$JIRA_FIELD_TESTING_NOTES" \
+      --arg ff "$JIRA_FIELD_FEATURE_FLAGS" --arg sp "$JIRA_FIELD_STORY_POINTS" '
+    def blank: . == null or (type == "string" and gsub("\\s"; "") == "")
+               or (type == "array" and (map(select(. != null and . != "")) | length) == 0);
+    .fields as $f
+    | [[$rn, "release note"], [$tn, "testing notes"], [$ff, "feature flags"], [$sp, "story points"]]
+    | map(select($f[.[0]] | blank) | .[1]) | join(", ")'
+}
+
 # Mission-control seams, both optional.
-jt_guard() {   # jt_guard — refuse while the loop holds the writer lock (manual-only wrappers)
+jt_guard() {   # jt_guard [GROUP] — refuse while the loop holds the writer lock (manual-only wrappers)
   local g="${MC_HOME:-$HOME/.claude/mission-control}/mc-guard.sh"
   [ -x "$g" ] || return 0
-  "$g" check "$JT_NAME"
+  "$g" check "$JT_NAME" ${1:+"$1"}
 }
 jt_worklog() { # jt_worklog [--ticket K] [--pr P] [--repo R] TEXT — record an outward write
   local w="${MC_HOME:-$HOME/.claude/mission-control}/worklog.sh"
