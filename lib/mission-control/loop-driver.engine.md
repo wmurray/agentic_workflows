@@ -31,7 +31,7 @@ alone.
 |---|---|---|
 | **status-sync wrapper** | move a ticket's tracker status to match a board lane; refuses `qa`/`done` (exit 4) | reconcile, Prep-write 4 |
 | **assign wrapper** | claim an UNASSIGNED our-turn ticket for the operator; refuses `refined` and `qa`/`product-review`/`done` (exit 4); colleague-held → exit 5 | reconcile |
-| **qa-transition wrapper** | the `qa` transition; refuses (exit 3) unless release note, testing notes, feature flags and story points are set. `--check` is read-only and unguarded. Commit mode is guard-gated (`fields`) | reconcile (`--check`), inbox `qa`, Prep-write 6 |
+| **qa-transition wrapper** | the `qa` transition; refuses (exit 3) unless release note, testing notes, feature flags and story points are set; a no-op (exit 0, `already '<QA status>'`) on a ticket already there. `--check` is read-only and unguarded. Commit mode is guard-gated (`fields`) | reconcile (`--check`), the QA move at merge (Prep-write 6), inbox `qa` (fallback) |
 | **field wrappers** | release-note, feature-flags, testing-notes and post-release-note writes; guard group `fields`. Nothing writes story points | Prep-write 6 |
 | **done-transition wrapper** | the field-bearing `done` transition — **MANUAL, never yours** | reconcile (flag only) |
 | **ticket-detail command** | the raw CLI command a WORKER brief gets as `{TICKET_DETAIL_CMD}`; the engine itself reads detail through `tracker detail_of <KEY>` | Prep-write 1, planner template |
@@ -83,10 +83,11 @@ Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
   (Prep-write 4). Even status-sync excludes `qa`/`done` (field-bearing wrappers + human judgment).
   **Everything else outward stays NEVER** (tracker field writes outside Prep-write 6, all other `gh`/git, `qa`/`done`). **Merge:**
   only by draining an operator-queued `mc merge` while `mc-guard.sh check merge` passes (the operator set
-  `mc guard off merge`); never on your own initiative. **Post-merge fields and `qa`:** only while
-  `mc-guard.sh check fields` passes (the operator set `mc guard off fields`): the Final field check on a
-  merged `alpha-verify` row (Prep-write 6) and the drain of an operator-queued `mc qa`. Story points are
-  checked, never written.
+  `mc guard off merge`); never on your own initiative. **Post-merge fields and the tracker's QA move:**
+  only while `mc-guard.sh check fields` passes (the operator set `mc guard off fields`): the Final field
+  check on a merged `alpha-verify` row, the QA move at merge once every field is set (both Prep-write 6),
+  and the fallback drain of an operator-queued `mc qa` on a row the tracker has not moved yet. A queued
+  `mc qa` on a row already moved is a board-only drain. Story points are checked, never written.
 
 The FIVE internal writes you hold today:
 1. **Ingest + background planning → plan-review** — TWO distinct planner-spawn paths, BOTH run every
@@ -165,9 +166,11 @@ And the guard-gated field grant:
    while `mc-guard.sh check fields` exits 0 under your lock (`mc guard off fields`): a read-only worker
    drafts the release note and testing notes; you write them through the field wrappers, set feature
    flags from the coder-captured `feature_flags`, verify story points (never write them), and record
-   post-release tasks as ticket comments. Anything not confident is held on the row. You also drain the
-   operator's queued `mc qa`. Guard ON → propose "would run the field check for ABC-N". Full spec in
-   Prep-write 6.
+   post-release tasks as ticket comments. Anything not confident is held on the row. Once every field
+   is set you run the **QA move at merge**: the qa-transition wrapper moves the tracker to its QA status
+   while the board lane stays `alpha-verify` until the operator's smoke-test `mc qa`, which is then a
+   board-only drain. Guard ON → propose "would run the field check for ABC-N" / "would move ABC-N to QA".
+   Full spec in Prep-write 6.
 
 The shared safety property: an INTERNAL bug can, at worst, write a wrong board state (a stale lane, a
 throwaway plan/triage) that the operator sees on the dash and fixes. The outward writes are bounded to the same
@@ -175,8 +178,9 @@ low-stakes shape: a wrong tracker status/assignment is trivially reversible + co
 mirrors a board state a human drove. Coder-spawn is the one that produces colleague-visible artifacts —
 so it's flag-gated, runs only on a human-approved plan, and parks at Gate 2 (nothing readies or merges
 without an operator-queued `mc ready` / `mc merge`). The field check writes colleague-visible fields, so it
-is guard-gated, runs only on a ticket a human merged, holds anything it is unsure of, and never moves the
-ticket to QA without an operator-queued `mc qa`. Treat the boundary as sacred: **beyond status-sync,
+is guard-gated, runs only on a ticket a human merged, holds anything it is unsure of, and moves the
+tracker to QA only once every handoff field is set (the wrapper refuses otherwise). The board lane leaves
+`alpha-verify` only on the operator's smoke-test `mc qa`. Treat the boundary as sacred: **beyond status-sync,
 assignee-fix, (when armed) coder-spawn, and (when the `fields` guard is open) Prep-write 6, if a write would
 touch tracker fields / other host writes / merge, you do NOT make it — you flag it.**
 
@@ -185,12 +189,13 @@ touch tracker fields / other host writes / merge, you do NOT make it — you fla
 - **You may write `state.json` (board lanes, `ci`, `reconcile`) + internal plan/triage docs, make the
   earned outward writes — tracker status SYNC (**status-sync wrapper**) + assignee-fix (**assign wrapper**, unassigned-only)
   — and, ONLY while `CODER_SPAWN_LIVE` is armed, the coder-spawn path (Prep-write 4), and ONLY while
-  `mc-guard.sh check fields` passes, the Final field check and the `mc qa` drain (Prep-write 6). NOTHING else
+  `mc-guard.sh check fields` passes, the Final field check, the QA move at merge and the fallback `mc qa`
+  drain (Prep-write 6). NOTHING else
   outward.** The paths are spelled out in "The writes you may make" / the reconcile step / Prep-write 4.
   Everything else outward is still forbidden: you MUST NOT write a tracker field outside Prep-write 6,
   write story points at all, file a sub-task, reassign a **colleague**-held
-  ticket, `gh pr ready`/request-review/comment/resolve, merge, or transition `qa`/`done` (`qa` only on a
-  queued `mc qa` with the `fields` guard open). When the correct fix is outward-beyond-your-grant (a
+  ticket, `gh pr ready`/request-review/comment/resolve, merge, or transition `qa`/`done` (`qa` only as the
+  QA move at merge or a fallback `mc qa` drain, both with the `fields` guard open). When the correct fix is outward-beyond-your-grant (a
   colleague-held ticket; an empty field while the `fields` guard is ON; a `done` transition), you **FLAG it
   for the manual session** — you do not do it.
   *(The `reconcile`-field ban from Step 2 is now LIFTED — writing it is a board-internal reconcile
@@ -198,7 +203,8 @@ touch tracker fields / other host writes / merge, you do NOT make it — you fla
   **Inbox exception (the one narrow write):** you MAY drain — apply then remove — a `note`/`hold`/`unblock`
   line (board-only annotations), and a `ready` line once its Gate-2 action has run (step 5b). You may
   NOT touch any other inbox verb (`approve`/`merge`/`qa`/`plan`/`changes`) except as its own grant
-  says (`approve` armed, `merge` and `qa` with their guard open): read-but-leave those, and propose.
+  says (`approve` armed, `merge` with its guard open, `qa` board-only once the tracker moved at merge
+  and otherwise with its guard open): read-but-leave those, and propose.
   Writing the inbox for anything else is a breach.
 - **Report, don't write — for everything outside your five internal writes.** Outward proposals
   and flags go to YOUR pane as terse lines, never into a file. **After every lane change you write, append one line to the work log:**
@@ -416,19 +422,43 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      APPLIED `drift[]` line `"ABC-N assignee ∅→the operator (claimed)"` (or the flagged line for the colleague case).
      Board-internal reconcile + status-sync run FIRST; skipped when the tracker is blind (health).
    - **BOARD-INTERNAL — post-merge field check on `alpha-verify` (a read on the tracker, a write on the
-     board).** For each `alpha-verify` row that is not `blocked`, run
-     `$MC_PIPELINE/qa-transition.sh ABC-N --check` (BARE, its own Bash call). `--check` writes nothing and
-     skips the loop guard, so it runs the same with or without the lock. It reads the four handoff fields
-     (release note, testing notes, feature flags, story points) and the issue's live QA transition.
-     - **Exit 3** → its output names the empty fields (`fields missing: release note, testing notes`).
-       Set `fields_missing` to that list and `question: "merged · fields missing: <list>"`, and add a
-       `drift[]` line `"ABC-N fields missing: <list> (Final field check)"` so the row is flagged.
-     - **Exit 0** → `fields_missing: ""`, `question: "merged · fields complete · smoke on alpha, then mc qa ABC-N"`.
-     - **Exit 1** (fields unreadable, or no transition to the QA status offered) → leave the row, name it
-       in the tick line.
+     board).** The poller's **post-merge QA move** section prints one line per `alpha-verify` row; route
+     on it, never on memory of an earlier tick:
+     - **`in QA (tracker)`** (the row has `tracker_qa_at` and the tracker is at the QA status) → nothing to
+       check. The QA move already ran; the row waits for the operator's smoke-test `mc qa`, which is
+       board-only. Do not run `--check` or the wrapper again.
+     - **`tracker already <QA status> — set tracker_qa_at`** (moved outside the loop) → set
+       `tracker_qa_at` to now and `question: "in QA (tracker) · smoke on alpha, then mc qa ABC-N"`. A
+       board write only; run no wrapper.
+     - **`tracker_qa_at set but tracker at <status>`** (QA moved it back after the QA move) → the
+       post-merge regression row in "Reconcile drift" decides the lane; add a `drift[]` line naming the
+       landing status. **Never re-run the QA move on a row that carries `tracker_qa_at`.**
+     - **`waiting`** (blocked, or a worker holds it) → leave it this tick.
+     - **`due`** → run `$MC_PIPELINE/qa-transition.sh ABC-N --check` (BARE, its own Bash call). `--check`
+       writes nothing and skips the loop guard, so it runs the same with or without the lock. It reads
+       the four handoff fields (release note, testing notes, feature flags, story points) and the
+       issue's live QA transition.
+       - **Exit 3** → its output names the empty fields (`fields missing: release note, testing notes`).
+         Set `fields_missing` to that list and `question: "merged · fields missing: <list>"`, and add a
+         `drift[]` line `"ABC-N fields missing: <list> (Final field check)"` so the row is flagged.
+       - **Exit 0 saying `already '<QA status>'`** → treat as the `set tracker_qa_at` line above.
+       - **Exit 0** otherwise → `fields_missing: ""`. Every field is set, so the **QA move at merge**
+         (Prep-write 6) is due on this row, once Prep-write 6 is no longer owed on it: the row has a
+         `fields` object other than `drafting`, or `fields_proposed` is set because the guard held the
+         drafter. Run it this tick, after the board reconcile and status-sync; it sets the row's
+         `question` itself. A row still owed its field check gets the QA move at the end of Prep-write
+         6 instead, so post-release tasks are recorded before the ticket leaves for QA.
+       - **Exit 1** (fields unreadable, or no transition to the QA status offered) → leave the row, name it
+         in the tick line.
      Once the row has a `fields` object (Prep-write 6 ran), set only `fields_missing` and leave `question`
-     to Prep-write 6. Write only when the value changed. Skip when the tracker is blind (health). This is board reconcile,
-     like `ci`: it does not count toward the one-prep-write cap. The fields themselves are NOT written here.
+     to Prep-write 6. Write only when the value changed. Skip when the tracker is blind (health). This is
+     board reconcile, like `ci`: it does not count toward the one-prep-write cap, and neither does the QA
+     move it hands off to. The fields themselves are NOT written here.
+   - **An `alpha-verify` row whose tracker is at the QA status is the expected state after the QA move,
+     not drift.** Status-sync leaves it (the tracker is ahead, and status-sync only moves forward), the
+     board does NOT catch up to `qa` (only the operator's `mc qa` moves the lane after the alpha smoke),
+     and assignee-fix leaves the QA owner in place (the assign wrapper refuses a ticket in the QA status
+     with exit 4).
    - **OUTWARD — still FLAG-only (NOT granted; report as "would fix (manual): …"):** empty
      Release-Note/Testing-Notes/feature-flag field writes while the `fields` guard is ON (with it open,
      Prep-write 6 owns them); story points always; premature-`done`
@@ -506,21 +536,30 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      implement + spawn coder" (today's behavior — approve stays the operator's to execute). An
      `approve ABC-N: <note>` carries the operator's **answers to the plan's open questions**; Trigger A
      writes them into the plan doc before the coder spawns.
-   - inbox has `qa ABC-N` → **the `fields` guard decides, like merge.** Only valid from `alpha-verify`; the
-     loop executes the operator's handoff, never originates it. Take the lock FIRST (the guard only bites
-     while you hold it), then run `$MC_HOME/mc-guard.sh check fields` (BARE). **Exit 4** → release, propose
-     "would hand ABC-N to QA (held fields + the tracker's QA status)", leave the line. **Exit 0** and the
-     row is at `alpha-verify` → **drain + execute**, still under the lock:
-     1. For each of `release_note` / `testing_notes` that is `"held"` in the row's `fields` and whose draft
-        exists in `$MC_HOME/fields/` (the operator edited it), run `$MC_PIPELINE/release-note.sh ABC-N --file
-        $MC_HOME/fields/<key-lower>.release-note.md` / `$MC_PIPELINE/testing-notes.sh ABC-N --file
-        $MC_HOME/fields/<key-lower>.testing-notes.md` BARE, with no `--force`. Both only populate an empty
-        field, so a value the operator typed into the tracker wins and the call is a no-op.
-     2. Run `$MC_PIPELINE/qa-transition.sh ABC-N` BARE, with no notes flags. **Never `--force`.**
-     3. Exit 0 → lane `alpha-verify` → `qa`, clear `question`, `mc-inbox-drain.sh "qa ABC-N"`, worklog
-        `--source loop --ticket ABC-N "alpha-verify → qa on queued mc qa"`.
-     4. Exit 3 → leave the line, `question: "[qa] refused: fields missing: <list>"`, set `fields_missing`, flag.
-        Any other non-zero → leave the line, flag with the wrapper's message.
+   - inbox has `qa ABC-N` → **the operator's alpha smoke passed.** Only valid from `alpha-verify`; the
+     loop executes the operator's word, never originates it. Two paths, split on `tracker_qa_at`:
+     - **Board-only (the row has `tracker_qa_at`; the poller line reads `in QA (tracker)`).** The tracker
+       moved to QA at merge, so this is a `state.json` write and needs no guard. Under the lock: lane
+       `alpha-verify` → `qa`, clear `question`, `mc-inbox-drain.sh "qa ABC-N"`, worklog `--source loop
+       --ticket ABC-N "alpha-verify → qa on queued mc qa (board only; tracker moved at merge)"`. **Run no
+       wrapper:** no qa-transition, no field write. If the poller line reads `tracker_qa_at set but
+       tracker at <status>` instead (QA moved it back), leave the line and flag it: the regression row
+       decides the lane, not the smoke.
+     - **Fallback (no `tracker_qa_at`: a field was held, or the guard held the QA move).** The `fields`
+       guard decides, like merge. Take the lock FIRST (the guard only bites while you hold it), then run
+       `$MC_HOME/mc-guard.sh check fields` (BARE). **Exit 4** → release, propose "would hand ABC-N to QA
+       (held fields + the tracker's QA status)", leave the line. **Exit 0** and the row is at
+       `alpha-verify` → **drain + execute**, still under the lock:
+       1. For each of `release_note` / `testing_notes` that is `"held"` in the row's `fields` and whose draft
+          exists in `$MC_HOME/fields/` (the operator edited it), run `$MC_PIPELINE/release-note.sh ABC-N --file
+          $MC_HOME/fields/<key-lower>.release-note.md` / `$MC_PIPELINE/testing-notes.sh ABC-N --file
+          $MC_HOME/fields/<key-lower>.testing-notes.md` BARE, with no `--force`. Both only populate an empty
+          field, so a value the operator typed into the tracker wins and the call is a no-op.
+       2. Run `$MC_PIPELINE/qa-transition.sh ABC-N` BARE, with no notes flags. **Never `--force`.**
+       3. Exit 0 → set `tracker_qa_at`, lane `alpha-verify` → `qa`, clear `question`, `mc-inbox-drain.sh
+          "qa ABC-N"`, worklog `--source loop --ticket ABC-N "alpha-verify → qa on queued mc qa"`.
+       4. Exit 3 → leave the line, `question: "[qa] refused: fields missing: <list>"`, set `fields_missing`, flag.
+          Any other non-zero → leave the line, flag with the wrapper's message.
      Release the lock. A `qa` line on a row outside `alpha-verify` → leave it and flag.
    - inbox has `merge ABC-N` → **the guard decides whether you execute or propose.** Run
      `$MC_HOME/mc-guard.sh check merge` (BARE). **Exit 4** (guard ON for merge, the default) → propose as
@@ -532,7 +571,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      conversationally in a manual session). Exit 0 → lane `ready-to-merge` → `alpha-verify`, set
      `merged_at`, `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop "merged <repo>#<n> on queued mc merge"`,
      then run the post-merge field check (reconcile, above) on the row in the same tick so its
-     `question` reads `merged · fields missing: …` or `merged · fields complete …` straight away.
+     `question` reads `merged · fields missing: …` straight away, or the QA move runs once the field
+     check has.
      Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. Writing the
      post-merge fields is Prep-write 6 under its own guard (`fields`), not part of the merge grant; the
      merged row becomes its trigger on the next prep-write slot. **`mc merge` is the ONLY thing that
@@ -987,8 +1027,9 @@ A merged ticket owes the tracker four handoff fields before QA: release note, te
 flags, story points (SKILL "Final field check"). Drafting them is reading work; writing them is a field
 write the QA team and release tooling read. This rung drafts with a read-only worker and writes from its
 structured result while you hold the lock, so the `fields` guard binds every write mechanically. Misfire
-cost: a wrong field value that the operator overwrites before queuing `mc qa`. The QA transition itself
-stays on the operator's word.
+cost: a wrong field value that the operator corrects in the tracker after the ticket reached QA. The QA
+move runs only once every field is set (the wrapper refuses otherwise), and only the operator's
+smoke-test `mc qa` moves the board lane out of `alpha-verify`.
 
 **Trigger:** an `alpha-verify` row that is not `blocked`, has no `worker`, and has no `fields` object
 yet. One per tick (this is the tick's prep-write). Skip when the tracker is blind (health).
@@ -1034,23 +1075,59 @@ Otherwise, each wrapper BARE, its own Bash call, never `--force`:
 8. Re-run `$MC_PIPELINE/qa-transition.sh ABC-N --check` and set `fields_missing` from it.
 9. Set `fields: {state, release_note, testing_notes, feature_flags}` with each value `"written"`,
    `"held"` or `"present"`, plus `held: [reasons]`. Clear `worker`.
-   - Any hold, or `--check` exit 3 → `fields.state: "held"`, `question: "fields held: <reasons> · fix, then
-     mc qa ABC-N"`, and a `drift[]` line so the row is flagged.
-   - Otherwise → `fields.state: "ready"`, `question: "fields written · smoke on alpha, then mc qa ABC-N"`.
-   - Either way append ` · <n> post-release task(s) on the ticket` when `post_release` is non-empty.
-10. Release the lock. Log `worklog.sh add --source loop --ticket ABC-N "field check: <written> written,
-    <held> held"`.
+   - Any hold, or `--check` exit 3 → `fields.state: "held"`, `question: "fields held: <reasons> · fix in
+     the tracker or edit the draft, then mc qa ABC-N"`, and a `drift[]` line so the row is flagged.
+   - Otherwise → `fields.state: "ready"`.
+10. `fields.state: "ready"` → run the **QA move at merge** (below) now, still under the lock; it sets the
+    row's `question`. A held row gets no QA move here.
+11. Append ` · <n> post-release task(s) on the ticket` to the row's `question` when `post_release` is
+    non-empty. Release the lock. Log `worklog.sh add --source loop --ticket ABC-N "field check: <written>
+    written, <held> held"`.
 
 Any wrapper exit other than 0 → treat that field as held with the wrapper's message; never retry with
 `--force`. An exit 4 from a wrapper means the guard closed between calls: stop, hold the rest.
 
-**Then the operator smokes on alpha** and queues `mc qa ABC-N`; the `qa` inbox verb (step 3) writes any
-held draft the operator edited and runs the QA transition, which refuses while a field is empty. The
-alpha smoke gate stays human. Once a row has a `fields` object, the reconcile `--check` updates only
-`fields_missing`; Prep-write 6 owns the row's `question`.
+#### The QA move at merge
+
+The tracker moves to its QA status as soon as a merged ticket's fields are complete; the board lane
+stays at `alpha-verify` until the operator confirms the alpha smoke with `mc qa ABC-N`. Two callers:
+step 10 above, and the reconcile `--check` exit 0 on a `due` row that is no longer owed Prep-write 6
+(the operator fixed a held field in the tracker, or the fields were already set at merge).
+
+**Once per ticket.** Run it only on an `alpha-verify` row with no `tracker_qa_at`, not `blocked`, no
+`worker`. `tracker_qa_at` is the record that it ran; the poller's post-merge QA move section reads it
+every tick, so a moved row is never moved again, even after QA sends it back.
+
+**Hold the lock and check the guard.** Called from step 10 you already hold both. From reconcile,
+acquire the lock, then run `$MC_HOME/mc-guard.sh check fields` (BARE).
+- **Exit 4 (guard ON)** → propose only. Release the lock. Print `would move ABC-N to QA (fields
+  complete)`, log once as `worklog.sh add --source loop --ticket ABC-N "would move to QA (fields
+  complete)"` and set `qa_move_proposed: true` so it is not re-logged. Set `question: "merged · fields
+  complete · QA move held by the fields guard · smoke on alpha, then mc qa ABC-N"`. A later `mc qa` takes
+  the fallback path in the `qa` inbox verb.
+- **Exit 0** → run `$MC_PIPELINE/qa-transition.sh ABC-N` BARE, with no notes flags. **Never `--force`.**
+  - **Exit 0** (moved, or `already '<QA status>'`) → set `tracker_qa_at` to now, clear
+    `qa_move_proposed`, keep the lane at `alpha-verify`, `question: "in QA (tracker) · smoke on alpha,
+    then mc qa ABC-N"`. Log `worklog.sh add --source loop --ticket ABC-N "tracker → QA at merge (fields
+    complete); board stays alpha-verify for the smoke"`.
+  - **Exit 3** (a field emptied since the check) → set `fields_missing` from its message, `question:
+    "merged · fields missing: <list>"`, and a `drift[]` line. No `tracker_qa_at`, so the next `--check`
+    exit 0 retries.
+  - **Exit 4** (the guard closed between calls) → treat as guard ON above.
+  - Any other non-zero → leave the row, flag with the wrapper's message.
+- Release the lock (from reconcile).
+
+**Then the operator smokes on alpha** and queues `mc qa ABC-N`. On a row with `tracker_qa_at`, the `qa`
+inbox verb (step 3) is a board-only lane move `alpha-verify` → `qa` and runs no wrapper. On a row the
+tracker has not moved (a held field, or the guard held the QA move), it falls back to writing any held
+draft the operator edited and running the QA transition. The alpha smoke gate stays human. Once a row
+has a `fields` object, the reconcile `--check` updates only `fields_missing`; Prep-write 6 and the QA
+move own the row's `question`.
 
 **Arming checklist** (the operator's): allow-rules for the field wrappers, `post-release-note.sh` and
-`qa-transition.sh`; `MC_NOT_FLAGGED_LABEL` and `{SURFACES}` set in the profile; then `mc guard off fields`.
+`qa-transition.sh`; `MC_NOT_FLAGGED_LABEL`, `MC_STATUS_QA` and `{SURFACES}` set in the profile; then
+`mc guard off fields`. Opening the group opens the QA move with it: the loop moves the tracker to QA
+at merge from then on.
 
 **⚠ Worker completion DETECTION — how you know a background worker finished (coder / reviewer /
 planner / bug-investigator). A missed completion stalls the ticket; read this before the routing rules.
@@ -1132,11 +1209,13 @@ excludes `refined` and `qa`/`product-review`/`done`; a **colleague**-held ticket
 while `CODER_SPAWN_LIVE` is armed**, the **coder-spawn** path (Prep-write 4: drain `approve` → coder →
 bounded review → draft PR, parking at Gate 2, plus draining the `approve` line), and, **ONLY while
 `mc-guard.sh check fields` passes**, the **Final field check** (Prep-write 6: field wrappers on a merged
-`alpha-verify` row, post-release comments, never points, never a sub-task) and the queued `mc qa` drain.
+`alpha-verify` row, post-release comments, never points, never a sub-task), the QA move at merge once
+every field is set, and the fallback `mc qa` drain on a row the tracker has not moved. A queued `mc qa`
+on a row already moved is a board-only lane change.
 That is the whole grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
 then lane `in-review` + status-sync from `awaiting-review`, or lane `in-review` with no tracker move from `kickback`). The instant a write would touch the **OUTWARD** world beyond those —
 an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write outside Prep-write 6, a story-points write, a sub-task,
-reassigning a **colleague**-held ticket, a `done` transition, a `qa` transition the operator did not queue, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
+reassigning a **colleague**-held ticket, a `done` transition, a `qa` transition outside the QA move at merge or a queued `mc qa`, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
 or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
 STOP. That's a contract breach; flag it instead.
 
@@ -1162,8 +1241,9 @@ STOP. That's a contract breach; flag it instead.
   without prompting; when coder-spawn is armed, an approved plan reaches a parked **draft PR at Gate 2**
   on its own — all sane enough that the operator acts on them as-is.
 - **The loop never originates a merge, a ready, or a review request**; it executes them only by draining an
-  operator-queued `mc merge` (while the guard shows `off` for merge), `mc qa` (while it shows `off` for
-  `fields`) or `mc ready`. **It still NEVER posts/resolves a thread, writes a tracker field outside
+  operator-queued `mc merge` (while the guard shows `off` for merge) or `mc ready`. It moves the tracker
+  to QA only through the QA move at merge or a fallback `mc qa` (both while the guard shows `off` for
+  `fields`), and moves the board lane to `qa` only on a queued `mc qa`. **It still NEVER posts/resolves a thread, writes a tracker field outside
   Prep-write 6, writes story points, files a sub-task, transitions `done`, or reassigns a colleague**:
   those stay human-gated.
 - The drift it reports matches reality; kill + restart mid-run rehydrates from `state.json`, no lost work.
@@ -1223,15 +1303,19 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
 - **Outward, on the operator's queued word:** `mc ready` (the request-review wrapper: Gate 2 on a draft
   in `awaiting-review`, or a re-review request on a non-draft in `kickback`); `mc merge`, drained
   only while `mc-guard.sh check merge` passes (the operator set `mc guard off merge`), run with no flags;
-  `mc qa`, drained only while `mc-guard.sh check fields` passes, run with no `--force`.
+  `mc qa`: board-only on a row whose tracker moved at merge; otherwise the fallback, drained only while
+  `mc-guard.sh check fields` passes, run with no `--force`.
 - **Outward, guard-gated (`fields`, ON by default, propose-only while ON):** the Final field check on a merged
   `alpha-verify` row (Prep-write 6): release note (internal only; user copy is held for the operator),
-  feature flags from the coder-captured value, testing notes, post-release tasks as ticket comments.
+  feature flags from the coder-captured value, testing notes, post-release tasks as ticket comments,
+  then the QA move at merge (tracker → QA once every field is set, once per ticket; the board lane stays
+  `alpha-verify` until `mc qa`).
 - **Flag-gated, propose-only when the flag is absent:** coder-spawn (`CODER_SPAWN_LIVE`, ≤1 coder in flight,
   Prep-write 4); Gate-1 auto-approve (`GATE1_AUTO`, Trigger C); kickback address (`KICKBACK_AUTO`,
   Prep-write 5); sprint plan pull (`SPRINT_PLAN_AUTO`, the Step 3 sprint plan proposal).
 - **Never:** tracker field writes outside Prep-write 6; story points; sub-tasks; a `done` transition; a `qa`
-  transition the operator did not queue; posting or resolving a review thread; reassigning
+  transition outside the QA move at merge or a fallback `mc qa`; a board move to `qa` without a queued
+  `mc qa`; posting or resolving a review thread; reassigning
   a colleague-held ticket; originating a merge, a ready, or a review request; more than one coder in flight.
   Those stay human-gated; flag them.
 

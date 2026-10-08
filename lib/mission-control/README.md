@@ -108,6 +108,14 @@ testing notes, the QA transition, the post-release note) share the group `fields
 `mc guard off fields` grants the loop the Final field check on a merged ticket in one step,
 and `mc guard on fields` takes it back.
 
+The QA move rides on the same group. Once the field check passes on a merged ticket, the
+loop runs the QA transition right away, so the tracker shows the QA status while the board
+lane stays `alpha-verify`. The operator's `mc qa ABC-N` after the alpha smoke is then a
+board-only move to `qa`. The row's `tracker_qa_at` records the move and `mc-poll.sh` reads
+it, so the transition runs once per ticket. A row the tracker has not moved (a field held,
+or the guard closed) falls back to the old `mc qa`: write the edited drafts, then
+transition. Set `MC_STATUS_QA` in the profile to the tracker's QA status name.
+
 ## The pre-plan critic and Gate-1 auto-approve
 
 Before the loop plans a ticket it spawns a read-only critic (`templates/pre-plan-critic.md`,

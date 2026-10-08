@@ -4,7 +4,7 @@ Spawn with agent type `general-purpose`, `run_in_background: true`, through the 
 `fields`. **Read-only: this worker drafts, it never writes to the tracker or the PR host.** The loop
 spawns it on a merged ticket in `alpha-verify` while the `fields` guard is open (driver Prep-write 6);
 a manual session may spawn it for the same job. The orchestrator writes the fields from the JSON this
-returns, through the field wrappers. Fill `{PLACEHOLDERS}`; the org-valued ones (`{TICKET_DETAIL_CMD}`
+returns, through the field wrappers, and moves the tracker to QA once every field is set. Fill `{PLACEHOLDERS}`; the org-valued ones (`{TICKET_DETAIL_CMD}`
 `{STYLE_GUIDE}`) come from the overlay's **Template fills** section, `{SURFACES}` from its Surfaces section.
 
 ---

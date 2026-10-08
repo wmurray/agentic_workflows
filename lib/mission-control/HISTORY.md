@@ -69,3 +69,16 @@ then consider widening the coder cap to 2 and draining more outward verbs.** Sha
 Full checklist: **Blueprint "Phase-2 build sequence" step 3.** Grants earned so far: five internal +
 tracker status-sync + assignee-fix + flag-gated coder-spawn (`CODER_SPAWN_LIVE`). Everything else outward
 (tracker field writes, other host writes, `qa`/`done`, merge, colleague reassignment) stays flag/propose.
+
+## The QA move at merge (2026-10-08)
+
+Until this change the tracker moved to QA only when the operator queued `mc qa` after the
+alpha smoke, so a merged ticket with complete fields sat out of QA's view for as long as the
+smoke took. The operator's policy (2026-09-15) splits the two: once a PR merges and the Final
+field check passes, the loop runs the QA transition straight away, under the same `fields`
+guard as the field writes. The board lane stays `alpha-verify` until the operator confirms the
+smoke, and `mc qa` on a moved row is a board-only lane change with no tracker call. A row the
+tracker has not moved keeps the old `mc qa` path, which is still the only way an edited held
+draft reaches the tracker. `tracker_qa_at` on the row makes the move once per ticket, and
+`assign.sh` now leaves a ticket in the QA status to its QA owner, since an `alpha-verify` row
+can hold one.

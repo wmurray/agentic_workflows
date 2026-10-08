@@ -64,7 +64,7 @@ compound) so the permission allow-prefix matches.
 |---|---|
 | status-sync wrapper | `~/.claude/lib/pipeline/jira-status.sh <KEY> <lane>` |
 | assign wrapper | `~/.claude/lib/pipeline/assign.sh <KEY> --lane <lane>` |
-| qa-transition wrapper | `~/.claude/lib/pipeline/qa-transition.sh` — **manual only, never the loop's** |
+| qa-transition wrapper | `~/.claude/lib/pipeline/qa-transition.sh` — guard group `fields`: the loop runs it only as the QA move at merge or a fallback `mc qa`, while `mc guard off fields` is set |
 | done-transition wrapper | `~/.claude/lib/pipeline/done-transition.sh` — **manual only, never the loop's** |
 | ticket-detail command | `<your tracker CLI> issue view <KEY> --plain` |
 
@@ -196,8 +196,8 @@ keep them in step.
 | `implement` / `awaiting-review` | `In Progress` |
 | `in-review` / `ready-to-merge` | `In Review` |
 | `kickback` | no move (already at the right status from either entry path) |
-| `alpha-verify` | `In Review` (board-only lane) |
-| `qa` | `QA` (via the qa-transition wrapper) |
+| `alpha-verify` | `In Review` until the QA move at merge, then `QA` (board-only lane; it waits on the smoke) |
+| `qa` | `QA` (via the qa-transition wrapper, at merge; `mc qa` then moves only the board) |
 | `product-review` | `Product Review` |
 | `done` | `Done` (via the done-transition wrapper) |
 
