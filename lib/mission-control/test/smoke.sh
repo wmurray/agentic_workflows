@@ -336,6 +336,33 @@ dash_sp() { MC_STATE="$WORK/state.sprint-plan.2.json" MC_INTERVAL=99 MC_GATE1_FI
 says "dash puts a proposed ticket in NEEDS YOU" yes '^ +ENG-208 +\[refined\].*mc plan ENG-208'  dash_sp
 says "  … but not an unproposed sprint one"     no  '^ +ENG-209 +\[refined\]'                    dash_sp
 
+# --- 6c. post-merge QA move: the tracker moves at merge, the board after the smoke ------
+# A derived board of alpha-verify rows. tracker_qa_at records the at-merge QA move, so the
+# poller says, per row, whether the move is still due, already done (then `mc qa` is
+# board-only), or must never be re-run.
+jq '.tickets += [
+  {"ticket":"ENG-216","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-217","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false,"tracker_qa_at":"2026-08-25T08:30:00Z"},
+  {"ticket":"ENG-218","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-219","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false,"tracker_qa_at":"2026-08-24T15:00:00Z"},
+  {"ticket":"ENG-220","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":true,"question":"on hold"}]' \
+  "$WORK/state.json" > "$WORK/state.post-merge-qa.json"
+poll_pq() { MC_STATE="$WORK/state.post-merge-qa.json" MC_SPRINT_PLAN_FILE="$WORK/SPRINT_PLAN_AUTO" "$_MC_LIB/mc-poll.sh"; }
+says "poll lists the post-merge QA move"         yes '^post-merge QA move \(alpha-verify · tracker QA status: QA\)'  poll_pq
+says "  … due on a merged row not yet in QA"      yes '^  ENG-216 +due — field check'                 poll_pq
+says "  … in QA once the move is recorded"        yes '^  ENG-217 +in QA \(tracker\) — `mc qa ENG-217` moves the board only'  poll_pq
+says "  … so it is not due again"                 no  '^  ENG-217 +due'                               poll_pq
+says "  … a row moved outside the loop is marked, not moved" yes '^  ENG-218 +tracker already QA — set tracker_qa_at; run no QA move'  poll_pq
+says "  … a row that left QA is flagged, never re-moved" yes '^  ENG-219 +tracker_qa_at set but tracker at In Review — flag; never re-run'  poll_pq
+says "  … a blocked row waits"                     yes '^  ENG-220 +waiting \(blocked\)'               poll_pq
+says "  … no other lane is listed"                no  '^  ENG-20[1-7] +(due|in QA|waiting)'           poll_pq
+says "alpha-verify in the QA status is not a regression" no 'REGRESSED.*ENG-21[78]'               poll_pq
+says "the default board has no post-merge QA section" no '^post-merge QA move'                      "$_MC_LIB/mc-poll.sh"
+dash_pq() { MC_STATE="$WORK/state.post-merge-qa.json" MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_ADDRESS_FILE="$WORK/KICKBACK_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh"; }
+says "dash says a moved row is in QA, awaiting the smoke" yes 'ENG-217 +\[alpha-verify\].*in QA \(tracker\) · smoke on alpha, then mc qa ENG-217'  dash_pq
+says "  … and keeps the merge wording before the move"   yes 'ENG-216 +\[alpha-verify\].*merged — smoke-test on alpha'  dash_pq
+says "mc usage says qa is board-only after the move" yes 'qa +ABC-X +alpha smoke passed → lane qa \(board only once the tracker moved at merge;'  env MC_INBOX="$WORK/mc-inbox" MC_PAUSE_FILE="$WORK/PAUSED" bash -c '. "$0"; mc help' "$_MC_LIB/mc"
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"

@@ -32,3 +32,10 @@ ENG-212	To Do	me	in	yes	Sprint ticket with a critic running
 ENG-213	To Do	me	out	yes	Background ticket awaiting a plan
 ENG-214	To Do	me	in	yes	Sprint ticket already proposed
 ENG-215	To Do	me	in	yes	Sprint ticket planned since it was proposed
+#
+# --- alpha-verify rows on the DERIVED post-merge QA board (smoke.sh builds it) ---
+ENG-216	In Review	me	in	yes	Merged, fields not checked yet
+ENG-217	QA	qa-owner	in	yes	Merged and moved to QA at merge
+ENG-218	QA	qa-owner	in	yes	Moved to QA outside the loop
+ENG-219	In Review	me	in	yes	Moved to QA, then sent back to review
+ENG-220	In Review	me	in	yes	Merged, on hold

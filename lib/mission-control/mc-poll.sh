@@ -42,11 +42,13 @@ _MC_LIB="$(cd "$(dirname "$_mc_self")" && pwd)"
 STATE="${MC_STATE:-$HOME/.claude/mission-control/state.json}"
 # status → progress-rank map (regression detection). Generic fallback if no profile.
 STATUS_RANK="${MC_STATUS_RANK:-Backlog=0;To Do=1;In Progress=2;In Review=3;QA=4;Done=5}"
+# The tracker status the QA transition lands on (the post-merge QA section below).
+STATUS_QA="${MC_STATUS_QA:-QA}"
 # CI freeze-guard name substring; empty = no freeze concept.
 FREEZE_RE="${MC_FREEZE_CHECK_PATTERN:-}"
 [ -f "$STATE" ] || { echo "no state at $STATE" >&2; exit 1; }
 
-# --- board rows: ticket\tlane\tpr\tblocked(0/1)\tworker\tphase_done(0/1)\tcycle\trunner.impl\trunner.handle\tplan_proposed(0/1) ---
+# --- board rows: ticket\tlane\tpr\tblocked(0/1)\tworker\tphase_done(0/1)\tcycle\trunner.impl\trunner.handle\tplan_proposed(0/1)\ttracker_qa_at(0/1) ---
 # Sentinel "-" for empty pr/worker: IFS=$'\t' read collapses consecutive tabs
 # (tab is whitespace), so empty middle fields would shift the columns.
 rows=$(jq -r '.tickets[]
@@ -57,13 +59,16 @@ rows=$(jq -r '.tickets[]
       (.cycle // "-"),
       (.runner.impl // "-"),
       (.runner.handle // "-"),
-      (if .plan_proposed==true then "1" else "0" end) ]
+      (if .plan_proposed==true then "1" else "0" end),
+      (if (.tracker_qa_at // "") != "" then "1" else "0" end) ]
   | @tsv' "$STATE")
 
 active=""; parked=""; bgqueue=""; sprintq=""; sprintrun=""; proposed=""; done_ids=""; regressed_ids=""
-while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle pp; do
+qa_moved=""; postqa=""
+while IFS=$'\t' read -r t lane pr blk wk pd cyc rimpl rhandle pp tq; do
   [ -z "$t" ] && continue
   [ "$pp" = "1" ] && proposed="$proposed $t"
+  [ "$tq" = "1" ] && qa_moved="$qa_moved $t"
   if [ "$lane" = "done" ]; then
     done_ids="$done_ids $t"
   elif [ "$lane" = "refined" ] && [ "$blk" != "1" ] && [ "$wk" = "-" ]; then
@@ -241,6 +246,7 @@ while IFS=$'\t' read -r t lane pr blk wk pd rimpl rhandle; do
   fi
   [ "$wk" != "-" ] && [ "$pd" = "1" ] && flags="${flags}${wk}✓ "
   [ -z "$flags" ] && flags="-"
+  [ "$lane" = "alpha-verify" ] && postqa="$postqa$t	$jstatus	$blk	$wk"$'\n'
   printf '%-9s %-16s %-15s %-22s %-18s %-6s %-16s %-8s %-10s %s\n' "$t" "$lane" "$jstatus" "$jassign" "$prcol" "$draft" "$review" "$ci" "$merged" "$flags"
 done <<< "$active"
 
@@ -288,6 +294,35 @@ for t in $proposed; do
   case " $eligible " in *" $t "*) : ;; *) stale="$stale $t" ;; esac
 done
 [ -n "$stale" ] && printf 'plan_proposed to clear (no longer eligible):%s\n' "$stale"
+
+# --- post-merge QA move: one line per alpha-verify row ---
+# The tracker moves to its QA status at merge, once the field check passes; the board lane
+# stays at alpha-verify until the operator's smoke-test `mc qa`, which is then board-only.
+# tracker_qa_at on the row records the move, so the QA move runs once per ticket:
+#   in QA          marker set, tracker at the QA status → nothing to do; `mc qa` is board-only
+#   set marker     tracker already at the QA status, no marker → record it, run nothing
+#   left QA        marker set, tracker elsewhere → flag; never re-run the QA move
+#   due            no marker, tracker not in QA → the field check runs; on exit 0 the
+#                  `fields` guard decides between the QA move and a proposal
+#   waiting        no marker, blocked or a worker holds it → nothing this tick
+if [ -n "$postqa" ]; then
+  printf '\npost-merge QA move (alpha-verify · tracker QA status: %s):\n' "$STATUS_QA"
+  while IFS=$'\t' read -r t jst blk wk; do
+    [ -z "$t" ] && continue
+    case " $qa_moved " in *" $t "*) mk=1 ;; *) mk=0 ;; esac
+    if [ "$mk" = 1 ] && [ "$jst" = "$STATUS_QA" ]; then
+      printf '  %-9s in QA (tracker) — `mc qa %s` moves the board only\n' "$t" "$t"
+    elif [ "$jst" = "$STATUS_QA" ]; then
+      printf '  %-9s tracker already %s — set tracker_qa_at; run no QA move\n' "$t" "$STATUS_QA"
+    elif [ "$mk" = 1 ]; then
+      printf '  %-9s tracker_qa_at set but tracker at %s — flag; never re-run the QA move\n' "$t" "$jst"
+    elif [ "$blk" = "1" ] || [ "$wk" != "-" ]; then
+      printf '  %-9s waiting (%s) — no QA move this tick\n' "$t" "$([ "$blk" = "1" ] && echo blocked || echo "worker $wk")"
+    else
+      printf '  %-9s due — field check; on exit 0 the fields guard decides the QA move\n' "$t"
+    fi
+  done <<< "$postqa"
+fi
 
 # --- footer: parked (cycle:backlog) + done (counted, NOT polled) ---
 pk=$(echo $parked | wc -w | tr -d ' '); dn=$(echo $done_ids | wc -w | tr -d ' ')

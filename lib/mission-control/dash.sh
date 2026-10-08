@@ -245,7 +245,7 @@ render() {
         elif .lane == \"awaiting-review\"  then \"walk diff in difit → mark ready (Gate 2)\"
         elif .lane == \"ready-to-merge\"   then \"approved + CI green → merge (yours)\"
         elif .lane == \"kickback\" then (if (.triage_doc // \"\") != \"\" then \"📝 triage ready in notes → \" + (.triage_doc | split(\"/\") | last) else (.question // \"kicked back (QA or review) — triage & address\") end)
-        elif .lane == \"alpha-verify\"     then (.question // \"merged — smoke-test on alpha before QA handoff\")
+        elif .lane == \"alpha-verify\"     then (.question // (if (.tracker_qa_at // \"\") != \"\" then \"in QA (tracker) · smoke on alpha, then mc qa \" + .ticket else \"merged — smoke-test on alpha before QA handoff\" end))
         elif .lane == \"needs-me\"         then (.question // \"needs you\")
         elif .lane == \"refined\"          then \"sprint ticket, no plan yet → mc plan \" + .ticket
         else \"needs you\" end;

@@ -10,8 +10,9 @@
 #                                #   re-request the reviewers (lane -> in-review)
 #   mc merge ABC-1234             # authorize the merge -> orchestrator runs gh pr merge
 #                                #   (only after APPROVED + CI green + mergeable) + post-merge flow
-#   mc qa ABC-1234                # alpha smoke passed -> hand to QA (writes Testing notes,
-#                                #   moves the tracker to its QA status, lane -> qa)
+#   mc qa ABC-1234                # alpha smoke passed -> lane qa. Board-only once the tracker
+#                                #   moved to its QA status at merge; otherwise it writes held
+#                                #   field drafts and moves the tracker first
 #   mc changes ABC-1234: <note>    # send back with a note
 #   mc plan ABC-1234               # pull a refined backlog ticket into planning
 #   mc hold ABC-1234: <reason>      # park (blocked) until cleared
@@ -249,7 +250,8 @@ CONTROL VERBS (queued → orchestrator acts)
                             re-request its reviewers → in-review (tracker untouched)
     merge   ABC-X            authorize the merge → orchestrator runs merge.sh (APPROVED+green+
                             mergeable checks) + post-merge flow
-    qa      ABC-X            alpha smoke passed → hand to QA (testing notes + the tracker QA status)
+    qa      ABC-X            alpha smoke passed → lane qa (board only once the tracker moved at merge;
+                            before that it writes held field drafts + runs the QA transition)
     changes ABC-X: <note>    work an OPEN PR's review comments → kickback + triage flow
     plan    ABC-X            pull a refined backlog ticket into planning → spawn planner
 
@@ -273,7 +275,8 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
                             (all if no name); `on` re-arms. Default ON. Never silent when off.
                             `guard off merge` also lets the loop EXECUTE a queued `mc merge`.
                             `guard off fields` opens the field wrappers as a group, so the loop
-                            runs the Final field check on a merged ticket (default: it only proposes).
+                            runs the Final field check on a merged ticket and, once every field is
+                            set, moves the tracker to QA (default: it only proposes).
     lock | who              show the single-writer lock owner
     log [N]                 today's work log (or the last N days); queued verbs are logged automatically
     health | creds          probe GitHub + the tracker credential/reachability health
