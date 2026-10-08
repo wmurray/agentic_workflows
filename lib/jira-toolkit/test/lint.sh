@@ -171,7 +171,7 @@ cat > "$JA/bin/jira" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$FX/calls"
 case "$1 $2" in
-  "issue view")   echo '{"fields":{"assignee":null}}' ;;
+  "issue view")   if [ -f "$FX/view.json" ]; then cat "$FX/view.json"; else echo '{"fields":{"assignee":null}}'; fi ;;
   "issue assign") exit 0 ;;
   *) echo "stub jira: unexpected $*" >&2; exit 1 ;;
 esac
@@ -190,7 +190,11 @@ else bad "assign: without JIRA_PROJECT — $(tr '\n' ';' < "$JA/calls")"; fi
 (unset JIRA_PROJECT; ja --lane plan-review)
 if grep -qx 'issue assign ABC-1 you@your-org.com' "$JA/calls"; then ok "assign: an unassigned plan-review ticket is still claimed"
 else bad "assign: plan-review — $(tr '\n' ';' < "$JA/calls")"; fi
-rm -f "${JA:?}/bin/jira" "${JA:?}/calls"; rmdir "${JA:?}/bin" "${JA:?}"
+printf '%s' '{"fields":{"assignee":{"accountId":"q1","displayName":"QA Owner"},"status":{"name":"QA Review"}}}' > "$JA/view.json"; : > "$JA/calls"
+expect "assign: a ticket in the QA status is refused" 4 env PATH="$JA/bin:$PATH" FX="$JA" "$T/assign.sh" ABC-1 --lane alpha-verify
+says   "  … and says QA owns the assignee" "in 'QA Review' — QA owns the assignee" env PATH="$JA/bin:$PATH" FX="$JA" "$T/assign.sh" ABC-1 --lane alpha-verify
+grep -q '^issue assign' "$JA/calls" && bad "assign: QA-status ticket was reassigned" || ok "assign: a QA-status ticket is never reassigned"
+rm -f "${JA:?}/bin/jira" "${JA:?}/calls" "${JA:?}/view.json"; rmdir "${JA:?}/bin" "${JA:?}"
 
 echo "jira-status against a stub jira + curl (no network)"
 # A three-status workflow whose transition names do not match their targets, and with no
@@ -349,6 +353,9 @@ says   "qa-transition: and names what is reachable" 'reachable: Done' qa
 qa_fixture "$FULL"; printf 'QA Review' > "$QA/status"
 says   "qa-transition: already in QA is a no-op" 'no-op' qa
 [ -z "$(cat "$QA/calls")" ] && ok "qa-transition: no-op makes no REST call" || bad "qa-transition: no-op called REST"
+says   "qa-transition: --check says a ticket already in QA is a no-op" "ABC-1 already 'QA Review' — no-op" qa --check
+expect "  … and exits 0" 0 qa --check
+[ -z "$(cat "$QA/calls")" ] && ok "qa-transition: --check on a ticket in QA makes no REST call" || bad "qa-transition: --check in QA called REST"
 rm -f "${QA:?}"/bin/* "${QA:?}"/{calls,status,fields.json,trans.json,fired,out,qa.env,qa-id.env}; rmdir "${QA:?}/bin" "${QA:?}"
 
 echo "post-release-note against a stub curl (no network)"

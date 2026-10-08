@@ -11,7 +11,9 @@
 #              refined, where the ticket is not pulled in yet and so is not ours to claim.
 #     --check  read-only: print current assignee + what would happen, change nothing.
 #   Behavior: already the target → no-op (0) · unassigned → assign (0) · assigned to someone
-#   else → REFUSE (5) so the caller flags it for a human.
+#   else → REFUSE (5) so the caller flags it for a human · status is $JIRA_STATUS_QA → REFUSE (4)
+#   whatever the lane: the QA move hands the assignee to QA, and the board can still show
+#   alpha-verify after it (the tracker moves at merge, the board after the alpha smoke).
 # Exit: 0 assigned/no-op/check · 2 bad args · 4 lane-guarded · 5 assigned-to-a-colleague · 1 error
 set -uo pipefail
 . "$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/env.sh"
@@ -42,6 +44,12 @@ raw=$(jira issue view "$key" --raw 2>/dev/null)
 [ -n "$raw" ] || { echo "assign: could not fetch $key (jira issue view --raw)." >&2; exit 1; }
 cur_id=$(printf '%s' "$raw"   | jq -r '.fields.assignee.accountId  // empty' 2>/dev/null)
 cur_name=$(printf '%s' "$raw" | jq -r '.fields.assignee.displayName // "Unassigned"' 2>/dev/null)
+cur_status=$(printf '%s' "$raw" | jq -r '.fields.status.name // empty' 2>/dev/null)
+
+if [ -n "${JIRA_STATUS_QA:-}" ] && [ "$cur_status" = "$JIRA_STATUS_QA" ]; then
+  echo "assign: $key is in '$JIRA_STATUS_QA' — QA owns the assignee there; refusing." >&2
+  exit 4
+fi
 
 # Already the target → no-op. Exact accountId match when we have one; otherwise a loose
 # name/email substring match.

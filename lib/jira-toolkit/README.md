@@ -18,7 +18,8 @@ env.sh                 sourced by every wrapper: loads jira.env, validates, shar
 example.env            the config template — copy to jira.env and fill in
 jira.env               your org values (GITIGNORED)
 md-to-adf.py           markdown subset → Atlassian Document Format, for the rich-text fields
-assign.sh              claim an UNASSIGNED ticket; never reassigns away from a colleague
+assign.sh              claim an UNASSIGNED ticket; never reassigns away from a colleague,
+                       and leaves a ticket in the QA status to QA
 jira-status.sh         lane → status moves via REST (qa/done refused → dedicated wrappers)
 qa-transition.sh       REST transition to the QA status; writes testing notes first if given, then
                        refuses (exit 3) while release note / testing notes / flags / points are empty
