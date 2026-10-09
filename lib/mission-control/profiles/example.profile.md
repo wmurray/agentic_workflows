@@ -106,6 +106,11 @@ Leave this section out entirely if your org has no freeze concept.
 
 The worker templates under `$MC_SKILL_DIR/templates/` name these placeholders; the
 orchestrator (loop or manual session) substitutes the values below when it builds a brief.
+`{PR_BODY_GUIDE}` is the exception: no worker sees it, the orchestrator applies it itself
+when it opens a draft PR.
+
+A fill that names a prose or layout guide (`{STYLE_GUIDE}`, `{PR_BODY_GUIDE}`) takes either a
+file path or the name of an installed skill. The reader reads a path and loads a skill.
 
 | Placeholder | Value |
 |---|---|
@@ -115,7 +120,8 @@ orchestrator (loop or manual session) substitutes the values below when it build
 | `{TICKET_DETAIL_CMD}` | the ticket-detail command above |
 | `{VAULT_PROJECTS_DIR}` | `<vault>/Projects` |
 | `{CATCH_ALL_GROUP}` | `Standalone Tickets` (the catch-all folder below) |
-| `{STYLE_GUIDE}` | path to your prose style guide, or `(none)` |
+| `{STYLE_GUIDE}` | path to your prose style guide, or the name of a skill that holds it (e.g. the value of `$WRITING_STYLE_SKILL`), or `(none)` |
+| `{PR_BODY_GUIDE}` | the PR-body layout the orchestrator applies to a draft PR: `skills/create-pr/SKILL.md` (its Output Contract; the default), another file path, or the name of a skill that holds your layout (e.g. the value of `$PR_DESCRIPTION_SKILL`) |
 | `{SURFACES}` | the Surfaces section below, pasted in (the field-check worker uses it to name the app in QA cases) |
 | `{CONTEXT_DOCS}` | what the pre-plan critic may resolve ambiguity from: your domain glossary, project context docs, ADR folders (paths, one per line) |
 

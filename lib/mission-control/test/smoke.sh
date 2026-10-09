@@ -377,6 +377,39 @@ says "dash says a moved row is in QA, awaiting the smoke" yes 'ENG-217 +\[alpha-
 says "  … and keeps the merge wording before the move"   yes 'ENG-216 +\[alpha-verify\].*merged — smoke-test on alpha'  dash_pq
 says "mc usage says qa is board-only after the move" yes 'qa +ABC-X +alpha smoke passed → lane qa \(board only once the tracker moved at merge;'  env MC_INBOX="$WORK/mc-inbox" MC_PAUSE_FILE="$WORK/PAUSED" bash -c '. "$0"; mc help' "$_MC_LIB/mc"
 
+# --- 6d. profile fills ----------------------------------------------------------------
+# The driver names the org-valued fills the overlay must supply; the example profile is
+# what an operator copies. A fill the driver relies on with no row in the example is a
+# fill nobody knows to set, and the driver then improvises it. A row is a table row or a
+# `### {FILL}` heading; a passing mention in prose does not count.
+echo
+echo "profile fills   (driver ↔ example profile)"
+echo "────────────────────────────────────────────────────────────────"
+DRIVER="$_MC_LIB/loop-driver.engine.md"
+EXPROFILE="$_MC_LIB/profiles/example.profile.md"
+MC_SKILL_MD="$_MC_LIB/../../skills/mission-control/SKILL.md"
+TEMPLATES="$_MC_LIB/../../skills/mission-control/templates"
+CREATE_PR_MD="$_MC_LIB/../../skills/create-pr/SKILL.md"
+driver_fills()  { awk '/the \*\*Template fills\*\* table/{f=1} f{print} f&&/\)\./{exit}' "$DRIVER"; }
+fills_missing() {
+  local f section
+  section="$(awk '/^## Template fills/{f=1;next} f&&/^## /{exit} f' "$EXPROFILE")"
+  for f in $(driver_fills | grep -oE '\{[A-Z_]+\}' | sort -u); do
+    printf '%s\n' "$section" | grep -qF -e "| \`$f\` |" -e "### \`$f\`" || echo "MISSING $f"
+  done
+}
+driver_r1pass() { awk '/^- R1 \*\*`pass`\*\*/{f=1} f&&/^- R1 \*\*`blockers`/{exit} f' "$DRIVER"; }
+says "driver lists the overlay fills"                 yes '\{STYLE_GUIDE\}' driver_fills
+says "every driver fill has an example-profile row"   no  'MISSING' fills_missing
+says "driver requires {PR_BODY_GUIDE} from the overlay" yes '\{PR_BODY_GUIDE\}' driver_fills
+says "driver's draft-PR step uses {PR_BODY_GUIDE}"    yes '\{PR_BODY_GUIDE\}' driver_r1pass
+says "driver no longer names the make-pr rules"       no  '.' grep -n 'make-pr' "$DRIVER"
+says "SKILL fills list names {PR_BODY_GUIDE}"         yes '.' grep -nE 'filled from the overlay.*\{PR_BODY_GUIDE\}|\{PR_BODY_GUIDE\}.*filled from the overlay' "$MC_SKILL_MD"
+says "SKILL Gate 2 no longer names make-pr"           no  '.' grep -n 'make-pr' "$MC_SKILL_MD"
+says "worker briefs let {STYLE_GUIDE} name a skill"   no  '.' grep -n 'follows `{STYLE_GUIDE}`\. Read it before writing' "$TEMPLATES"/*.md
+says "create-pr reads PR_DESCRIPTION_SKILL"           yes '.' grep -nF '${PR_DESCRIPTION_SKILL:-}' "$CREATE_PR_MD"
+says "create-pr reads WRITING_STYLE_SKILL"            yes '.' grep -nF '${WRITING_STYLE_SKILL:-}' "$CREATE_PR_MD"
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"

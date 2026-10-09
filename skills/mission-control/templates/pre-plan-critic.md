@@ -39,7 +39,7 @@ Resolve the mild cases yourself and label each **Confirmed / Inferred / Assumed*
 
 ## Writing
 
-Every piece of prose follows `{STYLE_GUIDE}`. Firm rules: no em dashes, no "rather than", no "not X, but Y", no trailing "-ing" analysis clauses, plain `is`/`are`.
+Every piece of prose follows `{STYLE_GUIDE}`. Before writing, read it if it is a file path, or load it if it names a skill. Firm rules: no em dashes, no "rather than", no "not X, but Y", no trailing "-ing" analysis clauses, plain `is`/`are`.
 
 ## Result file
 Write the exact same return as JSON to `{RESULT_PATH}` before you finish, if that value is a real filesystem path. If it still reads as a `{…}` placeholder, the chat return above is the only return.

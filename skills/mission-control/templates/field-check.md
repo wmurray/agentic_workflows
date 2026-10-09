@@ -58,7 +58,7 @@ A confident wrong field costs more than an honest hold; the operator fills a hel
 
 ## Writing
 
-Every piece of prose you produce follows `{STYLE_GUIDE}`. Read it before writing. The firm rules: no em
+Every piece of prose you produce follows `{STYLE_GUIDE}`. Before writing, read it if it is a file path, or load it if it names a skill. The firm rules: no em
 dashes, no "rather than", no "not X, but Y", no trailing "-ing" analysis clauses, plain `is`/`are` over
 "serves as".
 

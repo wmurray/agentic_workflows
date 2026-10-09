@@ -23,7 +23,8 @@ alone.
   roles named below · the **ticket-detail command** · the release-freeze window (if any) ·
   the notes-vault path · the **Template fills** table (the org values the worker templates
   take: `{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}`
-  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`).
+  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`,
+  plus `{PR_BODY_GUIDE}`, which you apply yourself when you open a draft PR).
 
 **Pipeline wrapper ROLES** (this file names roles; the overlay names the actual commands):
 
@@ -1179,8 +1180,9 @@ against `TaskList`; that marker is exactly what goes stale when a finish signal 
 
 **On coder completion — mandatory bounded review, per SKILL "Review (implement lane)":**
 - Spawn the **reviewer** as a SEPARATE background phase (never let the coder grade itself), `worker:"reviewer"`.
-- R1 **`pass`** → **you** open the **draft** PR (orchestrator owns PR creation — apply the make-pr rules
-  via `gh pr create --draft`; the coder only committed + pushed its branch), set `pr`, capture the
+- R1 **`pass`** → **you** open the **draft** PR (orchestrator owns PR creation: lay out the body per the
+  overlay's `{PR_BODY_GUIDE}` and open it via `gh pr create --draft`; the coder only committed + pushed
+  its branch), set `pr`, capture the
   coder's `feature_flags`, lane → `awaiting-review` (**Gate 2 — STOP**).
 - R1 **`blockers`** → re-spawn the coder to address them (lock-wrapped, same ≤1 cap) → **R2**. R2 `pass`
   → open the draft PR as above.

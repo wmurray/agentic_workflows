@@ -55,4 +55,4 @@ A resolution you label Assumed is visible at plan review, so a wrong pick is cau
 
 ## Writing
 
-Prose follows the style guide you are pointed at. Firm rules: no em dashes, no "rather than", no "not X, but Y", no trailing "-ing" analysis clauses, plain `is`/`are`.
+Prose follows the style guide you are pointed at (a file to read, or a skill to load). Firm rules: no em dashes, no "rather than", no "not X, but Y", no trailing "-ing" analysis clauses, plain `is`/`are`.

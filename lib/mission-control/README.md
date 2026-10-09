@@ -194,5 +194,8 @@ The five worker-phase briefs the SKILL spawns live in `skills/mission-control/te
 and follow the same split: each names its org-valued placeholders (`{MC_HOME}`,
 `{BRANCH_PREFIX}`, `{BASE_REF}`, `{WORKTREE_RECIPE}`, `{TICKET_DETAIL_CMD}`,
 `{VAULT_PROJECTS_DIR}`, `{CATCH_ALL_GROUP}`, `{STYLE_GUIDE}`,
-`{TEST_CONVENTIONS}`) and the overlay's **Template fills** section binds them. The runtime
+`{TEST_CONVENTIONS}`) and the overlay's **Template fills** section binds them. The same
+section binds `{PR_BODY_GUIDE}`, the PR-body layout the orchestrator applies when it opens
+a draft PR. `{STYLE_GUIDE}` and `{PR_BODY_GUIDE}` each take a file path or the name of an
+installed skill; the reader reads a path and loads a skill. The runtime
 dir symlinks each template into the repo, as it does the scripts.

@@ -82,3 +82,14 @@ tracker has not moved keeps the old `mc qa` path, which is still the only way an
 draft reaches the tracker. `tracker_qa_at` on the row makes the move once per ticket, and
 `assign.sh` now leaves a ticket in the QA status to its QA owner, since an `alpha-verify` row
 can hold one.
+
+## The PR-body layout becomes a profile fill (2026-10-09)
+
+The driver's draft-PR step used to say "apply the make-pr rules", which named a skill that
+lived only on the maintainer's machine and was never in this repo. It now applies
+`{PR_BODY_GUIDE}`, a profile fill like the others, whose example default is
+`skills/create-pr/SKILL.md`. `{PR_BODY_GUIDE}` and `{STYLE_GUIDE}` each take a file path or the
+name of an installed skill, so an operator can point the loop at a layout or voice skill
+without the repo naming it. `/create-pr` takes the same choice from `PR_DESCRIPTION_SKILL` and
+`WRITING_STYLE_SKILL`. The smoke run now checks that every fill the driver requires has a row
+in the example profile.
