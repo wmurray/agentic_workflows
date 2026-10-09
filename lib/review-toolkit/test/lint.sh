@@ -60,6 +60,10 @@ else
     repos/o/r/pulls/7) out="$(cat "$FX/pr.json")" ;;
     repos/o/r/pulls/7/reviews) out="$(cat "$FX/reviews.json")" ;;
     repos/o/r/pulls/7/comments) out="$(cat "$FX/comments.json")" ;;
+    repos/o/r/issues/7/comments) out="$(cat "$FX/issue_comments.json")" ;;
+    repos/o/r/issues/comments/*)
+      out="$(jq --argjson id "${path##*/}" '.[] | select(.id == $id)' "$FX/issue_comments.json")"
+      [ -n "$out" ] || nf ;;
     repos/o/r/pulls/comments/*)
       out="$(jq --argjson id "${path##*/}" '.[] | select(.id == $id)' "$FX/comments.json")"
       [ -n "$out" ] || nf ;;
@@ -288,6 +292,70 @@ jq -e --arg hdr "$AUTO_POST_HEADER" '.body | startswith($hdr)' "$FX/posted" >/de
 wl="$(cat "$FX/worklog/"*.jsonl 2>/dev/null)"
 printf '%s' "$wl" | jq -e 'select(.source == "review-reply") | (.text | test("fix")) and (.text | test("#posted")) and .repo == "o/r"' >/dev/null \
   && ok "review-reply: worklog line has category and URL" || bad "review-reply: worklog $wl"
+
+echo "review-reply: top-level PR comments (--issue-comment)"
+# issue_comments_fixture: 600 human on #7, 601 bot by type, 602 bot by suffix, 603 on #8.
+# 610 is an earlier automated reply of mine to 600; 611 one to a different comment.
+issue_comments_fixture() {
+  jq -n --arg hdr "$AUTO_POST_HEADER" '
+    def c($id; $login; $type; $n; $body): {id:$id, user:{login:$login, type:$type}, body:$body,
+      issue_url:("https://api.github.example/repos/o/r/issues/" + $n),
+      html_url:("https://github.example/o/r/pull/" + $n + "#issuecomment-" + ($id|tostring))};
+    [ c(600; "alice"; "User"; "7"; "can this be cached?"),
+      c(601; "reviewbot"; "Bot"; "7"; "coverage report"),
+      c(602; "helper[bot]"; "User"; "7"; "lint"),
+      c(603; "alice"; "User"; "8"; "other pr"),
+      c(610; "me"; "User"; "7"; ($hdr + "\n\nfirst\n\nIn reply to alice: https://github.example/o/r/pull/7#issuecomment-600")),
+      c(611; "me"; "User"; "7"; ($hdr + "\n\nother\n\nIn reply to bob: https://github.example/o/r/pull/7#issuecomment-699")) ]' > "$FX/issue_comments.json"
+}
+igood() { rgood; issue_comments_fixture; }
+ri() { "$T/review-reply.sh" o/r 7 --issue-comment "$@"; }
+
+igood
+expect "issue-reply: bad comment id"          2 ri abc "$FX/body.md"
+expect "issue-reply: a review comment id too"  2 "$T/review-reply.sh" o/r 7 100 --issue-comment 600 "$FX/body.md"
+touch "$AUTO_POST_KILL_SWITCH"
+expect "issue-reply: kill switch"             10 ri 600 "$FX/body.md"
+[ ! -s "$FX/calls" ] && ok "issue-reply: kill switch refuses before any gh call" || bad "issue-reply: kill switch made calls"
+igood
+expect "issue-reply: repo not allowlisted"    11 "$T/review-reply.sh" x/y 7 --issue-comment 600 "$FX/body.md"
+igood; pr_fixture alice "$HEAD" ""
+expect "issue-reply: not my PR"               12 ri 600 "$FX/body.md"
+igood
+expect "issue-reply: comment does not exist"  18 ri 999 "$FX/body.md"
+igood
+expect "issue-reply: comment is on another PR" 18 ri 603 "$FX/body.md"
+igood
+expect "issue-reply: bot by account type"     20 ri 601 "$FX/body.md"
+igood
+expect "issue-reply: bot by [bot] suffix"     20 ri 602 "$FX/body.md"
+igood; printf 'Fixed in 1a2b3c4.\n' > "$FX/body.md"
+expect "issue-reply: body without the header" 21 ri 600 "$FX/body.md"
+igood; printf '%s\n\nFixed in 9f9f9f9.\n' "$AUTO_POST_HEADER" > "$FX/body.md"
+expect "issue-reply: cited sha not on head"   19 ri 600 "$FX/body.md"
+igood; jq --arg hdr "$AUTO_POST_HEADER" '. + [{id:612, user:{login:"me", type:"User"}, issue_url:"https://api.github.example/repos/o/r/issues/7",
+  body:($hdr + "\n\nagain\n\nIn reply to alice: https://github.example/o/r/pull/7#issuecomment-600")}]' \
+  "$FX/issue_comments.json" > "$FX/ic2.json" && mv "$FX/ic2.json" "$FX/issue_comments.json"
+expect "issue-reply: reply cap reached escalates" 30 ri 600 "$FX/body.md"
+no_write "issue-reply: refusals write nothing"
+igood; jq '. + [{id:613, user:{login:"me", type:"User"}, issue_url:"https://api.github.example/repos/o/r/issues/7",
+  body:"manual: see https://github.example/o/r/pull/7#issuecomment-600"}]' \
+  "$FX/issue_comments.json" > "$FX/ic2.json" && mv "$FX/ic2.json" "$FX/issue_comments.json"
+expect "issue-reply: one earlier reply and a headerless one stay under the cap" 0 ri 600 "$FX/body.md" --dry-run
+igood
+says "issue-reply: dry run prints the issue-comments API call" 'POST repos/o/r/issues/7/comments' ri 600 "$FX/body.md" --dry-run
+no_write "issue-reply: dry run writes nothing"
+igood
+expect "issue-reply: posts" 0 ri 600 "$FX/body.md" --category answer
+[ "$(cat "$FX/writes" 2>/dev/null)" = "POST repos/o/r/issues/7/comments" ] && ok "issue-reply: one POST, a new issue comment" || bad "issue-reply: writes $(tr '\n' ';' < "$FX/writes" 2>/dev/null)"
+jq -e --arg hdr "$AUTO_POST_HEADER" '.body | startswith($hdr + "\n\nFixed in 1a2b3c4.")' "$FX/posted" >/dev/null \
+  && ok "issue-reply: body is posted as given, first" || bad "issue-reply: posted $(cat "$FX/posted" 2>/dev/null)"
+jq -e '.body | test("In reply to alice: https://github.example/o/r/pull/7#issuecomment-600$")' "$FX/posted" >/dev/null \
+  && ok "issue-reply: links the comment it answers" || bad "issue-reply: posted $(cat "$FX/posted" 2>/dev/null)"
+if grep -qE '^(PATCH|DELETE)' "$FX/calls" 2>/dev/null || grep -qE -- '-X (PATCH|DELETE)' "$FX/calls" 2>/dev/null; then bad "issue-reply: edited or deleted"; else ok "issue-reply: never edits or deletes"; fi
+wl="$(cat "$FX/worklog/"*.jsonl 2>/dev/null)"
+printf '%s' "$wl" | jq -e 'select(.source == "review-reply") | (.text | test("answer")) and (.text | test("comment 600")) and .repo == "o/r"' >/dev/null \
+  && ok "issue-reply: worklog line names the comment" || bad "issue-reply: worklog $wl"
 
 echo "symlinked invocation"
 ln -s "$T/review-post.sh" "$FX/link/review-post.sh"; ln -s "$T/review-reply.sh" "$FX/link/review-reply.sh"

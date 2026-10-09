@@ -78,6 +78,7 @@ so a second review on a later head needs a fresh review request. That is intende
 
 ```
 review-reply.sh <owner/repo> <pr> <comment-id> <body-file|-> [--category fix|decline|answer] [--dry-run]
+review-reply.sh <owner/repo> <pr> --issue-comment <id> <body-file|-> [--category …] [--dry-run]
 ```
 
 It refuses when the kill switch is present, the body lacks `AUTO_POST_HEADER`, the repo is
@@ -85,6 +86,13 @@ not allowlisted, the PR is not by `AUTO_POST_SELF`, the comment is not a review 
 that PR, the thread was started by a bot account, a commit SHA cited in the body is not on
 the PR head branch, or `AUTO_POST_SELF` already has `AUTO_POST_MAX_REPLIES` header-carrying
 replies in the thread. That last case exits 30 so a caller can hand the thread to a person.
+
+`--issue-comment` answers a top-level PR conversation comment instead of a review thread.
+GitHub has no threads there, so the script posts a new PR comment: the body as given, then a
+last line `In reply to <login>: <comment URL>`. The same guards apply to that comment (it
+must be on this PR and written by a human account), and the reply cap counts the
+maintainer's header-carrying PR comments that link that comment's id. It never edits or
+deletes a comment.
 
 A bot is decided by account type (`user.type == "Bot"` or a `[bot]` login suffix), never by
 comment text. A person whose comment carries an automated header is still a person.
@@ -113,5 +121,5 @@ wins over `review.env`.
 `10` kill switch · `11` repo not allowlisted · `12` PR author not allowed ·
 `13` not a requested reviewer · `14` event other than COMMENT · `15` unlabeled inline comment ·
 `16` already reviewed this head · `17` head moved · `18` comment not on this PR ·
-`19` cited SHA not on the head branch · `20` thread started by a bot ·
+`19` cited SHA not on the head branch · `20` thread (or issue comment) by a bot ·
 `21` reply lacks the header · `30` reply cap reached, escalate to a human.
