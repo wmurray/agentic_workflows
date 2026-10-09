@@ -35,6 +35,7 @@ lib/             Shell helpers (workspace context, PR radar)
 | `/review-pr`    | "Compare notes" PR review — reads the diff, applies the repo's reviewer rubric, produces a structured findings report for a side-by-side discussion. Advisory only; never posts to GitHub. |
 | `/review-queue` | Batch review sitting: reviews multiple PRs in parallel in the background, then walks you through each one at a time via difit. Never auto-advances.                                        |
 | `/review-radar` | Team-wide monitor: which PRs across your repos are sitting unreviewed, and for how long? Flags the ones waiting on you. Hands off to `/review-queue`.                                      |
+| `/reply-comments` | Works the review comments on one of your own PRs: triage, fix the clear items and push to the PR branch, then reply in each thread. Publishes through the guarded `review-reply.sh` when `REPLY_POST_WRAPPER` is set, otherwise leaves private drafts. |
 
 ### Dependency management
 
@@ -131,7 +132,9 @@ Two guarded wrappers that let an agent post a COMMENT review on an allowlisted a
 and reply in review threads on the maintainer's own PR. They are an opt-in exception to the
 human-gate principle below: the author and repo allowlists default to empty, an empty
 allowlist refuses every post, and a kill-switch file stops both. `test/lint.sh` checks every
-guard against a stubbed `gh`.
+guard against a stubbed `gh`. `/reply-comments` and the mission-control loop's kickback address
+round call `review-reply.sh` only when `REPLY_POST_WRAPPER` (or the profile fill of that name)
+points at it.
 
 See [`lib/review-toolkit/README.md`](lib/review-toolkit/README.md) for the guards and config.
 

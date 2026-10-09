@@ -17,8 +17,12 @@ an experiment. They are safe to keep in the repo because:
   merge decision stays with people.
 - Replies never resolve a thread. The script has no call that could.
 
-Nothing else in the toolkit calls these wrappers. Using them is a choice made in local
-config, per person and per repo.
+Two callers can use `review-reply.sh`, and only when local config points them at it:
+`/reply-comments` (env `REPLY_POST_WRAPPER`) and the mission-control loop's kickback address
+round (the profile fill `{REPLY_POST_WRAPPER}`). Both treat exit 10 as "draft instead", exit 20
+as a normal skip, exit 30 as "hand the thread to the maintainer", and any other refusal as
+"stop posting on this PR". Nothing in this repo calls `review-post.sh`.
+Using either wrapper is a choice made in local config, per person and per repo.
 
 ## Layout
 

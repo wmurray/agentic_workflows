@@ -445,6 +445,7 @@ says "create-pr reads WRITING_STYLE_SKILL"            yes '.' grep -nF '${WRITIN
 echo
 echo "kickback reply publishing   (driver ↔ skill ↔ templates)"
 echo "────────────────────────────────────────────────────────────────"
+REPLY_SKILL_MD="$_MC_LIB/../../skills/reply-comments/SKILL.md"
 pw5()    { awk '/^### Prep-write 5 /{f=1} f&&/^### Prep-write 6 /{exit} f' "$DRIVER"; }
 pw5_flat() { pw5 | tr '\n' ' '; }
 arming() { pw5 | awk '/^\*\*Arming checklist\*\*/{f=1} f'; }
@@ -462,6 +463,11 @@ says "  … and mc address on"                      yes 'mc address on'         
 says "SKILL fills list names {REPLY_POST_WRAPPER}" yes '.' grep -nE 'filled from the overlay.*\{REPLY_POST_WRAPPER\}|\{REPLY_POST_WRAPPER\}.*filled from the overlay' "$MC_SKILL_MD"
 say_both_coders() { grep -c '(k) `replies`' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md; }
 says "both coder templates return (k) replies"    no  ':0$'                             say_both_coders
+says "reply-comments skill has frontmatter"       yes '^name: reply-comments$'          cat "$REPLY_SKILL_MD"
+says "  … reads REPLY_POST_WRAPPER"               yes 'REPLY_POST_WRAPPER:-\}' cat "$REPLY_SKILL_MD"
+says "  … shares the decline report path"         yes 'MC_AUTO_POST_REPORT:-' cat "$REPLY_SKILL_MD"
+says "  … routes exit 10, 20 and 30"              yes 'exit 10.*exit 20.*exit 30' bash -c 'tr "\n" " " < "$0"' "$REPLY_SKILL_MD"
+says "  … has no positional placeholders"         no  '\$[0-9]|\$\{[0-9]|\$ARGUMENTS\[' cat "$REPLY_SKILL_MD"
 
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
