@@ -35,3 +35,6 @@ lib/jira-toolkit/jira.env
 
 # review-toolkit: your allowlists (never commit)
 lib/review-toolkit/review.env
+
+# nightowl: your local values (never commit)
+lib/nightowl/nightowl.env

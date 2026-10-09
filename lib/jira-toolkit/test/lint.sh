@@ -412,6 +412,10 @@ echo "review-toolkit (sibling suite)"
 rt=$(bash "$T/../review-toolkit/test/lint.sh" 2>&1)
 [ $? -eq 0 ] && ok "review-toolkit lint ($(printf '%s' "$rt" | tail -1 | sed 's/\x1b\[[0-9;]*m//g'))" || bad "review-toolkit lint: $(printf '%s' "$rt" | grep -m1 FAIL)"
 
+echo "nightowl (sibling suite)"
+rt=$(bash "$T/../nightowl/test/lint.sh" 2>&1)
+[ $? -eq 0 ] && ok "nightowl lint ($(printf '%s' "$rt" | tail -1 | sed 's/\x1b\[[0-9;]*m//g'))" || bad "nightowl lint: $(printf '%s' "$rt" | grep -m1 FAIL)"
+
 echo "config validation"
 says "qa-transition names the missing token" 'missing config:.*JIRA_API_TOKEN' "$T/qa-transition.sh" ABC-1
 expect "qa-transition exits 1 without token"  1 "$T/qa-transition.sh" ABC-1
