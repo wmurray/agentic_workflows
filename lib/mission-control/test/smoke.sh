@@ -107,6 +107,10 @@ says "detail_of stubs an undetailed key"   yes 'ENG-201'       tracker detail_of
 run "host capabilities"           0 host capabilities
 run "host list_prs"               0 host list_prs example-org/app all
 run "host list_prs mine"          0 host list_prs example-org/app open mine
+run "host get_pr"                 0 host get_pr example-org/app 201
+says "get_pr returns the one PR"   yes '^\{.*"number":201[,}]'  host get_pr example-org/app 201
+run "get_pr not-found → empty"     0 bash -c 'test -z "$("$0" get_pr example-org/app 299)"' "$_MC_LIB/adapters/host/fixture.sh"
+run "get_pr host failure → nonzero" 1 env MC_FIXTURE_GET_PR_FAIL=1 "$_MC_LIB/adapters/host/fixture.sh" get_pr example-org/app 201
 run "host review_threads"         0 host review_threads example-org/app 202
 run "host whoami"                 0 host whoami
 
@@ -177,6 +181,16 @@ says "mc-poll reads tracker status"       no  'tracker-miss'             "$_MC_L
 says "mc-poll flags the regression"      yes  'REGRESSED'                "$_MC_LIB/mc-poll.sh"
 says "mc-poll names no provider"          no  '(?i)jira|github|gh-'      "$_MC_LIB/mc-poll.sh"
 says "mc-poll shows runner live status"  yes  '●coder[^ ]*@inprocess:running'  "$_MC_LIB/mc-poll.sh"
+# An open PR older than the host's list window. MC_FIXTURE_LIST_LIMIT=2 keeps only the two
+# newest PRs (301, 302) in list_prs, so every board PR falls outside it, as an old open PR
+# does past the live window. ENG-221 points at a PR the host does not have at all.
+jq '.tickets += [{"ticket":"ENG-221","lane":"in-review","cycle":"sprint","worker":null,"blocked":false,
+  "pr":"https://example.invalid/example-org/app/pull/299"}]' "$WORK/state.json" > "$WORK/state.host-window.json"
+poll_hw() { MC_STATE="$WORK/state.host-window.json" MC_FIXTURE_LIST_LIMIT=2 "$_MC_LIB/mc-poll.sh"; }
+says "a PR outside the list window is not a host-miss" no  'app#20[1-3]\(host-miss\)'               poll_hw
+says "  … it is joined through get_pr"                 yes '^ENG-202 .*app#202 +ready +CHANGES_REQUESTED +fail'  poll_hw
+says "  … a PR the host lacks is still a host-miss"    yes '^ENG-221 .*app#299\(host-miss\)'      poll_hw
+says "  … a get_pr failure is host-err, not host-miss" yes '^ENG-202 .*app#202\(host-err\)'       env MC_FIXTURE_GET_PR_FAIL=1 bash -c 'MC_STATE="$0" MC_FIXTURE_LIST_LIMIT=2 "$1"' "$WORK/state.host-window.json" "$_MC_LIB/mc-poll.sh"
 says "mc-orphans sweeps runner sessions" yes  'orphan runner sessions'    env MC_RUNNER_CODER=herdr MC_HERDR_WS_SPRINT= "$_MC_LIB/mc-orphans.sh"
 says "mc-health emits the host key" yes  '"host":'                  "$_MC_LIB/mc-health.sh"
 says "mc-health names no provider"    no  '(?i)github|"github"'        "$_MC_LIB/mc-health.sh"

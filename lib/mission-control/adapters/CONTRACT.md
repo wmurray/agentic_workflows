@@ -98,6 +98,7 @@ but callers must already branch on `capabilities` so a cycle-less fast-follow ad
 | Op | Args | Output | Consumers |
 |---|---|---|---|
 | `list_prs` | `<repo> <state:all\|open> [mine]` | JSON array of PR objects (superset schema) | mc-poll, mc-orphans |
+| `get_pr` | `<repo> <num>` | ONE PR object (same superset schema); empty if not found | mc-poll |
 | `review_threads` | `<repo> <num>` | JSON `{reviewDecision, threads[], reviews[]}` | mc-review-check *(optional: `review_threads`)* |
 | `whoami` | — | prints identity on success; nonzero + stderr on failure | mc-health |
 | `capabilities` | — | space-separated feature list, e.g. `review_threads` | any gating step |
@@ -105,7 +106,16 @@ but callers must already branch on `capabilities` so a cycle-less fast-follow ad
 **`list_prs`** returns one superset schema so both consumers `jq` what they need:
 `number, title, headRefName, isDraft, author, url, state, reviewDecision, mergeable,
 mergedAt, statusCheckRollup, reviewRequests`. `mine` adds an author=me filter
-(mc-orphans' default; mc-poll omits it).
+(mc-orphans' default; mc-poll omits it). It is a bounded page of the newest PRs (GitHub:
+`-L 60`), so an older PR that is still open can fall outside it.
+
+**`get_pr`** fetches one PR by number, in the `list_prs` schema, for exactly that case.
+mc-poll calls it only for a board PR the `list_prs` page did not contain, so a normal tick
+makes no extra calls. Three outcomes, which the engine keeps apart:
+- found → the PR object on stdout, exit `0`;
+- not found (no such PR or repo) → empty stdout, exit `0`. Only this is a `(host-miss)`;
+- the host could not answer (auth, network) → nonzero exit, error text on stderr. mc-poll
+  renders that as `(host-err)`: unknown, not absent.
 
 **`review_threads`** does the provider's threads+reviews fetch and normalizes to:
 ```json

@@ -9,7 +9,7 @@
 # the done tickets = the per-tick context burn this replaces).
 #
 # Replaces the old ~2N per-ticket calls with: 1 state read + 1 tracker `fields_of` +
-# 1 host `list_prs` per repo. READ-ONLY, like dash.sh — NEVER writes state.json.
+# 1 host `list_prs` per repo (+ 1 `get_pr` per board PR outside its window). READ-ONLY, like dash.sh — NEVER writes state.json.
 #
 # Provider calls go through the tracker/host adapters (see adapters/CONTRACT.md); no
 # provider is named here. Status→progress ranks come from the profile (MC_STATUS_RANK)
@@ -190,6 +190,14 @@ while IFS=$'\t' read -r t lane pr blk wk pd rimpl rhandle; do
     num=$(echo "$pr" | grep -oE '[0-9]+$')
     prcol="$(echo "$repo" | sed 's#.*/##')#$num"
     row=$(jq -c -r --arg r "$repo" --arg n "$num" '.[$r][$n] // empty' "$gh_tmp")
+    # Not in the list window: an old PR that is still open falls out of list_prs' newest-N
+    # page. Ask for it by number before calling it a miss. One host call per miss only, so
+    # a normal tick (every board PR inside the window) costs nothing extra; the worst case
+    # is one call per active row with a PR, if list_prs itself came back empty.
+    hosterr=0
+    if [ -z "$row" ] && [ -n "$num" ]; then
+      row=$(host get_pr "$repo" "$num" 2>/dev/null) || { row=""; hosterr=1; }
+    fi
     if [ -n "$row" ]; then
       [ "$(echo "$row" | jq -r '.isDraft')" = "true" ] && draft="draft" || draft="ready"
       review=$(echo "$row" | jq -r '.reviewDecision // "-"'); [ -z "$review" ] && review="-"
@@ -219,6 +227,9 @@ while IFS=$'\t' read -r t lane pr blk wk pd rimpl rhandle; do
           elif ($real | any(. == "" or IN("PENDING","IN_PROGRESS","QUEUED","EXPECTED","WAITING","REQUESTED"))) then "pending"
           elif ($frzchecks | any(IN($bad[]))) then "frozen"
           else "green" end')
+    elif [ "$hosterr" = 1 ]; then
+      # get_pr could not answer (auth, network): unknown, which is not the same as absent.
+      prcol="$prcol(host-err)"
     else
       prcol="$prcol(host-miss)"
     fi

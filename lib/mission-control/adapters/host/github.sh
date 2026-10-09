@@ -8,6 +8,7 @@
 #
 #   host list_prs owner/repo all
 #   host list_prs owner/repo open mine
+#   host get_pr owner/repo 123
 #   host review_threads owner/repo 123
 #   host whoami
 #   host capabilities
@@ -15,17 +16,34 @@ set -uo pipefail
 
 op="${1:-}"; shift || true
 
+# Superset field set: mc-poll reads the review/CI/merge fields, mc-orphans reads
+# title/headRefName/author/url. One schema serves list_prs and get_pr.
+FIELDS="number,title,headRefName,isDraft,author,url,state,reviewDecision,mergeable,mergedAt,statusCheckRollup,reviewRequests"
+
 case "$op" in
   list_prs)
     repo="${1:-}"; state="${2:-all}"; mine="${3:-}"
     [ -n "$repo" ] || { echo "github list_prs: need <owner/repo>" >&2; exit 2; }
-    # Superset field set: mc-poll reads the review/CI/merge fields, mc-orphans reads
-    # title/headRefName/author/url. One call serves both.
-    fields="number,title,headRefName,isDraft,author,url,state,reviewDecision,mergeable,mergedAt,statusCheckRollup,reviewRequests"
     if [ "$mine" = "mine" ]; then
-      gh pr list -R "$repo" --state "$state" -L 60 --author "@me" --json "$fields" 2>/dev/null || echo '[]'
+      gh pr list -R "$repo" --state "$state" -L 60 --author "@me" --json "$FIELDS" 2>/dev/null || echo '[]'
     else
-      gh pr list -R "$repo" --state "$state" -L 60 --json "$fields" 2>/dev/null || echo '[]'
+      gh pr list -R "$repo" --state "$state" -L 60 --json "$FIELDS" 2>/dev/null || echo '[]'
+    fi
+    ;;
+
+  get_pr)
+    repo="${1:-}"; num="${2:-}"
+    [ -n "$repo" ] && [ -n "$num" ] || { echo "github get_pr: need <owner/repo> <num>" >&2; exit 2; }
+    # One PR by number, outside list_prs' -L window. gh exits 1 for both "no such PR" and
+    # "host unreachable", so the stderr text tells them apart: a resolve failure is the
+    # contract's not-found (empty, exit 0); anything else is passed through as an error.
+    err=$(mktemp)
+    if out=$(gh pr view "$num" -R "$repo" --json "$FIELDS" 2>"$err"); then
+      rm -f "$err"; printf '%s\n' "$out"
+    elif grep -qiE 'could not resolve to a (pullrequest|repository)|no pull requests? found' "$err"; then
+      rm -f "$err"
+    else
+      cat "$err" >&2; rm -f "$err"; exit 1
     fi
     ;;
 

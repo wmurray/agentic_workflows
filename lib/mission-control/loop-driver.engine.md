@@ -466,9 +466,10 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - **Never auto-advance a `blocked`/held ticket** — a block needs eyes; reflect reality around it but leave the lane.
    - **Draft-ness comes only from the poller's `DRAFT` column (`isDraft`), never from PR `state`.**
      A draft PR is also `state: OPEN`, so `state` alone says nothing about draft-ness.
-   - **A `(host-miss)` / `?(tracker-miss)` marker means the poller couldn't find that PR/ticket**
-     (e.g. a merged PR older than the `gh pr list -L` window) — treat it as "unknown, don't
-     conclude," not as clean.
+   - **A `(host-miss)` / `?(tracker-miss)` marker means the poller couldn't find that PR/ticket.**
+     A PR outside the `list_prs` window is fetched by number first, so `(host-miss)` means the
+     host says the PR does not exist; `(host-err)` means the host could not answer. Treat both
+     as "unknown, don't conclude," not as clean.
 3. **Propose — and, for your granted writes, act (see "The writes you may make").** Scan the
    active rows + read the inbox — **drain (apply + remove) only `note`/`hold` lines; read-but-leave
    every other verb** — run `$MC_HOME/mc-inbound.sh` (the

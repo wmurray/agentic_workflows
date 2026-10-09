@@ -9,7 +9,7 @@
 #
 #   host/prs.json        {"owner/repo": [ <PR object>, … ], …}  — the list_prs superset
 #                        schema. A repo with no entry returns [], exactly as a real host
-#                        with no open PRs does.
+#                        with no open PRs does. get_pr reads the same file, by number.
 #   host/threads.json    {"owner/repo#123": {reviewDecision, threads[], reviews[]}, …}
 #                        A missing key returns the contract's empty shape (→ CLEAN).
 #   host/whoami          the identity to print. Failure modes for exercising mc-health's
@@ -21,8 +21,14 @@
 #   host/capabilities    space-separated; default "review_threads". Drop it to exercise
 #                        the no-review-threads degrade.
 #
+#   MC_FIXTURE_LIST_LIMIT  keep only the N highest-numbered PRs in list_prs, the stand-in
+#                        for a real host's list window (unset = no window). get_pr ignores
+#                        it, so an old open PR outside the window is still reachable.
+#   MC_FIXTURE_GET_PR_FAIL set non-empty to make get_pr fail as an unreachable host would.
+#
 #   host list_prs owner/repo all
 #   host list_prs owner/repo open mine
+#   host get_pr owner/repo 123
 #   host review_threads owner/repo 123
 #   host whoami
 #   host capabilities
@@ -53,10 +59,21 @@ case "$op" in
     [ -f "$FIX/prs.json" ] || { echo '[]'; exit 0; }
     # State + author filtering happens HERE (the real host does it server-side), so the
     # engine sees the same pre-filtered array it gets from a live host.
-    jq -c --arg repo "$repo" --arg state "$state" --arg mine "$mine" --arg me "$ME" '
+    jq -c --arg repo "$repo" --arg state "$state" --arg mine "$mine" --arg me "$ME" \
+          --arg lim "${MC_FIXTURE_LIST_LIMIT:-}" '
       (.[$repo] // [])
       | map(select($state == "all" or ((.state // "OPEN") | ascii_downcase) == ($state | ascii_downcase)))
-      | map(select($mine != "mine" or ((.author.login // "") == $me)))' "$FIX/prs.json" 2>/dev/null || echo '[]'
+      | map(select($mine != "mine" or ((.author.login // "") == $me)))
+      | if $lim == "" then . else (sort_by(-.number) | .[:($lim | tonumber)]) end' "$FIX/prs.json" 2>/dev/null || echo '[]'
+    ;;
+
+  get_pr)
+    repo="${1:-}"; num="${2:-}"
+    [ -n "$repo" ] && [ -n "$num" ] || { echo "fixture get_pr: need <owner/repo> <num>" >&2; exit 2; }
+    [ -z "${MC_FIXTURE_GET_PR_FAIL:-}" ] || { echo "dial tcp: connect: network is unreachable (fixture)" >&2; exit 1; }
+    [ -f "$FIX/prs.json" ] || exit 0
+    # Not found → empty stdout, exit 0 (the contract's not-found shape).
+    jq -c --arg repo "$repo" --argjson n "$num" '(.[$repo] // [])[] | select(.number == $n)' "$FIX/prs.json"
     ;;
 
   review_threads)

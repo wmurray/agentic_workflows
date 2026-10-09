@@ -46,7 +46,7 @@ tracker fields_of KEY-1 KEY-2      # → adapters/tracker/$MC_TRACKER.sh
 host    list_prs owner/repo all    # → adapters/host/$MC_HOST.sh
 ```
 
-Five tracker ops and four host ops cover the whole engine. `cycles`, `vetting` and
+Five tracker ops and five host ops cover the whole engine. `cycles`, `vetting` and
 `review_threads` are **optional capabilities** — a provider without a sprint/cycle concept
 degrades deliberately rather than breaking. See `adapters/CONTRACT.md`.
 
