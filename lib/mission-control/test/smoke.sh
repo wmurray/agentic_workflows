@@ -32,9 +32,16 @@ dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 # --- 1. stamp the live runtime files, so any write to them is detectable -------------
 # Format: "<path>\t<sha or ABSENT>". A file the engine must never touch during a
 # fixture run is listed here; ABSENT files must stay absent.
+#
+# `.loop-heartbeat` is deliberately NOT listed. A running /loop stamps it every tick,
+# outside the writer lock, so a smoke run that overlaps a tick saw it change and went red
+# for something the board never did. No engine script writes it (only the driver's
+# prose does, and dash.sh reads it), so stamping it caught nothing a fixture run could
+# break. Everything else here changes only on a real board write, an operator verb, or a
+# flag flip, so it stays covered.
 LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
-  "$LIVE/.last-archived-sprint" "$LIVE/.loop-heartbeat" "$LIVE/mc-inbox"
+  "$LIVE/.last-archived-sprint" "$LIVE/mc-inbox"
   "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO" "$LIVE/KICKBACK_AUTO"
   "$LIVE/SPRINT_PLAN_AUTO"
 )
@@ -57,6 +64,10 @@ export MC_FIXTURES="$WORK"
 # MC_STATE and the other write targets are all derived from MC_FIXTURES inside the
 # profile, so pointing that one var at the temp copy redirects everything.
 unset MC_STATE MC_ARCHIVE MC_LOCK MC_CYCLE_MARKER MC_INBOX 2>/dev/null || true
+# The operator's shell may export a real MC_REVIEW_SELF. The profile's `${VAR:-default}`
+# would let it win over the fixture login, and the self-reply signature cases would then
+# pass or fail on whoever runs the suite.
+unset MC_REVIEW_SELF 2>/dev/null || true
 
 # run <label> <allowed-exit-codes,csv> <cmd…>
 run() {
@@ -92,6 +103,14 @@ says() {
 echo
 echo "engine against the fixture adapters   (fixtures: $WORK)"
 echo "────────────────────────────────────────────────────────────────"
+
+# The stamp set itself is pinned: the board files must stay covered, and the per-tick
+# liveness sidecar must not be (see the comment on LIVE_FILES).
+stamped() { printf '%s\n' "${LIVE_FILES[@]}"; }
+says "live stamp covers state.json"          yes '/state\.json$'           stamped
+says "live stamp covers the writer lock"     yes '/\.writer-lock$'         stamped
+says "live stamp covers the rollover marker" yes '/\.last-archived-sprint$' stamped
+says "live stamp skips the loop heartbeat"   no  '/\.loop-heartbeat$'      stamped
 
 # --- 3. adapter contract: every op answers ------------------------------------------
 . "$_MC_LIB/adapters/dispatch.sh"
