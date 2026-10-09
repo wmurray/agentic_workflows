@@ -42,7 +42,7 @@ The profile is `settings.template.json`, filled per task by `nightowl.sh setting
 - **Allowed without a prompt:** read and edit inside the task's worktree and task dir,
   read-only git and gh commands, local commits, and `NIGHTOWL_ALLOW_EXTRA` (test runners).
   Research tasks also get web search and fetch, and writes to `NIGHTOWL_NOTES_DIR` when it
-  is set.
+  is set, plus any rules in `NIGHTOWL_RESEARCH_ALLOW` (a docs tool, say).
 - **Denied, always:** `op`, `sentry-cli`, `kubectl`, `aws`, ssh, everything in
   `NIGHTOWL_DENY_EXTRA` and `NIGHTOWL_DENY_DEPLOY`, every PR merge path, `gh pr ready`,
   direct `git push` and `gh pr create`, `gh api` writes, tracker status moves, comments and

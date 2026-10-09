@@ -37,7 +37,7 @@ NO_SELF="$NO_DIR/nightowl.sh"
 unset _src _t
 
 # --- config: $NIGHTOWL_ENV, else nightowl.env next to this file; environment wins -------
-NO_VARS="NIGHTOWL_REPORT_DIR NIGHTOWL_NOTES_DIR NIGHTOWL_DENY_EXTRA NIGHTOWL_DENY_DEPLOY NIGHTOWL_ALLOW_EXTRA
+NO_VARS="NIGHTOWL_REPORT_DIR NIGHTOWL_NOTES_DIR NIGHTOWL_DENY_EXTRA NIGHTOWL_DENY_DEPLOY NIGHTOWL_ALLOW_EXTRA NIGHTOWL_RESEARCH_ALLOW
 NIGHTOWL_BRANCH_PREFIXES NIGHTOWL_PERMISSION_MODE NIGHTOWL_RUNNER NIGHTOWL_WORKSPACE NIGHTOWL_MODEL
 NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD"
 _saved=""
@@ -52,6 +52,7 @@ NOTES_DIR="${NIGHTOWL_NOTES_DIR:-}"
 DENY_EXTRA="${NIGHTOWL_DENY_EXTRA:-curl, wget}"
 DENY_DEPLOY="${NIGHTOWL_DENY_DEPLOY:-terraform, pulumi, heroku, flyctl, vercel, netlify, gcloud, az}"
 ALLOW_EXTRA="${NIGHTOWL_ALLOW_EXTRA:-}"
+RESEARCH_ALLOW="${NIGHTOWL_RESEARCH_ALLOW:-}"
 BRANCH_PREFIXES="${NIGHTOWL_BRANCH_PREFIXES:-nightowl/}"
 MODE="${NIGHTOWL_PERMISSION_MODE:-dontAsk}"
 RUNNER="${NIGHTOWL_RUNNER:-$NO_DIR/../mission-control/adapters/runner/herdr.sh}"
@@ -190,7 +191,7 @@ render_settings() { # render_settings <id>: the filled profile on stdout
   local id="$1" kind wt branch deny_rules allow_rules notes=""
   kind="$(tget "$id" .kind)"; wt="$(tget "$id" .worktree)"; branch="$(tget "$id" .branch)"
   deny_rules="$( { _list "$DENY_EXTRA"; _list "$DENY_DEPLOY"; } | awk '{ if (index($0, "(")) print; else { print "Bash(" $0 " *)"; print "Bash(" $0 ")" } }' | jq -R . | jq -sc .)"
-  allow_rules="$(_list "$ALLOW_EXTRA" | jq -R . | jq -sc .)"
+  allow_rules="$( { _list "$ALLOW_EXTRA"; [ "$kind" = research ] && _list "$RESEARCH_ALLOW"; } | jq -R . | jq -sc .)"
   [ -n "$NOTES_DIR" ] && notes="$(_abs "$NOTES_DIR" || printf '%s' "$NOTES_DIR")"
   jq --arg kind "$kind" --argjson deny "$deny_rules" --argjson allow "$allow_rules" --arg notes "$notes" \
      --arg WORKTREE "$wt" --arg TASK_DIR "$(task_dir "$id")" --arg NIGHTOWL "$NO_SELF" \

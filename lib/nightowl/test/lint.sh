@@ -148,6 +148,10 @@ says "research may search the web" '^WebSearch$' jq -r '.permissions.allow[]' <<
 X="$(NIGHTOWL_NOTES_DIR="$FX/notes" "$NO" settings --date "$D" res1)"
 says "research writes the notes dir" "^Write\(/$FX/notes/\*\*\)$" jq -r '.permissions.allow[]' <<<"$X"
 lacks "notes dir only for research" "$FX/notes" env NIGHTOWL_NOTES_DIR="$FX/notes" "$NO" settings --date "$D" pr1
+X="$(NIGHTOWL_RESEARCH_ALLOW="mcp__docs_server, Bash(docs-cli *)" "$NO" settings --date "$D" res1)"
+says "research gets its extra allows" '^mcp__docs_server$' jq -r '.permissions.allow[]' <<<"$X"
+says "  … every listed rule"          '^Bash\(docs-cli \*\)$' jq -r '.permissions.allow[]' <<<"$X"
+lacks "research allows only for research" 'mcp__docs_server' env NIGHTOWL_RESEARCH_ALLOW="mcp__docs_server" "$NO" settings --date "$D" pr1
 expect "settings for unknown task" 3 "$NO" settings --date "$D" nope
 
 echo "launch: worktree + pane per task"
