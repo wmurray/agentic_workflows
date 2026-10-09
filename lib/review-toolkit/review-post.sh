@@ -14,10 +14,14 @@
 #
 # Guards, in order: kill switch, event is COMMENT, every inline comment opens with a
 # category label, repo allowlisted, PR author allowlisted, head has not moved, the
-# maintainer is a currently requested reviewer, the maintainer has no review on this head.
+# maintainer is a currently requested reviewer (in person, or through a team slug listed in
+# AUTO_POST_TEAMS), the maintainer has no review on this head.
 #
-# A category label is the first thing in a comment body, one of must-fix, should-fix, nit,
-# question (any case), written `label:`, `**label:**`, `**label**:` or `[label]`.
+# A category label is the first thing in a comment body after any leading blockquote and
+# blank lines (an automated-review header). It is one of AUTO_POST_LABELS (any case),
+# written `label:`, `**label:**`, `**label**:` or `[label]`. The colon forms take an
+# optional Conventional Comments decoration: `issue (blocking):`,
+# `**suggestion (non-blocking, security):**`.
 #
 # Exit: 0 posted or dry run · 1 a gh call failed · 2 bad arguments or payload
 #       10 kill switch present · 11 repo not in AUTO_POST_REPOS
@@ -27,7 +31,20 @@
 set -uo pipefail
 . "$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/review-env.sh"
 
-LABEL_RE='^\s*(\*\*)?(\[(must-fix|should-fix|nit|question)\]|(must-fix|should-fix|nit|question)(:\*\*|\*\*:|:))'
+# Label alternation from AUTO_POST_LABELS. Labels are plain words so they need no escaping.
+labels_json=$(printf '%s' "$AUTO_POST_LABELS" | jq -Rc '[split(",")[] | gsub("\\s"; "") | ascii_downcase | select(. != "")] | reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end)')
+jq -e 'length > 0 and all(test("^[a-z0-9][a-z0-9-]*$"))' <<<"$labels_json" >/dev/null \
+  || rt_usage "AUTO_POST_LABELS must be a comma list of words, got '$AUTO_POST_LABELS'"
+alt=$(jq -r 'join("|")' <<<"$labels_json")
+# Captures: 3 bracketed label, 4 colon-form label, 6 decoration.
+LABEL_RE="^\\s*(\\*\\*)?(\\[($alt)\\]|($alt)(\\s*\\(([^)\\n]*)\\))?(:\\*\\*|\\*\\*:|:))"
+# label_of: the body with leading blockquote and blank lines dropped, matched against
+# LABEL_RE. Emits {label, blocking} or nothing.
+LABEL_JQ='def label_of($re):
+  split("\n") | until(length == 0 or (.[0] | test("^\\s*(>.*)?$") | not); .[1:]) | join("\n")
+  | [match($re; "i").captures] | select(length > 0) | .[0]
+  | {label: ((.[2].string // .[3].string) | ascii_downcase),
+     blocking: ((.[5].string // "") | split(",") | map(gsub("\\s"; "") | ascii_downcase) | index("blocking") != null)};'
 
 repo=""; pr=""; payload=""; verdict=""; dry=""; event=""
 while [ $# -gt 0 ]; do
@@ -63,8 +80,8 @@ jq -e '((.body // "") != "") or ((.comments // []) | length > 0)' "$payload" >/d
 [ "$(printf '%s' "$event" | tr '[:lower:]' '[:upper:]')" = "COMMENT" ] \
   || rt_refuse "$RT_E_EVENT" "event '$event' is not allowed; this wrapper only posts COMMENT reviews"
 
-unlabeled=$(jq -r --arg re "$LABEL_RE" '[(.comments // [])[] | select(.body | test($re; "i") | not) | "\(.path):\(.line // .position // "?")"] | join(", ")' "$payload")
-[ -z "$unlabeled" ] || rt_refuse "$RT_E_UNLABELED" "inline comments without a category label (must-fix / should-fix / nit / question): $unlabeled"
+unlabeled=$(jq -r --arg re "$LABEL_RE" "$LABEL_JQ"' [(.comments // [])[] | select([.body | label_of($re)] | length == 0) | "\(.path):\(.line // .position // "?")"] | join(", ")' "$payload")
+[ -z "$unlabeled" ] || rt_refuse "$RT_E_UNLABELED" "inline comments without a category label ($(jq -r 'join(" / ")' <<<"$labels_json")): $unlabeled"
 
 rt_check_repo "$repo"
 
@@ -79,8 +96,15 @@ case "$head" in
   "$sha"*) ;;
   *) rt_refuse "$RT_E_HEAD_MOVED" "head moved: payload was computed against $sha, $repo#$pr head is now $head" ;;
 esac
-printf '%s' "$pr_json" | jq -e --arg me "$self" 'any(.requested_reviewers[]?; (.login | ascii_downcase) == ($me | ascii_downcase))' >/dev/null \
-  || rt_refuse "$RT_E_NOT_REQUESTED" "$self is not a currently requested reviewer on $repo#$pr"
+# Team membership is asserted by config: AUTO_POST_TEAMS lists the maintainer's own teams.
+requested=""
+printf '%s' "$pr_json" | jq -e --arg me "$self" 'any(.requested_reviewers[]?; (.login | ascii_downcase) == ($me | ascii_downcase))' >/dev/null && requested=1
+if [ -z "$requested" ]; then
+  while IFS= read -r team; do
+    rt_in_list "$team" "$AUTO_POST_TEAMS" && { requested=1; break; }
+  done < <(printf '%s' "$pr_json" | jq -r '.requested_teams[]?.slug // empty')
+fi
+[ -n "$requested" ] || rt_refuse "$RT_E_NOT_REQUESTED" "neither $self nor a team in AUTO_POST_TEAMS is a currently requested reviewer on $repo#$pr"
 mine=$(gh api --paginate "repos/$repo/pulls/$pr/reviews" \
          --jq ".[] | select((.user.login | ascii_downcase) == (\"$self\" | ascii_downcase) and .commit_id == \"$head\") | .id" 2>/dev/null) \
   || { echo "$RT_NAME: could not list reviews on $repo#$pr" >&2; exit "$RT_E_CALL"; }
@@ -89,8 +113,10 @@ mine=$(gh api --paginate "repos/$repo/pulls/$pr/reviews" \
 # --- post ---------------------------------------------------------------------------------
 body=$(jq --arg sha "$head" '{commit_id: $sha, body: (.body // ""), event: "COMMENT",
   comments: [(.comments // [])[] | with_entries(select(.key | IN("path","body","line","side","start_line","start_side","position","subject_type")))]}' "$payload")
-counts=$(jq -r --arg re "$LABEL_RE" '[(.comments // [])[] | .body | match($re; "i").captures | ((.[2].string // .[3].string // "") | ascii_downcase)]
-  as $l | ["must-fix","should-fix","nit","question"] | map(. as $c | ($l | map(select(. == $c)) | length) as $n | select($n > 0) | "\($n) \($c)")
+# Counts by label word and blocking flag, in AUTO_POST_LABELS order, blocking first.
+counts=$(jq -r --arg re "$LABEL_RE" --argjson labels "$labels_json" "$LABEL_JQ"' [(.comments // [])[] | .body | label_of($re)]
+  as $l | [$labels[] as $c | (true, false) as $b | ($l | map(select(.label == $c and .blocking == $b)) | length) as $n
+           | select($n > 0) | "\($n) \($c)\(if $b then " (blocking)" else "" end)"]
   | if length == 0 then "no inline comments" else join(", ") end' "$payload")
 
 if [ -n "$dry" ]; then

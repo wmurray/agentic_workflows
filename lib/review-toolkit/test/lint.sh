@@ -27,8 +27,8 @@ mkdir "$FX/bin" "$FX/compare" "$FX/link" "$FX/worklog"
 # env file, so the fixture allowlists below are what the wrappers see.
 export REVIEW_TOOLKIT_ENV="$T/example.env" FX MC_WORKLOG_DIR="$FX/worklog"
 export AUTO_POST_KILL_SWITCH="$FX/auto-post.off" AUTO_POST_SELF="me" AUTO_POST_HEADER="Automated review"
-export AUTO_POST_AUTHORS="alice, Bob" AUTO_POST_REPOS="o/r" AUTO_POST_MAX_REPLIES=2
-unset MC_WORKLOG
+export AUTO_POST_AUTHORS="alice, Bob" AUTO_POST_REPOS="o/r" AUTO_POST_MAX_REPLIES=2 AUTO_POST_TEAMS=""
+unset MC_WORKLOG AUTO_POST_LABELS
 
 # The stub: `gh api [flags] <path>` with --jq applied to the fixture the path maps to.
 # POSTs log their --input body to $FX/posted and answer with an html_url.
@@ -89,12 +89,13 @@ else ok "review-reply.sh has no thread-resolving API call"; fi
 # --- review-post --------------------------------------------------------------------------
 echo "review-post: arguments and payload"
 HEAD=abc1234def5678abc1234def5678abc1234def56
-# pr_fixture <author> <head sha> <requested logins, space-sep>
+# pr_fixture <author> <head sha> <requested logins, space-sep> [requested team slugs, space-sep]
 pr_fixture() {
-  jq -n --arg a "$1" --arg h "$2" --arg req "$3" \
+  jq -n --arg a "$1" --arg h "$2" --arg req "$3" --arg teams "${4:-}" \
     '{user:{login:$a, type:"User"}, head:{sha:$h, ref:"feature"}, state:"open",
       html_url:"https://github.example/o/r/pull/7",
-      requested_reviewers:[$req | split(" ")[] | select(. != "") | {login:.}]}' > "$FX/pr.json"
+      requested_reviewers:[$req | split(" ")[] | select(. != "") | {login:.}],
+      requested_teams:[$teams | split(" ")[] | select(. != "") | {slug:., name:("Team " + .)}]}' > "$FX/pr.json"
 }
 # reviews_fixture <login:commit …>
 reviews_fixture() {
@@ -150,13 +151,39 @@ good
 expect "review-post: --request-changes"      14 rp o/r 7 "$FX/p.json" --request-changes
 good; payload "$FX/p.json" '.comments[1].body = "spacing is off"'
 expect "review-post: inline comment without a category" 15 rp o/r 7 "$FX/p.json"
-good; payload "$FX/p.json" '.comments[1].body = "nitpick: spacing"'
+good; payload "$FX/p.json" '.comments[1].body = "nits: spacing"'
 expect "review-post: a label must be the whole word" 15 rp o/r 7 "$FX/p.json"
+good; payload "$FX/p.json" '.comments[1].body = "> \ud83e\udd16 Automated review\n\nThis looks wrong. issue: spacing"'
+expect "review-post: prose before the label after a header" 15 rp o/r 7 "$FX/p.json"
+good; payload "$FX/p.json" '.comments[1].body = "> \ud83e\udd16 Automated review\n\n"'
+expect "review-post: a header and nothing else" 15 rp o/r 7 "$FX/p.json"
+good; payload "$FX/p.json" '.comments[1].body = "issue (blocking spacing"'
+expect "review-post: unclosed decoration" 15 rp o/r 7 "$FX/p.json"
+good
+expect "review-post: AUTO_POST_LABELS narrows the label set" 15 env AUTO_POST_LABELS="nit, question" "$T/review-post.sh" o/r 7 "$FX/p.json" --dry-run
+good
+expect "review-post: AUTO_POST_LABELS with a non-word label" 2 env AUTO_POST_LABELS="nit,a.b" "$T/review-post.sh" o/r 7 "$FX/p.json" --dry-run
+good; pr_fixture alice "$HEAD" "carol" "other-team"
+expect "review-post: requested team not in AUTO_POST_TEAMS" 13 env AUTO_POST_TEAMS="my-team" "$T/review-post.sh" o/r 7 "$FX/p.json"
+good; pr_fixture alice "$HEAD" "carol" "my-team"
+expect "review-post: team request with AUTO_POST_TEAMS empty" 13 rp o/r 7 "$FX/p.json"
 good; reviews_fixture "me:$HEAD"
 expect "review-post: already reviewed this head" 16 rp o/r 7 "$FX/p.json"
 good; pr_fixture alice "fff0000fff0000fff0000fff0000fff0000fff00" "me"
 expect "review-post: head moved since the payload" 17 rp o/r 7 "$FX/p.json"
 no_write "review-post: refusals write nothing"
+
+echo "review-post: Conventional Comments labels and team requests"
+for b in "issue: spacing" "nitpick: spacing" "**suggestion:** spacing" "issue (blocking): spacing" \
+         "suggestion (non-blocking, security): spacing" "**issue (blocking):** spacing" "**Praise:** nice" \
+         "[todo] spacing" "> \ud83e\udd16 Automated review by a bot\n\n**issue (blocking):** spacing" \
+         "> header line one\n> header line two\n\n   \nnote: spacing"; do
+  good; payload "$FX/p.json" ".comments[1].body = \"$b\""
+  expect "review-post: label accepted: $(printf '%s' "$b" | tr '\n' ' ')" 0 rp o/r 7 "$FX/p.json" --dry-run
+done
+good; pr_fixture alice "$HEAD" "carol" "other-team My-Team"
+expect "review-post: a requested team in AUTO_POST_TEAMS counts" 0 env AUTO_POST_TEAMS="x, my-team" "$T/review-post.sh" o/r 7 "$FX/p.json" --dry-run
+no_write "review-post: label and team dry runs write nothing"
 
 echo "review-post: dry run and post"
 good
@@ -173,6 +200,16 @@ wl="$(cat "$FX/worklog/"*.jsonl 2>/dev/null)"
 printf '%s' "$wl" | jq -e 'select(.source == "review-post") | (.text | test("1 must-fix")) and (.text | test("1 nit")) and (.text | test("1 question"))
   and (.text | test("would-approve")) and (.text | test("#posted")) and .repo == "o/r"' >/dev/null \
   && ok "review-post: worklog line has counts, verdict and URL" || bad "review-post: worklog $wl"
+good; payload "$FX/p.json" '.comments = [
+  {path:"a.rb", line:1, body:"> \ud83e\udd16 Automated review\n\n**issue (blocking):** one"},
+  {path:"a.rb", line:2, body:"issue (blocking, security): two"},
+  {path:"a.rb", line:3, body:"issue (non-blocking): three"},
+  {path:"a.rb", line:4, body:"suggestion: four"},
+  {path:"a.rb", line:5, body:"**nitpick (non-blocking):** five"}]'
+expect "review-post: posts Conventional Comments" 0 rp o/r 7 "$FX/p.json"
+wl="$(cat "$FX/worklog/"*.jsonl 2>/dev/null)"
+printf '%s' "$wl" | jq -e 'select(.source == "review-post") | .text | test("2 issue \\(blocking\\), 1 issue, 1 suggestion, 1 nitpick")' >/dev/null \
+  && ok "review-post: worklog counts by label word and blocking flag" || bad "review-post: worklog $wl"
 good
 expect "review-post: AUTO_POST_SELF falls back to gh api user" 13 env -u AUTO_POST_SELF "$T/review-post.sh" o/r 7 "$FX/p.json"
 grep -q '^api user' "$FX/calls" && ok "review-post: asked gh for the login" || bad "review-post: no gh api user call"

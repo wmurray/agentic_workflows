@@ -50,14 +50,25 @@ The payload is a GitHub review body plus the head SHA the review was computed ag
 ```
 
 It refuses when the kill switch is present, the event is anything but COMMENT, an inline
-comment does not open with a category label (`must-fix`, `should-fix`, `nit`, `question`,
-written `label:`, `**label:**` or `[label]`), the repo or the PR author is not allowlisted,
-the head moved since the payload was computed, `AUTO_POST_SELF` is not a currently
-requested reviewer, or `AUTO_POST_SELF` already reviewed the current head. `--verdict` is
-written to the work log and never posted.
+comment does not open with a category label, the repo or the PR author is not allowlisted,
+the head moved since the payload was computed, neither `AUTO_POST_SELF` nor a team in
+`AUTO_POST_TEAMS` is a currently requested reviewer, or `AUTO_POST_SELF` already reviewed
+the current head. `--verdict` is written to the work log and never posted.
 
-Submitting a review clears the request, so a second review on a later head needs a fresh
-review request. That is intended.
+A category label is one of `AUTO_POST_LABELS`: by default the original four (`must-fix`,
+`should-fix`, `nit`, `question`) plus the [Conventional Comments](https://conventionalcomments.org)
+labels (`issue`, `suggestion`, `nitpick`, `thought`, `todo`, `praise`, `chore`, `note`).
+It is written `label:`, `**label:**` or `[label]`, and the colon forms take a decoration:
+`issue (blocking):`, `**suggestion (non-blocking, security):**`. Leading blockquote and
+blank lines are skipped first, so a comment may open with a `> Automated review` header
+line. The work log counts comments by label and blocking flag, e.g.
+`2 issue (blocking), 1 suggestion, 1 nitpick`.
+
+A team request counts when its slug is in `AUTO_POST_TEAMS`. Membership is taken from that
+config, not checked against GitHub, so list only teams you belong to.
+
+Submitting a review clears the request, and a review from any member clears a team request,
+so a second review on a later head needs a fresh review request. That is intended.
 
 ## review-reply.sh
 
@@ -81,6 +92,8 @@ comment text. A person whose comment carries an automated header is still a pers
 | `AUTO_POST_AUTHORS` | empty (refuse all) | Comma list of PR author logins `review-post.sh` may review. |
 | `AUTO_POST_REPOS` | empty (refuse all) | Comma list of `owner/repo` both wrappers may post in. |
 | `AUTO_POST_SELF` | `gh api user` | The maintainer's login. |
+| `AUTO_POST_TEAMS` | empty | Comma list of team slugs whose review request counts as one for `AUTO_POST_SELF`. |
+| `AUTO_POST_LABELS` | the 4 original + 9 Conventional Comments labels | Comma list of accepted inline comment labels (plain words). |
 | `AUTO_POST_HEADER` | `Automated review` | Text every reply body must contain; also what the reply cap counts. |
 | `AUTO_POST_KILL_SWITCH` | `~/.claude/mission-control/auto-post.off` | While this file exists, both wrappers refuse. |
 | `AUTO_POST_MAX_REPLIES` | `2` | Header-carrying replies per thread before escalating. |

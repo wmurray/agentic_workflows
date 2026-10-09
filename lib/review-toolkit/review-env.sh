@@ -19,7 +19,7 @@ RT_DIR="$(cd "$(dirname "$_rt_src")" && pwd)"
 unset _rt_src _rt_t
 
 # --- load config, environment wins -------------------------------------------------------
-RT_VARS="AUTO_POST_AUTHORS AUTO_POST_REPOS AUTO_POST_SELF AUTO_POST_HEADER AUTO_POST_KILL_SWITCH AUTO_POST_MAX_REPLIES"
+RT_VARS="AUTO_POST_AUTHORS AUTO_POST_REPOS AUTO_POST_SELF AUTO_POST_HEADER AUTO_POST_KILL_SWITCH AUTO_POST_MAX_REPLIES AUTO_POST_TEAMS AUTO_POST_LABELS"
 _rt_saved=""
 for _rt_v in $RT_VARS; do
   [ -n "${!_rt_v+set}" ] && _rt_saved="$_rt_saved$_rt_v=$(printf '%q' "${!_rt_v}");"
@@ -35,6 +35,9 @@ unset _rt_saved _rt_v
 AUTO_POST_AUTHORS="${AUTO_POST_AUTHORS:-}"
 AUTO_POST_REPOS="${AUTO_POST_REPOS:-}"
 AUTO_POST_SELF="${AUTO_POST_SELF:-}"          # empty: resolved lazily from `gh api user`
+AUTO_POST_TEAMS="${AUTO_POST_TEAMS:-}"        # team slugs whose review request counts as mine
+# Inline comment labels: the original four plus Conventional Comments (conventionalcomments.org).
+AUTO_POST_LABELS="${AUTO_POST_LABELS:-must-fix,should-fix,nit,question,issue,suggestion,nitpick,thought,todo,praise,chore,note}"
 AUTO_POST_HEADER="${AUTO_POST_HEADER:-Automated review}"
 AUTO_POST_KILL_SWITCH="${AUTO_POST_KILL_SWITCH:-$HOME/.claude/mission-control/auto-post.off}"
 AUTO_POST_MAX_REPLIES="${AUTO_POST_MAX_REPLIES:-2}"
