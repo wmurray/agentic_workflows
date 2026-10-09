@@ -125,6 +125,16 @@ and they run standalone without it. `test/lint.sh` checks them with no network.
 
 See [`lib/jira-toolkit/README.md`](lib/jira-toolkit/README.md) for the config table.
 
+### `lib/review-toolkit/`
+
+Two guarded wrappers that let an agent post a COMMENT review on an allowlisted author's PR
+and reply in review threads on the maintainer's own PR. They are an opt-in exception to the
+human-gate principle below: the author and repo allowlists default to empty, an empty
+allowlist refuses every post, and a kill-switch file stops both. `test/lint.sh` checks every
+guard against a stubbed `gh`.
+
+See [`lib/review-toolkit/README.md`](lib/review-toolkit/README.md) for the guards and config.
+
 ---
 
 ## Setup
@@ -195,7 +205,7 @@ Skills in `~/.claude/skills/` are auto-loaded as slash commands. Agent definitio
 
 ## Design principles
 
-- **Human gates before outward-facing actions.** No PR is pushed, no Jira ticket is created, no GitHub review is posted without explicit confirmation.
+- **Human gates before outward-facing actions.** No PR is pushed, no Jira ticket is created, no GitHub review is posted without explicit confirmation. The one exception is `lib/review-toolkit/`, opt-in and refused by default (see its README).
 - **Agents return structured results; the orchestrator routes on them.** No file-read chaining — each agent produces a small JSON result and the orchestrator drives the next step from that.
 - **Advisory skills never touch GitHub.** `/review-pr`, `/review-queue`, and `/review-radar` are read-only. You write and post your own reviews.
 - **Environment variables over hardcoding.** Every organisation-specific value is an env var with a documented default. Nothing internal is baked in.

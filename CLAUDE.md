@@ -65,7 +65,7 @@ Agents should be focused on a single language/framework pair or role (planner, c
 
 When modifying skills or agents, preserve these invariants:
 
-- **Human gates before outward-facing actions.** No PR is pushed, no ticket is updated, no GitHub review is posted without explicit user confirmation.
+- **Human gates before outward-facing actions.** No PR is pushed, no ticket is updated, no GitHub review is posted without explicit user confirmation. The only exception is `lib/review-toolkit/`, opt-in with allowlists that default to empty; do not widen it.
 - **Agents return structured results; the orchestrator routes on them.** Each agent produces a small JSON result. The orchestrator drives the next step from that — never from file reads.
 - **Advisory skills never touch GitHub.** `/review-pr`, `/review-queue`, `/review-radar` are read-only. The user writes and posts their own reviews.
 - **Env vars over hardcoding.** Every organisation-specific value must be an env var with a documented default. See `lib/workspace-context.sh` for the pattern.
