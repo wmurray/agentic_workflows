@@ -122,4 +122,10 @@ wins over `review.env`.
 `13` not a requested reviewer · `14` event other than COMMENT · `15` unlabeled inline comment ·
 `16` already reviewed this head · `17` head moved · `18` comment not on this PR ·
 `19` cited SHA not on the head branch · `20` thread (or issue comment) by a bot ·
-`21` reply lacks the header · `30` reply cap reached, escalate to a human.
+`21` reply lacks the header · `22` a quoted line runs into the next line ·
+`30` reply cap reached, escalate to a human.
+
+Exit 22 guards a Markdown trap. A non-empty line directly after a `>` line joins the quote
+(lazy continuation), so `> Automated review` with the text on the next line renders as one
+quoted paragraph. Both wrappers refuse that body and leave the fix to the caller: add an
+empty line after the quoted header. A quote of several `>` lines is fine.

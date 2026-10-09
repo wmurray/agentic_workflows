@@ -1049,7 +1049,8 @@ classification bug, on a `clear` item a fence bug.
    changed and its short SHA; an answer answers the question; a decline gives the reason. A published
    body **opens with the header line the reply wrapper requires**: a line carrying the wrapper's
    `AUTO_POST_HEADER` text, then ONE empty line, then the body (`\n\n` between them in JSON). Without
-   the empty line Markdown pulls the body's first line into the header's blockquote. The engine does
+   the empty line Markdown pulls the body's first line into the header's blockquote, and the wrapper
+   refuses the body (exit 22). The engine does
    not fix the header's exact form; the overlay's `{STYLE_GUIDE}` supplies it, so the header reads in
    the operator's voice. A body without it is refused (exit 21). Cite no commit except the fix's own SHA:
    the wrapper treats any 7 to 40 character hex word with a digit as a SHA and refuses one that is not on
@@ -1070,7 +1071,7 @@ classification bug, on a `clear` item a fence bug.
      reply is dropped. Count it in `bot_skipped`.
    - **exit 30** (reply cap reached) → no post; the item goes to the operator in ⛔ NEEDS YOU. Add it
      to `escalated` and to the held count, and name the thread in `question`.
-   - **any other nonzero** (1 a gh call failed, 2, 11, 12, 18, 19, 21) → stop publishing for this row.
+   - **any other nonzero** (1 a gh call failed, 2, 11, 12, 18, 19, 21, 22) → stop publishing for this row.
      No further wrapper call, no retry, and no other posting route (not even 2b). Record
      `refused: {thread, code}` and name it in `question`.
 

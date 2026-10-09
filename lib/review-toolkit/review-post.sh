@@ -12,7 +12,8 @@
 #   --verdict     logged to the work log, never posted.
 #   --dry-run     run every check, then print the API call instead of making it.
 #
-# Guards, in order: kill switch, event is COMMENT, every inline comment opens with a
+# Guards, in order: kill switch, event is COMMENT, no `>` line in the review body or an
+# inline comment runs straight into the next line, every inline comment opens with a
 # category label, repo allowlisted, PR author allowlisted, head has not moved, the
 # maintainer is a currently requested reviewer (in person, or through a team slug listed in
 # AUTO_POST_TEAMS), the maintainer has no review on this head.
@@ -28,6 +29,7 @@
 #       12 PR author not in AUTO_POST_AUTHORS · 13 AUTO_POST_SELF not a requested reviewer
 #       14 event other than COMMENT · 15 an inline comment lacks a category label
 #       16 AUTO_POST_SELF already reviewed the current head · 17 head moved since the payload
+#       22 a `>` line in the review body or an inline comment runs into the next line
 set -uo pipefail
 . "$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/review-env.sh"
 
@@ -79,6 +81,10 @@ jq -e '((.body // "") != "") or ((.comments // []) | length > 0)' "$payload" >/d
 [ -n "$event" ] || event=$(jq -r '.event // "COMMENT"' "$payload")
 [ "$(printf '%s' "$event" | tr '[:lower:]' '[:upper:]')" = "COMMENT" ] \
   || rt_refuse "$RT_E_EVENT" "event '$event' is not allowed; this wrapper only posts COMMENT reviews"
+
+lazy=$(jq -r "$RT_LAZY_QUOTE_JQ"' [(select((.body // "") | lazy_quote) | "review body"),
+  ((.comments // [])[] | select(.body | lazy_quote) | "\(.path):\(.line // .position // "?")")] | join(", ")' "$payload")
+[ -z "$lazy" ] || rt_refuse "$RT_E_LAZY_QUOTE" "a quoted line runs straight into the next line, so it renders as part of the quote; $RT_LAZY_QUOTE_FIX: $lazy"
 
 unlabeled=$(jq -r --arg re "$LABEL_RE" "$LABEL_JQ"' [(.comments // [])[] | select([.body | label_of($re)] | length == 0) | "\(.path):\(.line // .position // "?")"] | join(", ")' "$payload")
 [ -z "$unlabeled" ] || rt_refuse "$RT_E_UNLABELED" "inline comments without a category label ($(jq -r 'join(" / ")' <<<"$labels_json")): $unlabeled"

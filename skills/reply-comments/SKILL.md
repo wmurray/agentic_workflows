@@ -118,7 +118,7 @@ none of them; it fixes only what each category must contain:
 A published body **opens with the header line** the wrapper requires: a line that carries the
 wrapper's `AUTO_POST_HEADER` text, in the exact form your style guide gives, then ONE empty line,
 then the body (`\n\n` between them in JSON). Without the empty line Markdown pulls the body's
-first line into the header's blockquote. A body without it
+first line into the header's blockquote, and the wrapper refuses it (exit 22). A body without it
 is refused (exit 21). Cite no commit except the fix's own SHA: the wrapper treats any 7 to 40
 character hex word with a digit as a SHA and refuses one not on the head branch (exit 19).
 Drafts omit the header, since you publish them yourself.
@@ -141,7 +141,7 @@ Route on its exit code, and on nothing else:
 - **exit 20**: the thread was started by a bot account. A normal skip: the fix stands, the
   reply is dropped.
 - **exit 30**: reply cap reached. No post; the thread goes to you, listed under "needs you".
-- **any other nonzero** (1, 2, 11, 12, 18, 19, 21): stop publishing. No further wrapper call,
+- **any other nonzero** (1, 2, 11, 12, 18, 19, 21, 22): stop publishing. No further wrapper call,
   no retry, no other posting route (no draft either). Name the thread and the code.
 
 **Spot-check report.** After each published answer and each published decline (never a fix),

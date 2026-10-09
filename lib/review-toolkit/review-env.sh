@@ -47,7 +47,16 @@ RT_WORKLOG="${AUTO_POST_WORKLOG:-$RT_DIR/../mission-control/worklog.sh}"
 RT_E_CALL=1 RT_E_USAGE=2
 RT_E_KILL=10 RT_E_REPO=11 RT_E_AUTHOR=12 RT_E_NOT_REQUESTED=13 RT_E_EVENT=14
 RT_E_UNLABELED=15 RT_E_ALREADY=16 RT_E_HEAD_MOVED=17 RT_E_NO_COMMENT=18 RT_E_BAD_SHA=19
-RT_E_BOT_THREAD=20 RT_E_NO_HEADER=21 RT_E_ESCALATE=30
+RT_E_BOT_THREAD=20 RT_E_NO_HEADER=21 RT_E_LAZY_QUOTE=22 RT_E_ESCALATE=30
+
+# lazy_quote: true when a line starting with `>` is directly followed by a non-empty line
+# that does not start with `>`. Markdown's lazy continuation pulls that line into the quote,
+# so a quoted header with the text right under it renders as one quoted paragraph. Both
+# wrappers refuse such a body (exit 22) rather than rewrite it.
+RT_LAZY_QUOTE_JQ='def lazy_quote:
+  split("\n") as $l | any(range(1; $l | length);
+    ($l[. - 1] | test("^\\s*>")) and ($l[.] | test("^\\s*(>.*)?$") | not));'
+RT_LAZY_QUOTE_FIX="add an empty line after the quoted header"
 
 RT_NAME="${RT_NAME:-$(basename "${0:-review-toolkit}" .sh)}"
 

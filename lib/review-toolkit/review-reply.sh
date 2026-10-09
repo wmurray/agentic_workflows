@@ -18,7 +18,8 @@
 #   --category    a short lower-case tag for the work log (fix, decline, answer, ...).
 #   --dry-run     run every check, then print the API call instead of making it.
 #
-# Guards, in order: kill switch, body carries the header, repo allowlisted, PR author is
+# Guards, in order: kill switch, body carries the header, no `>` line in the body runs
+# straight into the next line, repo allowlisted, PR author is
 # AUTO_POST_SELF, the comment exists on this PR, the thread root (or the issue comment) was
 # written by a human account, every commit SHA in the body is on the PR head branch, and the
 # maintainer has fewer than AUTO_POST_MAX_REPLIES header-carrying replies in the thread (for
@@ -33,6 +34,7 @@
 #       18 comment is not a review comment (with --issue-comment: an issue comment) on this PR
 #       19 a cited SHA is not on the head branch
 #       20 thread root (or issue comment) author is a bot · 21 body lacks AUTO_POST_HEADER
+#       22 a `>` line in the body runs straight into the next line
 #       30 reply cap reached: escalate to a human
 set -uo pipefail
 . "$(dirname "$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")/review-env.sh"
@@ -65,6 +67,8 @@ fi
 
 rt_kill_switch
 printf '%s' "$body" | grep -qF -- "$AUTO_POST_HEADER" || rt_refuse "$RT_E_NO_HEADER" "reply body does not contain the header '$AUTO_POST_HEADER'"
+printf '%s' "$body" | jq -Rse "$RT_LAZY_QUOTE_JQ"' lazy_quote' >/dev/null \
+  && rt_refuse "$RT_E_LAZY_QUOTE" "a quoted line in the body runs straight into the next line, so it renders as part of the quote; $RT_LAZY_QUOTE_FIX"
 rt_check_repo "$repo"
 
 # --- PR and thread checks (gh reads) ------------------------------------------------------

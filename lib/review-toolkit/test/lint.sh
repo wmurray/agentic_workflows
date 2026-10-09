@@ -189,6 +189,24 @@ good; pr_fixture alice "$HEAD" "carol" "other-team My-Team"
 expect "review-post: a requested team in AUTO_POST_TEAMS counts" 0 env AUTO_POST_TEAMS="x, my-team" "$T/review-post.sh" o/r 7 "$FX/p.json" --dry-run
 no_write "review-post: label and team dry runs write nothing"
 
+echo "review-post: a quoted header needs an empty line after it"
+# Markdown pulls a non-empty line that follows a `>` line into the quote (lazy continuation),
+# so a header with the label right under it renders as one quoted paragraph.
+good; payload "$FX/p.json" '.comments[1].body = "> Automated review\n\nnit: spacing"'
+expect "review-post: header, empty line, label passes" 0 rp o/r 7 "$FX/p.json" --dry-run
+good; payload "$FX/p.json" '.comments[1].body = "> Automated review\n> second quoted line\n>\n> third\n\nnit: spacing"'
+expect "review-post: a multi-line quote passes" 0 rp o/r 7 "$FX/p.json" --dry-run
+good; payload "$FX/p.json" '.comments[1].body = "nit: spacing\n\n> quoted at the end"'
+expect "review-post: a quote as the last line passes" 0 rp o/r 7 "$FX/p.json" --dry-run
+good; payload "$FX/p.json" '.comments[1].body = "> Automated review\nnit: spacing"'
+expect "review-post: header then label on the next line" 22 rp o/r 7 "$FX/p.json"
+says "review-post: the refusal names the fix and the comment" 'add an empty line after the quoted header.*a\.rb:9' rp o/r 7 "$FX/p.json"
+good; payload "$FX/p.json" '.body = "> Automated review\nOverall looks fine."'
+expect "review-post: review body with the same shape" 22 rp o/r 7 "$FX/p.json"
+good; payload "$FX/p.json" '.comments[1].body = "nit: spacing\n  > indented quote\nlazy line"'
+expect "review-post: an indented quote line counts too" 22 rp o/r 7 "$FX/p.json"
+no_write "review-post: quote refusals write nothing"
+
 echo "review-post: dry run and post"
 good
 says "review-post: dry run prints the API call" 'POST repos/o/r/pulls/7/reviews' rp o/r 7 "$FX/p.json" --dry-run
@@ -356,6 +374,18 @@ if grep -qE '^(PATCH|DELETE)' "$FX/calls" 2>/dev/null || grep -qE -- '-X (PATCH|
 wl="$(cat "$FX/worklog/"*.jsonl 2>/dev/null)"
 printf '%s' "$wl" | jq -e 'select(.source == "review-reply") | (.text | test("answer")) and (.text | test("comment 600")) and .repo == "o/r"' >/dev/null \
   && ok "issue-reply: worklog line names the comment" || bad "issue-reply: worklog $wl"
+
+echo "review-reply: a quoted header needs an empty line after it"
+rgood; printf '> %s\n\nFixed in 1a2b3c4.\n' "$AUTO_POST_HEADER" > "$FX/body.md"
+expect "review-reply: quoted header, empty line, body passes" 0 rr o/r 7 100 "$FX/body.md" --dry-run
+rgood; printf '> %s\n> second line\n\nFixed in 1a2b3c4.\n' "$AUTO_POST_HEADER" > "$FX/body.md"
+expect "review-reply: a multi-line quote passes" 0 rr o/r 7 100 "$FX/body.md" --dry-run
+rgood; printf '> %s\nFixed in 1a2b3c4.\n' "$AUTO_POST_HEADER" > "$FX/body.md"
+expect "review-reply: quoted header then body on the next line" 22 rr o/r 7 100 "$FX/body.md"
+says "review-reply: the refusal names the fix" 'add an empty line after the quoted header' rr o/r 7 100 "$FX/body.md"
+igood; printf '> %s\nFixed in 1a2b3c4.\n' "$AUTO_POST_HEADER" > "$FX/body.md"
+expect "issue-reply: the same check" 22 ri 600 "$FX/body.md"
+no_write "review-reply: quote refusals write nothing"
 
 echo "symlinked invocation"
 ln -s "$T/review-post.sh" "$FX/link/review-post.sh"; ln -s "$T/review-reply.sh" "$FX/link/review-reply.sh"
