@@ -65,7 +65,7 @@ Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
 - SKILL (the playbook this driver defers to): `$MC_SKILL_DIR/SKILL.md`
 - Worker templates: `$MC_SKILL_DIR/templates/` — `bug-investigator.md` · `planner.md` · `coder-rails.md` · `coder-typescript.md` · `reviewer.md` · `field-check.md`
 - Board state: `$MC_HOME/state.json` · Inbox: `$MC_HOME/mc-inbox` · this driver: `$MC_HOME/loop-driver.md`
-- Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-gitop.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
+- Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-review-sweep.sh` `mc-gitop.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
 - **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition and the field wrappers (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock, unless the operator opened that wrapper or its group (`merge`, `fields`). An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
 - **Destructive git under the loop → always via `mc-gitop.sh`, never raw.** When you (or a coder/worktree step) clean up a branch or reset a worktree, use `mc-gitop.sh` — `branch-del <branch>` / `reset-hard <ref>` / `restore-path <path>...` / `checkout-path <ref> -- <path>...`. Raw `git branch -D` / `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` trip the ask-only destructive-safety guard, which has no human to answer under the unattended loop and HANGS the tick (observed: `git branch -D <branch-prefix>-ABC-2006` froze a live tick). The wrapper runs the identical op in the cwd; it is deliberately named so its own invocation matches none of the guard's patterns.
 
@@ -334,6 +334,18 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      is board-only** (pure `state.json`, needs NO tracker/host) → **always drain it, even when a service
      is down;** a tracker outage must never block a board-only verb. Still write health + heartbeat, still emit your one-line tick. Health self-clears when
      the next poll succeeds.
+1.7. **Review sweep: run `$MC_HOME/mc-review-sweep.sh`.** Every tick, like `mc-poll`; skip it only
+   when the host health is `auth`/`unreachable`. It is READ-ONLY. It runs `mc-review-check.sh <repo>
+   <pr#> --seen "<review_seen>"` for every `in-review` row with a PR and prints one line per row,
+   `NEEDS-TRIAGE` rows first:
+   `<VERDICT>  ABC-N  <owner/repo>#<pr>  signature: <sig>`. Exit 10 means at least one row needs
+   triage; 0 means none; 1 means a check failed and no row needs triage. An `ERROR` row is "unknown,
+   don't conclude", never clean. **This sweep is the only per-row review check you run.** Do not
+   hand-run `mc-review-check.sh` across the board; a live loop that was told to in prose skipped it
+   for five ticks while every scripted step ran. Its lines feed two later steps: step 2's `CLEAN`
+   gate for advancing to `ready-to-merge`, and Prep-write 2, which acts on its `NEEDS-TRIAGE` rows.
+   The one per-row call that remains is re-running `mc-review-check.sh` on the single row Prep-write 2
+   acts on, to get that row's item list.
 2. **Reconcile (detect → apply BOARD-INTERNAL fixes + tracker status-sync; FLAG other outward).** Using the SAME poll from step 1
    (one batched call; never per-ticket tracker/host detail reads), compare each row to its board
    lane per the SKILL's drift table. This is a **lock-wrapped write phase** — `mc-lock.sh check loop`
@@ -367,7 +379,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - **BOARD-INTERNAL — you APPLY these (pull the board toward observed reality; `state.json` only):**
      PR merged but lane behind → advance lane (alpha-verify+); APPROVED + approval-current + CI
      green/frozen + MERGEABLE but lane still `in-review` → advance to `ready-to-merge` **ONLY if
-     `mc-review-check.sh <repo> <pr#>` prints verdict `CLEAN`** (no reviewer feedback at all).
+     this tick's review sweep (step 1.7) lists the row `CLEAN`** (no reviewer feedback at all).
      **`reviewDecision==APPROVED` is NOT sufficient on its own** — an APPROVED aggregate can hide a
      reviewer's `COMMENTED`/`CHANGES_REQUESTED` note or an unresolved thread: one reviewer's APPROVED does
      not cancel another reviewer's open questions. Route by verdict (all three, not the exit code —
@@ -600,8 +612,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      in-review PR only becomes your turn when it turns `CHANGES_REQUESTED` / gets new comments
      (→ **review-triage prep**, a prep-class write — see below) or reaches APPROVED+green+mergeable
      (→ ready-to-merge, your merge).
-   - **`in-review` (open PR): run `mc-review-check.sh <repo> <pr#> --seen "<review_seen>"`.** On
-     **`NEEDS-TRIAGE` (exit 10)** and lane not yet `kickback` → **this is the SECOND thing you now
+   - **`in-review` (open PR): read the row's line from this tick's review sweep (step 1.7).** On
+     **`NEEDS-TRIAGE`** and lane not yet `kickback` → **this is the SECOND thing you now
      ACT on: execute the review-triage prep write-path in "The writes you may make."** `CLEAN`/`NO-NEW`
      → leave it (still "waiting on others"). Pure PREP — you draft the triage into the plan doc and
      stop; you NEVER post a reply or resolve a thread. A fix push and a reply happen only through
@@ -800,10 +812,15 @@ A background ticket that the operator pulls forward manually (`mc plan ABC-N`) j
 When an OPEN PR gets new review feedback, do the triage as PREP and park it durably so it's never
 swallowed by the pane. Misfire cost: an off-base triage section the operator skims and ignores.
 
-**Trigger (and the ONLY trigger):** for each `in-review` ticket with an open PR, run
-**`$MC_HOME/mc-review-check.sh <owner/repo> <pr#> --seen "<row's review_seen>"`** —
-the detector `mc-poll` can't replace (it does the graphql `reviewThreads` call, filters bots, and
-verdicts). **Exit 10 / `NEEDS-TRIAGE` is the trigger;** `CLEAN` / `NO-NEW` (exit 0) = do nothing.
+**Trigger (and the ONLY trigger):** a `NEEDS-TRIAGE` row in this tick's
+**`$MC_HOME/mc-review-sweep.sh`** output (step 1.7). The sweep runs `mc-review-check.sh <owner/repo>
+<pr#> --seen "<row's review_seen>"` for every `in-review` row with a PR, the detector `mc-poll` can't
+replace (it reads the review threads, filters bots, and verdicts). `CLEAN` / `NO-NEW` = do nothing;
+`ERROR` = unknown, do nothing this tick. **One prep-write per tick still caps this:** act on the
+first `NEEDS-TRIAGE` row the sweep lists (they come first, in board order) and only when no other
+prep-write ran this tick. Every other `NEEDS-TRIAGE` row waits for a later tick, where the sweep lists
+it again because its `review_seen` is unchanged. For the row you act on, re-run
+`$MC_HOME/mc-review-check.sh <owner/repo> <pr#> --seen "<row's review_seen>"` to get its item list.
 `reviewDecision` alone is NOT the test — the detector handles that. **This is the REVIEW branch
 (open PR) only — a QA/post-merge kickback is NOT yours to prep; flag it and leave it for the manual
 session.**

@@ -276,6 +276,32 @@ selfsig_cmp() {
 says "a self reply leaves the review signature unchanged"      yes '^self: same'          selfsig_cmp
 says "a reviewer reply after a self reply changes it"          yes '^reviewer: changed'   selfsig_cmp
 
+# mc-review-sweep: the per-row review check as ONE scripted step, so a tick cannot skip it.
+# The board: ENG-203 moved to in-review (APPROVED, no threads → CLEAN) and listed before
+# ENG-202 (CHANGES_REQUESTED → NEEDS-TRIAGE), so the triage-first ordering is real.
+# ENG-206 is in-review with no PR and must not appear.
+jq '(.tickets[] | select(.ticket=="ENG-203")).lane = "in-review"
+    | .tickets |= ([.[] | select(.ticket=="ENG-203")] + [.[] | select(.ticket!="ENG-203")])' \
+  "$WORK/state.json" > "$WORK/state.sweep.json"
+sweep() { MC_STATE="$WORK/state.sweep.json" "$_MC_LIB/mc-review-sweep.sh"; }
+run  "review-sweep exits 10 when a row needs triage" 10 sweep
+sweep_first() { sweep | grep -v '^review sweep' | head -1; }
+says "  … lists the triage row first"         yes '^NEEDS-TRIAGE +ENG-202 +example-org/app#202 +signature: d=CHANGES_REQUESTED;' sweep_first
+says "  … then the clean row with its signature" yes '^CLEAN +ENG-203 +example-org/app#203 +signature: d=APPROVED;' sweep
+says "  … skips an in-review row with no PR"  no  'ENG-206'                       sweep
+says "  … skips rows in other lanes"          no  'ENG-201|ENG-205'               sweep
+_sig202="$("$_MC_LIB/mc-review-check.sh" example-org/app 202 | sed -n 's/^signature: //p')"
+jq --arg s "$_sig202" '(.tickets[] | select(.ticket=="ENG-202")).review_seen = $s' \
+  "$WORK/state.sweep.json" > "$WORK/state.sweep.seen.json"
+sweep_seen() { MC_STATE="$WORK/state.sweep.seen.json" "$_MC_LIB/mc-review-sweep.sh"; }
+run  "review-sweep passes review_seen as --seen (exit 0)" 0 sweep_seen
+says "  … so the triaged row reads NO-NEW"    yes '^NO-NEW +ENG-202 '             sweep_seen
+sweep_err() { MC_HOST=nosuch MC_STATE="$WORK/state.sweep.seen.json" "$_MC_LIB/mc-review-sweep.sh"; }
+run  "review-sweep exits 1 when the host fails" 1 sweep_err
+says "  … and marks each row ERROR"           yes '^ERROR +ENG-202 '              sweep_err
+sweep_ro() { local a b; a=$(shasum "$WORK/state.sweep.json"); sweep >/dev/null 2>&1; b=$(shasum "$WORK/state.sweep.json"); [ "$a" = "$b" ] && echo unchanged; }
+says "review-sweep never writes state.json"   yes '^unchanged$'                   sweep_ro
+
 # --- 5. the write path, against the temp board only ---------------------------------
 run "mc-lock acquire"              0,1 "$_MC_LIB/mc-lock.sh" acquire loop
 run "mc-lock release"              0,1 "$_MC_LIB/mc-lock.sh" release loop
@@ -509,6 +535,21 @@ says "  … reads REPLY_POST_WRAPPER"               yes 'REPLY_POST_WRAPPER:-\}'
 says "  … shares the decline report path"         yes 'MC_AUTO_POST_REPORT:-' cat "$REPLY_SKILL_MD"
 says "  … routes exit 10, 20 and 30"              yes 'exit 10.*exit 20.*exit 30' bash -c 'tr "\n" " " < "$0"' "$REPLY_SKILL_MD"
 says "  … has no positional placeholders"         no  '\$[0-9]|\$\{[0-9]|\$ARGUMENTS\[' cat "$REPLY_SKILL_MD"
+
+# --- 6f. the review sweep is a named tick step ---------------------------------------
+# A live loop skipped the per-row review check, written as prose inside Prep-write 2, for
+# five ticks while every scripted step ran. The tick now names mc-review-sweep.sh as a
+# step of its own, and Prep-write 2 triggers on its NEEDS-TRIAGE rows.
+echo
+echo "review sweep   (driver tick ↔ Prep-write 2)"
+echo "────────────────────────────────────────────────────────────────"
+tick_steps() { awk '/^## Each tick/{f=1} f&&/^## The writes you may make/{exit} f' "$DRIVER"; }
+pw2() { awk '/^### Prep-write 2 /{f=1} f&&/^### Prep-write 3 /{exit} f' "$DRIVER"; }
+says "the tick has a numbered review-sweep step"   yes '^[0-9.]+\. \*\*Review sweep.*mc-review-sweep\.sh' tick_steps
+pw2_flat() { pw2 | tr '\n' ' '; }
+says "Prep-write 2 triggers on the sweep"          yes 'Trigger.*NEEDS-TRIAGE.*mc-review-sweep\.sh' pw2_flat
+says "  … under the one-prep-write cap"           yes '[Oo]ne prep-write per tick' pw2
+says "  … no longer asks for a hand-run per-row check" no 'for each `in-review` ticket with an open PR, run' pw2
 
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo

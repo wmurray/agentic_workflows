@@ -110,3 +110,16 @@ comments not written by `MC_REVIEW_SELF`, so a published reply leaves the `revie
 signature alone. An earlier draft re-stamped the signature after posting instead, which could
 swallow a reviewer reply that landed between the post and the re-stamp.
 `/reply-comments` runs the same flow by hand on a PR with no board row.
+
+## The review sweep becomes a scripted step (2026-10-09)
+
+Prep-write 2 used to tell the loop, in prose, to run `mc-review-check.sh` for every `in-review`
+row with an open PR. A live loop skipped that step for five ticks in a row while it ran every
+scripted step (`mc-poll`, `mc-health`, `mc-inbound`, `mc-archive --check`), so a reviewer's
+comments sat untriaged. `mc-review-sweep.sh` now does the per-row loop: it reads `state.json`,
+runs the check for each in-review row with a PR (passing `review_seen` as `--seen`), and prints one
+line per row with its verdict and signature, `NEEDS-TRIAGE` first. It exits 10 when any row needs
+triage. The tick runs it as step 1.7, beside the other scripts, and both the reconcile `CLEAN` gate
+and Prep-write 2 read its lines. Prep-write 2 still acts on one row per tick under the existing
+prep-write cap; the remaining rows come back on the next sweep because their `review_seen` has not
+moved. The sweep is read-only, like `mc-review-check`.
