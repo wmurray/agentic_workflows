@@ -20,6 +20,27 @@ explain why and provide the exact next step to resolve it.
 
 ---
 
+## Configuration (read first)
+
+Two optional env vars swap in a skill you have installed. Check both before writing:
+
+```bash
+echo "PR_DESCRIPTION_SKILL=${PR_DESCRIPTION_SKILL:-}"
+echo "WRITING_STYLE_SKILL=${WRITING_STYLE_SKILL:-}"
+```
+
+- **`PR_DESCRIPTION_SKILL`** (default: unset). When set, load the named skill and lay out
+  the PR body by its rules in place of the Summary, Changes and Notes sections below. The
+  rest of this file still applies: the PR Title rules (ticket references included), the Optional
+  Sections Gate and CREATE mode. If the skill's layout already carries a ticket line or a
+  screenshots block, do not add a second one.
+- **`WRITING_STYLE_SKILL`** (default: unset). When set, load the named skill and write the
+  title and body prose in its voice. Where it conflicts with the Style rules below, it wins.
+
+Unset, both fall back to the bundled template and style rules in this file.
+
+---
+
 ## Output Contract (WRITE mode)
 
 When asked to write a PR message, output **Markdown** with this structure:
@@ -31,11 +52,16 @@ When asked to write a PR message, output **Markdown** with this structure:
   "[TICKET-NUMBER]: <short description>"
   Example: "[ENG-123]: Fix foo bug with bars"
 - If no ticket exists or was provided, omit the bracketed prefix.
+- Ticket references: name only this PR's own ticket, in the title and the ticket link
+  section. Refer to related work by PR number (`mirrors #204`), never by its ticket key.
+  Some trackers attach a PR to every ticket key in its branch, title or body.
 
 > **Adapting this:** The ticket format defaults to `[PREFIX-NUMBER]`. Change the prefix
 > to match your issue tracker (`IMP-` for Linear, `ENG-` or your Jira project key, etc.).
 
 ## Summary
+
+_Summary, Changes and Notes are the default body layout. Skip them when `PR_DESCRIPTION_SKILL` is set._
 
 - 1–3 sentences describing the problem and how it was addressed.
 - Focus on intent, impact, and outcome (the "why"), not implementation minutiae.

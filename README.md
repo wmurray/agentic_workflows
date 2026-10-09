@@ -185,7 +185,17 @@ export JIRA_EMAIL="you@example.com"
 export JIRA_PROJECT="ENG"
 export JIRA_BOARD_ID="123"
 
+# Optional: swap in a skill you have installed for PR layout and prose voice
+export PR_DESCRIPTION_SKILL=""                   # skill that lays out PR bodies (unset: /create-pr's template)
+export WRITING_STYLE_SKILL=""                    # skill that sets the prose voice (unset: /create-pr's style rules)
+
 ```
+
+`/create-pr` reads `${PR_DESCRIPTION_SKILL:-}` and `${WRITING_STYLE_SKILL:-}`. Either one,
+when set, names a skill to load in place of the bundled rules; the title, ticket and
+`gh pr create` rules stay with `/create-pr`. Mission-control takes the same choice through
+its profile fills `{PR_BODY_GUIDE}` and `{STYLE_GUIDE}`, each of which accepts a file path
+or a skill name (see `lib/mission-control/profiles/example.profile.md`).
 
 The `lib/jira-toolkit/` wrappers do not read these; they take their org values from
 `lib/jira-toolkit/jira.env` (copy `example.env`). `JIRA_API_TOKEN` is shared by both.
