@@ -124,6 +124,7 @@ file path or the name of an installed skill. The reader reads a path and loads a
 | `{PR_BODY_GUIDE}` | the PR-body layout the orchestrator applies to a draft PR: `skills/create-pr/SKILL.md` (its Output Contract; the default), another file path, or the name of a skill that holds your layout (e.g. the value of `$PR_DESCRIPTION_SKILL`) |
 | `{SURFACES}` | the Surfaces section below, pasted in (the field-check worker uses it to name the app in QA cases) |
 | `{CONTEXT_DOCS}` | what the pre-plan critic may resolve ambiguity from: your domain glossary, project context docs, ADR folders (paths, one per line) |
+| `{REPLY_POST_WRAPPER}` | empty (the default: kickback replies stay private drafts), or the guarded reply wrapper the loop publishes them through, e.g. `~/.claude/lib/review-toolkit/review-reply.sh`. No worker sees it; the loop calls it in Prep-write 5. See "Kickback address" below |
 
 ### `{TEST_CONVENTIONS}` per repo (optional)
 
@@ -165,7 +166,18 @@ shows a pending review only to its author). Name it here:
 |---|---|
 | reply-draft wrapper | `~/.claude/lib/draft-review-comment.sh reply --repo <r> --pr <n> --thread <id> --body "…"` |
 
-Without the file the loop only logs "would address N/M". Judgment items always wait for you.
+Without the file the loop only logs "would address N/M".
+
+**Publishing (optional).** Set `{REPLY_POST_WRAPPER}` in Template fills to the guarded reply
+wrapper (`lib/review-toolkit/review-reply.sh`) and the loop publishes the replies itself: fixes,
+answers to the questions the triage held, and declines with their reason. Every published answer
+and decline is appended to `${MC_AUTO_POST_REPORT:-$MC_HOME/auto-post-report.md}` for you to
+spot-check. The wrapper's own config (`review.env`) holds the allowlists; while its kill switch
+exists the loop drops back to drafts. Leave the fill empty and judgment items wait for you.
+
+**Reply header.** The wrapper refuses a reply that lacks its `AUTO_POST_HEADER` text. The exact
+header line is your voice, so it lives in your `{STYLE_GUIDE}`; state it there, e.g. a first line
+that carries the `AUTO_POST_HEADER` text and says the reply was written by an agent.
 
 ## Colleagues / blocked-on parties (optional)
 

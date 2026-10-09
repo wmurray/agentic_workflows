@@ -147,6 +147,14 @@ the PR branch, and draft each reply as a private pending review comment the oper
 Judgment items, publishing, resolving threads and marking ready stay the operator's. Without the
 file the loop only logs "would address N/M", the soak that earns the switch.
 
+When the profile names `{REPLY_POST_WRAPPER}` (the guarded `lib/review-toolkit/review-reply.sh`),
+the loop publishes the replies itself through that wrapper: fixes, answers to the held questions,
+and declines with their reason. Every published answer and decline is appended to
+`${MC_AUTO_POST_REPORT:-$MC_HOME/auto-post-report.md}` for the operator to spot-check. A thread at
+the wrapper's reply cap comes back to the operator; its kill switch drops the loop to drafts.
+Resolving threads and marking ready stay the operator's either way. `/reply-comments` runs the
+same flow by hand on a PR with no board row.
+
 ## The work log
 
 `worklog.sh` keeps one JSONL file per day (default `~/.claude/worklog/`). The `mc` verbs log

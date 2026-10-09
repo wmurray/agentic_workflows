@@ -438,6 +438,31 @@ says "worker briefs let {STYLE_GUIDE} name a skill"   no  '.' grep -n 'follows `
 says "create-pr reads PR_DESCRIPTION_SKILL"           yes '.' grep -nF '${PR_DESCRIPTION_SKILL:-}' "$CREATE_PR_MD"
 says "create-pr reads WRITING_STYLE_SKILL"            yes '.' grep -nF '${WRITING_STYLE_SKILL:-}' "$CREATE_PR_MD"
 
+# --- 6e. kickback reply publishing ---------------------------------------------------
+# Prep-write 5 publishes through {REPLY_POST_WRAPPER} when the overlay names one, and
+# /reply-comments runs the same flow by hand. The wrapper's exit codes are the routing
+# contract, so the doc must name each one it routes on, and both readers must agree.
+echo
+echo "kickback reply publishing   (driver ↔ skill ↔ templates)"
+echo "────────────────────────────────────────────────────────────────"
+pw5()    { awk '/^### Prep-write 5 /{f=1} f&&/^### Prep-write 6 /{exit} f' "$DRIVER"; }
+pw5_flat() { pw5 | tr '\n' ' '; }
+arming() { pw5 | awk '/^\*\*Arming checklist\*\*/{f=1} f'; }
+says "driver requires {REPLY_POST_WRAPPER} from the overlay" yes '\{REPLY_POST_WRAPPER\}' driver_fills
+says "Prep-write 5 publishes through {REPLY_POST_WRAPPER}"   yes '\{REPLY_POST_WRAPPER\}' pw5
+says "  … exit 10 falls back to drafts"           yes 'exit 10.*draft'                  pw5
+says "  … exit 20 is a normal skip"               yes 'exit 20.*skip'                   pw5
+says "  … exit 30 goes to the operator"           yes 'exit 30.*NEEDS YOU'              pw5
+says "  … tags each reply fix, answer or decline" yes '[-]-category fix\|answer\|decline' pw5
+says "  … answers and declines land in the report" yes 'answer and.*decline.*MC_AUTO_POST_REPORT|MC_AUTO_POST_REPORT.*answer and.*decline' pw5_flat
+says "  … question counts both for spot-check"    yes 'auto-answered, <d> auto-declined \(spot-check\)' pw5
+says "arming checklist names the reply-post wrapper" yes 'reply-post wrapper'           arming
+says "  … and mc coder on"                        yes 'mc coder on'                     arming
+says "  … and mc address on"                      yes 'mc address on'                   arming
+says "SKILL fills list names {REPLY_POST_WRAPPER}" yes '.' grep -nE 'filled from the overlay.*\{REPLY_POST_WRAPPER\}|\{REPLY_POST_WRAPPER\}.*filled from the overlay' "$MC_SKILL_MD"
+say_both_coders() { grep -c '(k) `replies`' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md; }
+says "both coder templates return (k) replies"    no  ':0$'                             say_both_coders
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"

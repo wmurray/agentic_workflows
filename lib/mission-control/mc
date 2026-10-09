@@ -182,8 +182,10 @@ mc() {
   # Kickback-address switch — direct side effect (NOT queued). ON (flag present) → on a triaged
   # review kickback the loop runs a coder address round for the mechanical + clear items, pushes to
   # the PR branch, and drafts each reply as a PRIVATE pending review comment (visible only to you until
-  # you submit). Judgment items stay yours. OFF (default) → the loop only prints + logs "would address
-  # N/M". Needs `mc coder on` too (it is code-writing). Effective next tick.
+  # you submit). Judgment items stay yours. When the profile names {REPLY_POST_WRAPPER} the loop
+  # publishes the replies through it instead, answers or declines the judgment items, and logs each
+  # answer and decline to the spot-check report. OFF (default) → the loop only prints + logs "would
+  # address N/M". Needs `mc coder on` too (it is code-writing). Effective next tick.
   if [[ "$1" == "address" || "$1" == "kickback" ]]; then
     local adf="${MC_ADDRESS_FILE:-$HOME/.claude/mission-control/KICKBACK_AUTO}"
     case "$2" in
@@ -269,7 +271,8 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
                             manual = the loop only says "would auto-approve"). Gate 2 + merge unchanged.
     address on|off|status   🟢/⚪ let the loop fix the mechanical + clear review-comment items in code,
                             push to the PR branch, and draft each reply as a PRIVATE pending comment you
-                            publish. Judgment items stay yours. Default off = "would address N/M".
+                            publish (or publishes them, when the profile names {REPLY_POST_WRAPPER}).
+                            Default off = "would address N/M".
     guard on|off [wrapper…] loop guard: manual-only wrappers (merge, qa, done, …) refuse with exit 4
     guard status            while the loop holds the writer lock. `off` is your per-wrapper override
                             (all if no name); `on` re-arms. Default ON. Never silent when off.

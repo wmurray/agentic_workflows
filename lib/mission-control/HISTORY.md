@@ -93,3 +93,18 @@ name of an installed skill, so an operator can point the loop at a layout or voi
 without the repo naming it. `/create-pr` takes the same choice from `PR_DESCRIPTION_SKILL` and
 `WRITING_STYLE_SKILL`. The smoke run now checks that every fill the driver requires has a row
 in the example profile.
+
+## Kickback replies can be published (2026-10-09)
+
+Until this change the kickback address round (Prep-write 5) fixed the clear review items and
+left every reply as a private pending draft, so a PR waited on the operator to publish even when
+the fix was done. A new profile fill, `{REPLY_POST_WRAPPER}`, names the guarded reply wrapper
+(`lib/review-toolkit/review-reply.sh`). Empty, nothing changes. Named, the loop publishes the
+replies through it: what changed and the SHA for a fix, and an answer or a decline with its
+reason for the needs-a-reply and judgment items the coder now drafts replies for. The wrapper's
+exit codes are the routing: 10 (kill switch) drops the round to drafts, 20 (bot thread) is a
+skip, 30 (reply cap) hands the thread to the operator, and any other refusal stops publishing
+on that row. Every published answer and decline goes to a spot-check report
+(`MC_AUTO_POST_REPORT`). After publishing, the loop re-stamps `review_seen`, since the
+detector's signature counts its own replies and would otherwise re-trigger triage.
+`/reply-comments` runs the same flow by hand on a PR with no board row.

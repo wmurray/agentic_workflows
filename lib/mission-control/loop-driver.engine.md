@@ -24,7 +24,8 @@ alone.
   the notes-vault path · the **Template fills** table (the org values the worker templates
   take: `{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}`
   `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`,
-  plus `{PR_BODY_GUIDE}`, which you apply yourself when you open a draft PR).
+  plus `{PR_BODY_GUIDE}`, which you apply yourself when you open a draft PR, and
+  `{REPLY_POST_WRAPPER}`, which you call yourself in Prep-write 5 and which may be empty).
 
 **Pipeline wrapper ROLES** (this file names roles; the overlay names the actual commands):
 
@@ -104,7 +105,9 @@ The FIVE internal writes you hold today:
    into the ticket's plan doc in the notes vault, set `triage_doc`, stop for the operator to direct.
    **2b. Kickback address (flag-gated `KICKBACK_AUTO`, Prep-write 5)** — armed, the clear items of that
    triage are fixed in code by a coder address round, pushed to the PR branch, and the replies drafted
-   as PRIVATE pending review comments the operator publishes. Disarmed (default): "would address N/M".
+   as PRIVATE pending review comments the operator publishes. When the overlay names a
+   `{REPLY_POST_WRAPPER}`, the replies (fixes, answers and declines) are published through it
+   instead. Disarmed (default): "would address N/M".
 3. **Board reconcile → mirror reality** — advance/correct **board lanes + `ci` + the `reconcile`
    field** to match what you OBSERVE in host/tracker (PR merged, approval current, re-review, etc.).
    You move the *board* toward reality; you NEVER push the board's intent outward.
@@ -191,7 +194,8 @@ touch tracker fields / other host writes / merge, you do NOT make it — you fla
   earned outward writes — tracker status SYNC (**status-sync wrapper**) + assignee-fix (**assign wrapper**, unassigned-only)
   — and, ONLY while `CODER_SPAWN_LIVE` is armed, the coder-spawn path (Prep-write 4), and ONLY while
   `mc-guard.sh check fields` passes, the Final field check, the QA move at merge and the fallback `mc qa`
-  drain (Prep-write 6). NOTHING else
+  drain (Prep-write 6), and ONLY while `KICKBACK_AUTO` is armed, the kickback address round and its
+  replies through the reply-draft wrapper or `{REPLY_POST_WRAPPER}` (Prep-write 5). NOTHING else
   outward.** The paths are spelled out in "The writes you may make" / the reconcile step / Prep-write 4.
   Everything else outward is still forbidden: you MUST NOT write a tracker field outside Prep-write 6,
   write story points at all, file a sub-task, reassign a **colleague**-held
@@ -600,8 +604,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      **`NEEDS-TRIAGE` (exit 10)** and lane not yet `kickback` → **this is the SECOND thing you now
      ACT on: execute the review-triage prep write-path in "The writes you may make."** `CLEAN`/`NO-NEW`
      → leave it (still "waiting on others"). Pure PREP — you draft the triage into the plan doc and
-     stop; you NEVER post a reply or resolve a thread. A fix push and a DRAFT reply happen only through
-     Prep-write 5 when `KICKBACK_AUTO` is armed; publishing the reply stays the operator's.
+     stop; you NEVER post a reply or resolve a thread. A fix push and a reply happen only through
+     Prep-write 5 when `KICKBACK_AUTO` is armed: a DRAFT reply, or a published one through
+     `{REPLY_POST_WRAPPER}` when the overlay names it. You never resolve a thread.
      The detector handles the "reviewDecision alone isn't the test" nuance + bot filtering for you.
    - **`re-review` in the REVIEW column = STALE APPROVAL — also waiting on others, NOT mergeable.**
      The poller emits `re-review` when a PR is `APPROVED` but has pending review requests: a change
@@ -818,7 +823,8 @@ session.**
 4. **`mc-lock.sh release loop`.** **STOP. `kickback` with `triage_doc` set is the operator's gate** — he
    reads the doc and directs. You NEVER post a reply, resolve a thread, or advance past `kickback`.
    The one exception is Prep-write 5: with `KICKBACK_AUTO` armed, the triage's clear items go to a coder
-   address round and the replies land as private drafts; disarmed, you print what you would address.
+   address round and the replies land as private drafts, or are published through
+   `{REPLY_POST_WRAPPER}` when the overlay names it; disarmed, you print what you would address.
    Either way the triage doc is written first, so the operator always has the full picture. (If the triage is heavy, spawn a background triage worker scoped to *doc output only*;
    it writes the section + returns, and a later tick sets `triage_doc`/lane — same async shape as the planner.)
 
@@ -971,9 +977,19 @@ goes through `adapters/dispatch.sh`'s third dispatcher (contract: `adapters/CONT
 
 A reviewer's comment on an open PR is work the ticket's author does. When the triage says what the
 fix is, waiting for the operator to say "apply" is a delay; the operator's real decisions are the
-judgment items and the moment of publishing. This rung fixes the clear items in code and leaves the
-publishing, and every judgment call, to the operator. Misfire cost: a wrong fix on a PR branch that
-the operator reverts before publishing anything, plus one wasted coder round.
+judgment items and the moment of publishing. This rung fixes the clear items in code. Who publishes
+the replies depends on one overlay fill:
+- **`{REPLY_POST_WRAPPER}` empty (the default):** the replies are PRIVATE drafts the operator
+  publishes, and every judgment call stays theirs.
+- **`{REPLY_POST_WRAPPER}` named** (the guarded reply wrapper, `lib/review-toolkit/review-reply.sh` in
+  this repo): the loop publishes the replies itself, answers the held questions, and declines the
+  suggestions it will not take, each with its reason. The wrapper's guards (allowlisted repo, the
+  operator's own PR, a human-rooted thread, a required header, cited SHAs on the head branch, a per-thread
+  reply cap, a kill switch) live in its code, so a reply the guards refuse is never posted.
+
+Misfire cost: a wrong fix on a PR branch that the operator reverts, plus one wasted coder round; with
+publishing on, also a wrong public reply, which is why every published answer and decline lands in a
+spot-check report.
 
 **Trigger:** a `kickback` row whose `triage_doc` holds a `## Review triage — round N` section for the
 CURRENT `review_seen` signature (Prep-write 2 ran this round), PR open, no `address_round.sig` equal to
@@ -984,9 +1000,13 @@ cap). One address round per tick.
 - **eligible:** `mechanical`, and `substantive` items the triage marked **clear** (the drafted fix is
   the only reasonable one and needs no product or design call). The triage writes `clear`/`judgment`
   on every substantive row from now on; an unmarked substantive row is `judgment`.
-- **held for the operator:** `needs-you` / `needs-a-reply`, `substantive · judgment`, and any item whose
-  drafted fix touches a path in `$MC_GATE1_PATH_DENY` (the same always-a-human list Gate 1 uses).
-No eligible items → nothing to do here; the row waits as today.
+- **reply-only (only while `{REPLY_POST_WRAPPER}` is named):** `needs-you` / `needs-a-reply` and
+  `substantive · judgment` items on a review thread. The coder writes no code for them; it drafts an
+  answer to the question or a decline that gives the reason, and returns it.
+- **held for the operator:** any item whose drafted fix touches a path in `$MC_GATE1_PATH_DENY` (the
+  same always-a-human list Gate 1 uses); a review-note item (a review summary outside any thread has no
+  comment to reply under); and, while `{REPLY_POST_WRAPPER}` is empty, every reply-only item above.
+No eligible and no reply-only items → nothing to do here; the row waits as today.
 
 **Disarmed (default) → propose only.** Print `would address ABC-N: <eligible>/<total> items (<kinds>)`,
 log once as `worklog.sh add --source loop --ticket ABC-N "kickback would-address: <e>/<t>"` and set
@@ -997,31 +1017,95 @@ classification bug, on a `clear` item a fence bug.
 **Armed → address.** Lock-wrapped as ever (acquire → row write → release BEFORE the coder runs):
 1. Spawn the **coder in address mode** for the ticket's repo (runner seam, `--reuse` the ticket's author
    session as for any address round). Fill the coder template's `{ADDRESS_ROUND}` block with the
-   eligible items only: thread node id, file:line, the reviewer's comment verbatim, the triage's drafted
-   fix. The block's rules bind the coder to those threads, forbid drive-bys, require the full pre-push
-   verification, and forbid touching a held item. Set `worker: "coder"`, `address_round: {sig, spawned}`.
+   eligible items (thread node id, file:line, the reviewer's comment verbatim, the triage's drafted
+   fix) and, while `{REPLY_POST_WRAPPER}` is named, the reply-only items (thread node id, the reviewer's
+   comment verbatim, the triage's note and drafted reply). The block's rules bind the coder to those
+   threads, forbid drive-bys, require the full pre-push verification, forbid code for a reply-only item,
+   and forbid touching a held item. Set `worker: "coder"`, `address_round: {sig, spawned}`.
 2. **On return** (per the Runner seam / detection path): the coder pushed to the PR branch and returned
-   `(i) addressed: [{thread, sha, summary}]` and `(j) not_addressed: [{thread, why}]`.
-   - For each addressed thread, draft the reply with the overlay's **reply-draft wrapper**
-     (`draft-review-comment.sh reply --repo <r> --pr <n> --thread <id> --body "<reply>"`), body in the
-     author-reply voice: one or two sentences, what changed + the short SHA + why, warm not terse, no
-     em dashes. **A pending review is visible only to the operator until they submit it.** Never call
-     anything that submits, resolves or marks ready.
-   - Set `address_round: {sig, addressed:[…], held:[…], drafts:<n>}`, `question:
-     "[review] addressed <a>/<t> · <h> need you · <n> drafts pending"`, keep lane `kickback`. If `<h>` > 0
-     leave `blocked_on` unset so it floats in ⛔ NEEDS YOU; if `<h>` = 0 the row still sits in the
-     `kickback` gate lane (publishing is the operator's), so it stays visible without a block.
-   - Log `worklog.sh add --source loop --ticket ABC-N "kickback addressed <a>/<t>, <n> reply drafts"`.
-   - **Not addressed / tests red / push failed** → no reply draft for those items; name them in
-     `question`; the coder's return says why. Never retry a push on your own.
+   `(i) addressed: [{thread, sha, summary}]`, `(j) not_addressed: [{thread, why}]` and, for reply-only
+   items, `(k) replies: [{thread, category, body}]` with `category` `answer` or `decline`. A reply-only
+   item the coder put under (j) is held for the operator.
+
+   **Every reply body** follows `{STYLE_GUIDE}` (a path to read or a skill to load) in the author-reply
+   voice: what changed and the short SHA for a fix; the answer for a question; for a decline, the reason
+   in one or two sentences. Warm, not terse, no em dashes. A published body **opens with the header line
+   the reply wrapper requires**: a line carrying the wrapper's `AUTO_POST_HEADER` text. The engine does
+   not fix its exact form; the overlay's `{STYLE_GUIDE}` supplies it, so the header reads in the
+   operator's voice. A body without it is refused (exit 21). Cite no commit except the fix's own SHA:
+   the wrapper treats any 7 to 40 character hex word with a digit as a SHA and refuses one that is not on
+   the head branch.
+
+   **2a. Publish (`{REPLY_POST_WRAPPER}` named).** Fixes first, then answers, then declines. For each,
+   write the body to a file and call the wrapper BARE:
+   `{REPLY_POST_WRAPPER} <owner/repo> <pr> <comment-id> <body-file> --category fix|answer|decline`.
+   `<comment-id>` is the numeric id of any review comment in the thread (the `#discussion_r<id>` anchor
+   of the thread link in the triage table, or the thread's first comment `databaseId`); the wrapper
+   finds the root itself. Route on its exit code, and on nothing else:
+   - **exit 0** → posted. The last field of its stdout is the reply URL. The wrapper writes the work-log
+     line for every post, so a fix needs no further logging; an answer or a decline also gets a
+     spot-check entry (below).
+   - **exit 10** (kill switch present) → fall back to drafts this round: this reply and every one after
+     it go through 2b. No further wrapper call this round.
+   - **exit 20** (thread started by a bot account) → a normal skip, not an error. The fix stands; the
+     reply is dropped. Count it in `bot_skipped`.
+   - **exit 30** (reply cap reached) → no post; the item goes to the operator in ⛔ NEEDS YOU. Add it
+     to `escalated` and to the held count, and name the thread in `question`.
+   - **any other nonzero** (1 a gh call failed, 2, 11, 12, 18, 19, 21) → stop publishing for this row.
+     No further wrapper call, no retry, and no other posting route (not even 2b). Record
+     `refused: {thread, code}` and name it in `question`.
+
+   **Spot-check report.** After each published answer and each published decline, append one entry to
+   `${MC_AUTO_POST_REPORT:-$MC_HOME/auto-post-report.md}` (an internal artifact like the plan doc:
+   append-only, outside the state.json lock; create it with a `# Auto-post spot-check report` heading
+   if absent):
+   ```
+   ## YYYY-MM-DD · <owner/repo>#<pr> · ABC-N · answer|decline
+   - thread: <thread link>
+   - reviewer: <login>
+   - comment: > <the reviewer's comment, first 300 characters>
+   - reply: > <the reply text as posted>
+   - reply URL: <url>
+   ```
+   and log `worklog.sh add --source loop --ticket ABC-N "kickback <answer|decline> posted in thread <id>
+   on <owner/repo>#<pr>, spot-check entry added"`, so a decline always leaves a line with `decline` in it.
+   Fixes get no entry; the wrapper's own work-log line covers them.
+
+   **Re-stamp after publishing.** The detector's signature counts the newest comment in each thread,
+   your own replies included. After the last post, run `mc-review-check.sh <owner/repo> <pr#>` once
+   and store its `signature:` line as both `review_seen` and `address_round.sig`, so neither
+   Prep-write 2 nor this rung fires again on the loop's own replies. Feedback that lands after that
+   run changes the signature again and triggers a new round as usual.
+
+   **2b. Draft (`{REPLY_POST_WRAPPER}` empty, or after exit 10).** Draft each reply in hand with the
+   overlay's **reply-draft wrapper** (`draft-review-comment.sh reply --repo <r> --pr <n> --thread <id>
+   --body "<reply>"`). **A pending review is visible only to the operator until they submit it.**
+   Never call anything that submits, resolves or marks ready.
+
+   - Set `address_round: {sig, addressed:[…], held:[…], posted:<p>, answered:<q>, declined:<d>,
+     escalated:[…], bot_skipped:<b>, refused:{…}, drafts:<n>}` (omit what is empty) and `question:
+     "[review] addressed <a>/<t> · <p> replies posted · <h> need you · <n> drafts pending ·
+     <q> auto-answered, <d> auto-declined (spot-check)"`, dropping any count that is 0 after the first
+     term (and the last term when both of its counts are 0). Keep lane
+     `kickback`. If `<h>` > 0 leave `blocked_on` unset so it floats in ⛔ NEEDS YOU; if `<h>` = 0 the
+     row still sits in the `kickback` gate lane, so it stays visible without a block.
+   - Log `worklog.sh add --source loop --ticket ABC-N "kickback addressed <a>/<t>, <p> replies posted,
+     <n> reply drafts"`.
+   - **Not addressed / tests red / push failed** → no reply for those items, published or drafted; name
+     them in `question`; the coder's return says why. Never retry a push on your own.
 3. **After the push, CI is the next signal.** Reconcile tracks `ci` as for any open PR; red after an
    address round → `question: "[review] addressed, CI red: <check>"`, no further action.
-4. The operator publishes the drafts on GitHub (or discards them), answers the held items in the
-   triage doc, and the round is over when the detector says `NO-NEW` or `CLEAN`.
+4. The operator publishes or discards any drafts, reads the spot-check report, answers the held items in
+   the triage doc, and hands the PR back with `mc ready`. Nothing here resolves a thread. The round is
+   over when the detector says `NO-NEW` or `CLEAN`.
 
 **Arming checklist** (the operator's, once the soak is convincing): allow-rule for the reply-draft
-wrapper in the harness settings; `mc coder on` (the round is code-writing); then `mc address on`.
-The coder's push uses the same permissions the Gate-2 draft-PR push already does.
+wrapper in the harness settings; to publish, also name the reply-post wrapper as
+`{REPLY_POST_WRAPPER}` in the overlay, add an allow-rule for it, and fill its allowlists in its own
+config (`AUTO_POST_REPOS`, `AUTO_POST_SELF`, `AUTO_POST_HEADER`); `mc coder on` (the round is
+code-writing); then `mc address on`. The coder's push uses the same permissions the Gate-2 draft-PR
+push already does. The reply wrapper's kill switch (`AUTO_POST_KILL_SWITCH`) stops publishing at once
+and drops the loop back to drafts on its next call.
 
 ### Prep-write 6 — Final field check (GUARD-GATED: `fields`; `mc guard off|on fields`)
 
@@ -1315,10 +1399,12 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
   `alpha-verify` until `mc qa`).
 - **Flag-gated, propose-only when the flag is absent:** coder-spawn (`CODER_SPAWN_LIVE`, ≤1 coder in flight,
   Prep-write 4); Gate-1 auto-approve (`GATE1_AUTO`, Trigger C); kickback address (`KICKBACK_AUTO`,
-  Prep-write 5); sprint plan pull (`SPRINT_PLAN_AUTO`, the Step 3 sprint plan proposal).
+  Prep-write 5; replies are private drafts, or published through `{REPLY_POST_WRAPPER}` when the
+  overlay names it); sprint plan pull (`SPRINT_PLAN_AUTO`, the Step 3 sprint plan proposal).
 - **Never:** tracker field writes outside Prep-write 6; story points; sub-tasks; a `done` transition; a `qa`
   transition outside the QA move at merge or a fallback `mc qa`; a board move to `qa` without a queued
-  `mc qa`; posting or resolving a review thread; reassigning
+  `mc qa`; posting a review reply other than through `{REPLY_POST_WRAPPER}` in Prep-write 5;
+  resolving a review thread; reassigning
   a colleague-held ticket; originating a merge, a ready, or a review request; more than one coder in flight.
   Those stay human-gated; flag them.
 
