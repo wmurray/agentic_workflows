@@ -34,6 +34,8 @@
 #                       the safe behavior for the first pass)
 #   Env: MC_REVIEW_BOTS  (space-sep bot logins to ignore; default below)
 #        MC_REVIEW_SELF  (your host login — if set, threads YOU opened are ignored too)
+#                        (the host adapter also leaves your comments out of each thread's
+#                         latest, so your own replies never change the signature)
 # Exit: 0 CLEAN or NO-NEW · 10 NEEDS-TRIAGE · 2 bad args · 1 error (adapter)
 set -uo pipefail
 

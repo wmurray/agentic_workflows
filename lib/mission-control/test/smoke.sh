@@ -234,6 +234,28 @@ says "review-check drops the bot thread"  no  'Gemfile.lock'             "$_MC_L
 says "review-check drops the resolved"    no  'stray whitespace'         "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the outdated"    no  'Superseded'               "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check clean on approved"     no  'NEEDS-TRIAGE'             "$_MC_LIB/mc-review-check.sh" example-org/app 203
+# The operator's own replies never feed the review_seen signature: the loop publishes into
+# threads, and a self reply that moved the signature would re-trigger triage on its own
+# work. A thread carrying `comments` gets its latest from the non-self ones (MC_REVIEW_SELF
+# is the fixture login "me"). Three copies of #202: the reviewer's comment alone, plus a
+# self reply, plus a reviewer reply after that.
+_selfsig() {  # <variant dir> <jq adding comments to thread 0>
+  mkdir -p "$WORK/$1"; cp -R "$_MC_LIB/fixtures/example/." "$WORK/$1/"
+  jq --argjson c "$2" '."example-org/app#202".threads[0].comments = $c' \
+    "$_MC_LIB/fixtures/example/host/threads.json" > "$WORK/$1/host/threads.json"
+  MC_FIXTURES="$WORK/$1" "$_MC_LIB/mc-review-check.sh" example-org/app 202 | sed -n 's/^signature: //p'
+}
+_c_root='[{"author":"teammate","at":"2026-08-24T09:12:00Z"}]'
+_c_self='[{"author":"teammate","at":"2026-08-24T09:12:00Z"},{"author":"me","at":"2026-08-24T11:00:00Z"}]'
+_c_rev='[{"author":"teammate","at":"2026-08-24T09:12:00Z"},{"author":"me","at":"2026-08-24T11:00:00Z"},{"author":"teammate","at":"2026-08-24T11:30:00Z"}]'
+selfsig_cmp() {
+  local a b c; a=$(_selfsig sig-root "$_c_root"); b=$(_selfsig sig-self "$_c_self"); c=$(_selfsig sig-rev "$_c_rev")
+  [ -n "$a" ] || { echo "no signature"; return; }
+  [ "$a" = "$b" ] && echo "self: same" || echo "self: changed ($a → $b)"
+  [ "$b" = "$c" ] && echo "reviewer: same" || echo "reviewer: changed"
+}
+says "a self reply leaves the review signature unchanged"      yes '^self: same'          selfsig_cmp
+says "a reviewer reply after a self reply changes it"          yes '^reviewer: changed'   selfsig_cmp
 
 # --- 5. the write path, against the temp board only ---------------------------------
 run "mc-lock acquire"              0,1 "$_MC_LIB/mc-lock.sh" acquire loop

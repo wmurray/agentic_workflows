@@ -124,7 +124,14 @@ makes no extra calls. Three outcomes, which the engine keeps apart:
                 "author":"…","body":"…","latest":"<iso>"} ],
   "reviews": [ {"state":"COMMENTED","author":"…","body":"…","submittedAt":"<iso>"} ] }
 ```
-The engine (mc-review-check) does bot/self filtering, the unresolved/outdated cut, the
+A thread's `latest` is the newest comment **not** authored by `MC_REVIEW_SELF` (the
+operator's host login), falling back to the newest of all when every comment is the
+operator's. The operator's own comments, typed or published by the loop, never need
+triage, so they must not move the `review_seen` signature; otherwise a reply the loop
+publishes in the address round would re-trigger triage on its own work, and the old
+workaround (re-stamping the signature after posting) could swallow a reviewer reply that
+landed in between. This is the one filter the adapter applies, because only it sees
+per-comment authors. The engine (mc-review-check) does bot/self filtering of thread roots, the unresolved/outdated cut, the
 verdict, and the `review_seen` signature — all host-agnostic. A host without this op
 returns `{"reviewDecision":"none","threads":[],"reviews":[]}` (→ CLEAN) and omits
 `review_threads` from `capabilities`.

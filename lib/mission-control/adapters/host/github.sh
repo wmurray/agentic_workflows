@@ -54,7 +54,9 @@ case "$op" in
     # reviewThreads is NOT a `gh pr view --json` field — it must be graphql. Fetch the
     # decision + all threads (first comment's author/body, latest updatedAt) + all
     # review summaries, then normalize to the contract shape (no filtering — that's the
-    # engine's job, so it ports to other hosts).
+    # engine's job, so it ports to other hosts). The one exception is `latest`: it is the
+    # newest comment NOT written by MC_REVIEW_SELF, so the operator's own replies (the
+    # loop's published ones included) never move the review_seen signature.
     raw=$(gh api graphql \
       -f query='query($owner:String!,$name:String!,$number:Int!){
         repository(owner:$owner,name:$name){
@@ -69,14 +71,15 @@ case "$op" in
         }
       }' -F owner="$owner" -F name="$name" -F number="$num" 2>/dev/null) \
       || { echo "github review_threads: graphql failed for $repo#$num (auth? PR exists?)" >&2; exit 1; }
-    printf '%s' "$raw" | jq -c '
+    printf '%s' "$raw" | jq -c --arg self "${MC_REVIEW_SELF:-}" '
       .data.repository.pullRequest as $pr
       | { reviewDecision: ($pr.reviewDecision // "none"),
           threads: [ $pr.reviewThreads.nodes[] | {
               isResolved, isOutdated, path, line: (.line // 0),
               author: (.comments.nodes[0].author.login // ""),
               body:   (.comments.nodes[0].body // ""),
-              latest: ([.comments.nodes[].updatedAt] | max) } ],
+              latest: (([.comments.nodes[] | select($self == "" or (.author.login // "") != $self) | .updatedAt] | max)
+                       // ([.comments.nodes[].updatedAt] | max)) } ],
           reviews: [ ($pr.reviews.nodes // [])[] | {
               state, author: (.author.login // ""),
               body: (.body // ""), submittedAt } ] }'

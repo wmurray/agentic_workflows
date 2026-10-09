@@ -1071,11 +1071,9 @@ classification bug, on a `clear` item a fence bug.
    on <owner/repo>#<pr>, spot-check entry added"`, so a decline always leaves a line with `decline` in it.
    Fixes get no entry; the wrapper's own work-log line covers them.
 
-   **Re-stamp after publishing.** The detector's signature counts the newest comment in each thread,
-   your own replies included. After the last post, run `mc-review-check.sh <owner/repo> <pr#>` once
-   and store its `signature:` line as both `review_seen` and `address_round.sig`, so neither
-   Prep-write 2 nor this rung fires again on the loop's own replies. Feedback that lands after that
-   run changes the signature again and triggers a new round as usual.
+   No re-stamp after publishing: the host adapter leaves comments by `MC_REVIEW_SELF` out of the
+   detector's signature (CONTRACT.md, `review_threads`), so the loop's own replies never re-trigger
+   Prep-write 2 or this rung, and a reviewer reply that lands at any point still does.
 
    **2b. Draft (`{REPLY_POST_WRAPPER}` empty, or after exit 10).** Draft each reply in hand with the
    overlay's **reply-draft wrapper** (`draft-review-comment.sh reply --repo <r> --pr <n> --thread <id>

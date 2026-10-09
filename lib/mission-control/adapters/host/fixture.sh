@@ -12,6 +12,9 @@
 #                        with no open PRs does. get_pr reads the same file, by number.
 #   host/threads.json    {"owner/repo#123": {reviewDecision, threads[], reviews[]}, …}
 #                        A missing key returns the contract's empty shape (→ CLEAN).
+#                        A thread may carry `comments: [{author, at}]` in place of a
+#                        fixed `latest`; the adapter then derives `latest` from the
+#                        comments not by MC_REVIEW_SELF, as the real host does.
 #   host/whoami          the identity to print. Failure modes for exercising mc-health's
 #                        classifier — put one of these in the file instead of a login:
 #                          FAIL:auth  → 401/Bad credentials on stderr, exit 1  (→ auth)
@@ -83,7 +86,12 @@ case "$op" in
     # Unsupported optional op → the contract's empty shape, never an error.
     _has review_threads || { echo "$empty"; exit 0; }
     [ -f "$FIX/threads.json" ] || { echo "$empty"; exit 0; }
-    jq -c --arg k "$repo#$num" --argjson empty "$empty" '.[$k] // $empty' "$FIX/threads.json" 2>/dev/null \
+    jq -c --arg k "$repo#$num" --argjson empty "$empty" --arg self "${MC_REVIEW_SELF:-}" '
+      (.[$k] // $empty)
+      | .threads |= map(if has("comments") then
+          .latest = (([.comments[] | select($self == "" or .author != $self) | .at] | max)
+                     // ([.comments[].at] | max))
+          | del(.comments) else . end)' "$FIX/threads.json" 2>/dev/null \
       || echo "$empty"
     ;;
 

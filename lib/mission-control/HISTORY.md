@@ -105,6 +105,8 @@ reason for the needs-a-reply and judgment items the coder now drafts replies for
 exit codes are the routing: 10 (kill switch) drops the round to drafts, 20 (bot thread) is a
 skip, 30 (reply cap) hands the thread to the operator, and any other refusal stops publishing
 on that row. Every published answer and decline goes to a spot-check report
-(`MC_AUTO_POST_REPORT`). After publishing, the loop re-stamps `review_seen`, since the
-detector's signature counts its own replies and would otherwise re-trigger triage.
+(`MC_AUTO_POST_REPORT`). The host adapter now computes a thread's `latest` from
+comments not written by `MC_REVIEW_SELF`, so a published reply leaves the `review_seen`
+signature alone. An earlier draft re-stamped the signature after posting instead, which could
+swallow a reviewer reply that landed between the post and the re-stamp.
 `/reply-comments` runs the same flow by hand on a PR with no board row.
