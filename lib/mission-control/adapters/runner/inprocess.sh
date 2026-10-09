@@ -40,6 +40,8 @@ op_spawn() {
     case "$1" in
       --reuse) die "spawn: inprocess has no reuse; spawn a fresh worker" ;;
       --model) shift 2 ;;   # accepted for symmetry; the Agent call carries the model
+      # A subagent inherits its parent's permissions, so a per-worker profile cannot apply.
+      --settings) die "spawn: inprocess cannot scope settings to one worker; use a pane runner" ;;
       *) die "spawn: unknown arg $1" ;;
     esac
   done

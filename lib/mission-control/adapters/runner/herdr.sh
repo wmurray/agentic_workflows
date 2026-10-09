@@ -3,6 +3,7 @@
 # interactive claude session. See ../CONTRACT.md "Runner adapter" and DESIGN.md.
 #
 #   spawn <role> <ticket> <cwd> <brief-file> <result-file> [--reuse <handle>] [--model <m>]
+#         [--settings <file>]   a settings JSON for this pane (e.g. a permission profile)
 #   status <handle>            → running | idle | done | blocked | gone
 #   wait <handle> [timeout-ms] → exit 0 when settled (not running); 2 on timeout
 #   harvest <handle>           → result-file JSON on stdout (empty if absent)
@@ -92,16 +93,19 @@ normalize() {
 op_spawn() {
   local role="${1:?role}" ticket="${2:?ticket}" cwd="${3:?cwd}" brief="${4:?brief-file}" result="${5:?result-file}"
   shift 5
-  local reuse="" model=""
+  local reuse="" model="" settings=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --reuse) reuse="$2"; shift 2 ;;
       --model) model="$2"; shift 2 ;;
+      --settings) settings="$2"; shift 2 ;;
       *) die "spawn: unknown arg $1" ;;
     esac
   done
   [ -f "$brief" ] || die "spawn: brief not found: $brief"
   [ -d "$cwd" ]   || die "spawn: cwd not found: $cwd"
+  [ -z "$settings" ] || jq -e 'type == "object"' "$settings" >/dev/null 2>&1 \
+    || die "spawn: --settings is not a JSON object file: $settings"
 
   # Reuse: the author session already exists; re-prompt it and hand back the same handle
   # with the new result path.
@@ -151,7 +155,16 @@ op_spawn() {
   # Pane sessions compact at 200k by default so long-lived workers stay responsive; set
   # MC_HERDR_AUTOCOMPACT_WINDOW=none to keep the model's own window.
   local compact="${MC_HERDR_AUTOCOMPACT_WINDOW:-200000}"
-  [ "$compact" != none ] && start_args+=(--settings "{\"env\":{\"CLAUDE_CODE_AUTO_COMPACT_WINDOW\":\"$compact\"}}")
+  if [ -n "$settings" ]; then
+    # claude takes ONE --settings, so the compact env is merged into the caller's file. The
+    # merge goes to a sibling file; the caller's copy stays as written.
+    local eff="${settings%.json}.effective.json"
+    jq --arg c "$compact" 'if $c == "none" then . else .env = ((.env // {}) + {CLAUDE_CODE_AUTO_COMPACT_WINDOW: $c}) end' \
+      "$settings" > "$eff" || die "spawn: could not write $eff"
+    start_args+=(--settings "$eff")
+  elif [ "$compact" != none ]; then
+    start_args+=(--settings "{\"env\":{\"CLAUDE_CODE_AUTO_COMPACT_WINDOW\":\"$compact\"}}")
+  fi
   local try err=""
   for try in 1 2 3 4 5; do
     sleep 1

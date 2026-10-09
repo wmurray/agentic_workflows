@@ -158,7 +158,7 @@ runner_of()  { …; }   # <handle> → the impl that minted it (for status/wait/
 
 | Op | Args | Output | Notes |
 |---|---|---|---|
-| `spawn` | `<role> <ticket> <cwd> <brief-file> <result-file> [--reuse <handle>] [--model <m>]` | handle (opaque) | starts or re-prompts the worker. `cwd` MUST be the ticket's worktree, never the checkout it was cut from |
+| `spawn` | `<role> <ticket> <cwd> <brief-file> <result-file> [--reuse <handle>] [--model <m>] [--settings <file>]` | handle (opaque) | starts or re-prompts the worker. `cwd` MUST be the ticket's worktree, never the checkout it was cut from. `--settings` is a settings JSON for that one session (a per-pane permission profile); an impl that cannot scope settings to one worker must refuse it rather than drop it |
 | `status` | `<handle>` | `running` `idle` `done` `blocked` `gone` | replaces the teammate-list check on board refresh |
 | `wait` | `<handle> [timeout-ms]` | exit 0 when settled (not running); 2 on timeout | the loop runs this in the background |
 | `harvest` | `<handle>` | the worker's JSON result on stdout; empty if absent | reads `<result-file>` |

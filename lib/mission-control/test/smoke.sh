@@ -132,6 +132,7 @@ run  "inprocess wait returns"          0 runner inprocess wait "$RH"
 says "inprocess harvest returns JSON"  yes 'verdict'   runner inprocess harvest "$RH"
 run  "inprocess teardown"              0 runner inprocess teardown "$RH"
 says "inprocess list is empty"         no  '.'         runner inprocess list
+run  "inprocess refuses --settings"    1 runner inprocess spawn coder ENG-902 "$WORK" "$WORK/runner/brief.md" "$WORK/runner/eng-902.json" --settings "$WORK/runner/brief.md"
 run  "runner herdr capabilities"       0 "$_MC_LIB/adapters/runner/herdr.sh" capabilities
 # herdr is an OPTIONAL runner: the engine defaults every role to inprocess and only this
 # adapter needs the CLI. Its live-ish ops are exercised only where the CLI exists.
@@ -154,6 +155,33 @@ says "herdr workspace resolves a label"       yes '^ws7$' env PATH="$HSTUB:$PATH
 says "herdr workspace label ignores case"     yes '^ws9$' env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace "Out Of Cycle"
 says "herdr workspace keeps a live id"        yes '^ws9$' env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace ws9
 run  "herdr workspace refuses an unknown one" 1 env PATH="$HSTUB:$PATH" "$_MC_LIB/adapters/runner/herdr.sh" workspace w11
+
+# spawn --settings: a caller's settings file (a per-pane permission profile) reaches the
+# claude start line as ONE --settings, with the auto-compact env merged in. claude takes a
+# single --settings, so two flags would silently drop one of them.
+SSTUB="$WORK/herdr-spawn-stub"; mkdir -p "$SSTUB"
+cat > "$SSTUB/herdr" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "workspace list") printf '%s' '{"result":{"workspaces":[{"workspace_id":"ws7","label":"night"}]}}' ;;
+  "tab create")     printf '%s' '{"result":{"tab":{"tab_id":"ws7:t1"},"root_pane":{"pane_id":"ws7:p1"}}}' ;;
+  "agent get")      printf '%s' '{"result":{"agent":{"agent_status":"idle"}}}' ;;
+  "agent start")    printf '%s\n' "$@" > "$HERDR_STUB_LOG" ;;
+esac
+exit 0
+STUB
+chmod +x "$SSTUB/herdr"
+printf '%s' '{"permissions":{"deny":["Bash(op *)"]}}' > "$WORK/runner/pane.settings.json"
+_hspawn() { env PATH="$SSTUB:$PATH" HERDR_STUB_LOG="$WORK/runner/start.log" MC_HERDR_WORKSPACE=night "$_MC_LIB/adapters/runner/herdr.sh" spawn nightowl t1 "$WORK" "$WORK/runner/brief.md" "$WORK/runner/t1.json" "$@"; }
+run  "herdr spawn --settings mints a handle"  0 _hspawn --settings "$WORK/runner/pane.settings.json"
+says "herdr spawn passes one --settings"      yes '^1$' grep -c '^--settings$' "$WORK/runner/start.log"
+HSET="$(grep -A1 '^--settings$' "$WORK/runner/start.log" | tail -1)"
+says "herdr spawn keeps the caller's denies"  yes 'Bash\(op \*\)' jq -c . "$HSET"
+says "herdr spawn merges auto-compact env"    yes '"CLAUDE_CODE_AUTO_COMPACT_WINDOW":"200000"' jq -c . "$HSET"
+says "herdr spawn leaves the caller's file"   no  'AUTO_COMPACT' cat "$WORK/runner/pane.settings.json"
+run  "herdr spawn refuses a missing settings" 1 _hspawn --settings "$WORK/runner/nope.json"
+run  "herdr spawn without --settings"         0 _hspawn
+says "herdr spawn inline compact settings"    yes '^\{"env":\{"CLAUDE_CODE_AUTO_COMPACT_WINDOW":"200000"\}\}$' cat "$WORK/runner/start.log"
 
 # The fixture adapters' DEFAULT data dir, with MC_FIXTURES unset. Worth pinning: the
 # default is dead code in every normal run (the profile always sets MC_FIXTURES), so a
