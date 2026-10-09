@@ -1044,12 +1044,14 @@ classification bug, on a `clear` item a fence bug.
    items, `(k) replies: [{thread, category, body}]` with `category` `answer` or `decline`. A reply-only
    item the coder put under (j) is held for the operator.
 
-   **Every reply body** follows `{STYLE_GUIDE}` (a path to read or a skill to load) in the author-reply
-   voice: what changed and the short SHA for a fix; the answer for a question; for a decline, the reason
-   in one or two sentences. Warm, not terse, no em dashes. A published body **opens with the header line
-   the reply wrapper requires**: a line carrying the wrapper's `AUTO_POST_HEADER` text. The engine does
-   not fix its exact form; the overlay's `{STYLE_GUIDE}` supplies it, so the header reads in the
-   operator's voice. A body without it is refused (exit 21). Cite no commit except the fix's own SHA:
+   **Every reply body** takes its voice, tone and length entirely from `{STYLE_GUIDE}` (a path to read
+   or a skill to load). The engine sets none of them. It fixes only the structure: a fix names what
+   changed and its short SHA; an answer answers the question; a decline gives the reason. A published
+   body **opens with the header line the reply wrapper requires**: a line carrying the wrapper's
+   `AUTO_POST_HEADER` text, then ONE empty line, then the body (`\n\n` between them in JSON). Without
+   the empty line Markdown pulls the body's first line into the header's blockquote. The engine does
+   not fix the header's exact form; the overlay's `{STYLE_GUIDE}` supplies it, so the header reads in
+   the operator's voice. A body without it is refused (exit 21). Cite no commit except the fix's own SHA:
    the wrapper treats any 7 to 40 character hex word with a digit as a SHA and refuses one that is not on
    the head branch.
 

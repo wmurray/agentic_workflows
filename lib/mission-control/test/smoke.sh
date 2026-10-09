@@ -530,6 +530,26 @@ says "  … and mc address on"                      yes 'mc address on'         
 says "SKILL fills list names {REPLY_POST_WRAPPER}" yes '.' grep -nE 'filled from the overlay.*\{REPLY_POST_WRAPPER\}|\{REPLY_POST_WRAPPER\}.*filled from the overlay' "$MC_SKILL_MD"
 say_both_coders() { grep -c '(k) `replies`' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md; }
 says "both coder templates return (k) replies"    no  ':0$'                             say_both_coders
+# Reply voice comes from the style guide alone. The engine keeps only the structure the
+# wrapper and the reader need; a voice word here ("warm") once produced a reply that rated
+# the finding, which the configured guide forbids.
+reply_voice() { pw5 | awk '/^ *\*\*Every reply body\*\*/{f=1} f&&/^ *\*\*2a\./{exit} f' | tr '\n' ' '; }
+rc_replies() { sed -n '/^## 5\. Write the replies/,/^## 6\./p' "$REPLY_SKILL_MD" | tr '\n' ' '; }
+coder_reply_len() { grep -h '(k) `replies`' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md; }
+says "Prep-write 5 defers reply voice to {STYLE_GUIDE}"  yes 'entirely from `\{STYLE_GUIDE\}`'  reply_voice
+says "  … keeps the header line"                 yes 'header line'                       reply_voice
+says "  … keeps the change and SHA for a fix"    yes 'fix.*short SHA'                    reply_voice
+says "  … keeps the reason for a decline"        yes 'decline.*reason'                   reply_voice
+says "  … sets no voice of its own"              no  '[Ww]arm|terse|one or two sentences|em dash' reply_voice
+says "reply-comments defers voice to its guide"  yes 'entirely from'                     rc_replies
+says "  … sets no voice of its own"              no  '[Ww]arm|one or two sentences|em dash' rc_replies
+says "coder (k) replies set no length of their own" no 'one or two sentences'            coder_reply_len
+# A line right after a `> ` header is pulled into the quote by lazy continuation, so the
+# body must start after ONE empty line.
+says "Prep-write 5: one empty line after the header" yes 'header line.*ONE empty line'  reply_voice
+says "reply-comments: one empty line after the header" yes 'header line.*ONE empty line' rc_replies
+says_both_coders_blank() { grep -h '(k) `replies`' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md | grep -c 'ONE empty line'; }
+says "both coder templates name the empty line"   yes '^2$'                          says_both_coders_blank
 says "reply-comments skill has frontmatter"       yes '^name: reply-comments$'          cat "$REPLY_SKILL_MD"
 says "  … reads REPLY_POST_WRAPPER"               yes 'REPLY_POST_WRAPPER:-\}' cat "$REPLY_SKILL_MD"
 says "  … shares the decline report path"         yes 'MC_AUTO_POST_REPORT:-' cat "$REPLY_SKILL_MD"

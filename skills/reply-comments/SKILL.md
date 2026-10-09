@@ -107,16 +107,18 @@ Record `{thread, sha, summary}` per fixed thread.
 
 ## 5. Write the replies
 
-Every body follows `${REPLY_STYLE_GUIDE:-${WRITING_STYLE_SKILL:-}}` (read a path, load a skill):
-one or two sentences, warm, no em dashes.
+Every body takes its voice, tone and length entirely from
+`${REPLY_STYLE_GUIDE:-${WRITING_STYLE_SKILL:-}}` (read a path, load a skill). This skill sets
+none of them; it fixes only what each category must contain:
 
 - **fix** (`--category fix`): what changed and the short SHA.
 - **answer** (`--category answer`): the answer, from the code as it is.
-- **decline** (`--category decline`): that you will not make the change, and the reason in one
-  or two sentences.
+- **decline** (`--category decline`): that you will not make the change, and the reason.
 
 A published body **opens with the header line** the wrapper requires: a line that carries the
-wrapper's `AUTO_POST_HEADER` text, in the exact form your style guide gives. A body without it
+wrapper's `AUTO_POST_HEADER` text, in the exact form your style guide gives, then ONE empty line,
+then the body (`\n\n` between them in JSON). Without the empty line Markdown pulls the body's
+first line into the header's blockquote. A body without it
 is refused (exit 21). Cite no commit except the fix's own SHA: the wrapper treats any 7 to 40
 character hex word with a digit as a SHA and refuses one not on the head branch (exit 19).
 Drafts omit the header, since you publish them yourself.
