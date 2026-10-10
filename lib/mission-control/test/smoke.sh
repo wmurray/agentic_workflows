@@ -7,9 +7,12 @@
 #      MC_HOST set to `fixture` — no Jira, no GitHub, no network, no credentials. A script
 #      that reaches past the adapter contract fails here, which is the whole point: the
 #      contract gets stress-tested before a real second provider is written against it.
-#   2. SAFETY. It stamps every live runtime file first and re-checks them at the end. A
-#      script that writes to the real board, steals the real writer lock, or moves the
-#      real rollover marker turns the run red.
+#   2. SAFETY. The fixture section runs with HOME pointed at a fresh temp dir, so every
+#      script that resolves $HOME/.claude/mission-control lands in a sandbox and cannot
+#      reach the real board. The sandbox runtime dir is stamped first and re-checked at the
+#      end: a script that writes the board, steals the writer lock, or moves the rollover
+#      marker turns the run red. The real runtime dir is never read, so a running loop that
+#      writes the live board during a smoke run cannot turn it red.
 #
 # The committed fixtures are COPIED to a temp dir per run, so the write scripts can be
 # exercised for real (mc-archive --commit and friends) without dirtying the repo.
@@ -21,7 +24,14 @@ set -uo pipefail
 VERBOSE=""; [ "${1:-}" = "-v" ] && VERBOSE=1
 
 _MC_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LIVE="$HOME/.claude/mission-control"
+
+# The sandbox HOME. Every engine script resolves $HOME/.claude/mission-control, so with HOME
+# here they all land in $SANDBOX_HOME/.claude/mission-control. The scripts read nothing from
+# that dir that the fixture profile does not redirect, so seeding is just the dir existing.
+SANDBOX_HOME="$(mktemp -d)"
+LIVE="$SANDBOX_HOME/.claude/mission-control"
+mkdir -p "$LIVE"
+export HOME="$SANDBOX_HOME"
 
 pass=0; fail=0
 export MC_WORKLOG_DIR="${TMPDIR:-/tmp}/mc-smoke-worklog.$$"   # every producer under test logs HERE, never to the live log
@@ -29,16 +39,12 @@ red()  { printf '\033[31m%s\033[0m\n' "$*"; }
 grn()  { printf '\033[32m%s\033[0m\n' "$*"; }
 dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 
-# --- 1. stamp the live runtime files, so any write to them is detectable -------------
-# Format: "<path>\t<sha or ABSENT>". A file the engine must never touch during a
-# fixture run is listed here; ABSENT files must stay absent.
-#
-# `.loop-heartbeat` is deliberately NOT listed. A running /loop stamps it every tick,
-# outside the writer lock, so a smoke run that overlaps a tick saw it change and went red
-# for something the board never did. No engine script writes it (only the driver's
-# prose does, and dash.sh reads it), so stamping it caught nothing a fixture run could
-# break. Everything else here changes only on a real board write, an operator verb, or a
-# flag flip, so it stays covered.
+# --- 1. stamp the sandbox runtime dir, so any write to it is detectable --------------
+# Format: "<path>\t<sha or ABSENT>". LIVE_FILES names the runtime files the engine must
+# never touch during a fixture run; ABSENT ones must stay absent. The stamp also lists
+# every other file under the dir, so a script that invents a new name there is caught too.
+# The dir is the sandbox's, not the operator's: a running /loop writes the board and stamps
+# `.loop-heartbeat` every tick in the REAL dir, and none of that can reach here.
 LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/mc-inbox"
@@ -51,12 +57,17 @@ _stamp() {
     if [ -e "$f" ]; then printf '%s\t%s\n' "$f" "$(shasum -a 256 "$f" | cut -d' ' -f1)"
     else printf '%s\tABSENT\n' "$f"; fi
   done
+  find "$LIVE" -type f 2>/dev/null | sort | while IFS= read -r f; do
+    printf 'file %s\t%s\n' "$f" "$(shasum -a 256 "$f" | cut -d' ' -f1)"
+  done
 }
 BEFORE="$(_stamp)"
+# Empty when the sandbox runtime dir is as it was stamped; the diff otherwise.
+_sandbox_diff() { diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(_stamp)"); }
 
 # --- 2. fresh copy of the fixtures, so writes don't dirty the repo -------------------
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK" "$SANDBOX_HOME"' EXIT
 cp -R "$_MC_LIB/fixtures/example/." "$WORK/"
 
 export MC_PROFILE="$_MC_LIB/profiles/fixture.env"
@@ -104,13 +115,26 @@ echo
 echo "engine against the fixture adapters   (fixtures: $WORK)"
 echo "────────────────────────────────────────────────────────────────"
 
-# The stamp set itself is pinned: the board files must stay covered, and the per-tick
-# liveness sidecar must not be (see the comment on LIVE_FILES).
+# The stamp set itself is pinned: the board files must stay covered, and it must point at
+# the sandbox, never the operator's real runtime dir.
 stamped() { printf '%s\n' "${LIVE_FILES[@]}"; }
-says "live stamp covers state.json"          yes '/state\.json$'           stamped
-says "live stamp covers the writer lock"     yes '/\.writer-lock$'         stamped
-says "live stamp covers the rollover marker" yes '/\.last-archived-sprint$' stamped
-says "live stamp skips the loop heartbeat"   no  '/\.loop-heartbeat$'      stamped
+says "sandbox stamp covers state.json"          yes '/state\.json$'           stamped
+says "sandbox stamp covers the writer lock"     yes '/\.writer-lock$'         stamped
+says "sandbox stamp covers the rollover marker" yes '/\.last-archived-sprint$' stamped
+says "sandbox stamp skips the loop heartbeat"   no  '/\.loop-heartbeat$'      stamped
+run  "engine scripts resolve HOME to the sandbox" 0 bash -c '[ "$HOME" = "$0" ]' "$SANDBOX_HOME"
+# A script that writes under $HOME/.claude/mission-control during the run must turn the
+# final check red. Here one writes a board and a new file; the diff must name both, and the
+# strays are removed so the real check at the end still reflects the run itself.
+stray_caught() {
+  bash -c 'printf "{}" > "$HOME/.claude/mission-control/state.json"; : > "$HOME/.claude/mission-control/stray.tmp"'
+  local d; d="$(_sandbox_diff)"
+  rm -f "$LIVE/state.json" "$LIVE/stray.tmp"
+  printf '%s' "$d" | grep -q 'state\.json' && printf '%s' "$d" | grep -q 'stray\.tmp' && echo caught
+  [ -z "$(_sandbox_diff)" ] && echo restored
+}
+says "a stray write into the runtime dir is caught"  yes '^caught$'   stray_caught
+says "  … and the sandbox is clean again after"      yes '^restored$' stray_caught
 
 # --- 3. adapter contract: every op answers ------------------------------------------
 . "$_MC_LIB/adapters/dispatch.sh"
@@ -592,14 +616,18 @@ printf 'cycles vetting\n' > "$WORK/tracker/capabilities"
 
 # --- 8. the safety assertion --------------------------------------------------------
 echo
-echo "live board untouched"
+echo "sandbox runtime dir untouched"
 echo "────────────────────────────────────────────────────────────────"
-AFTER="$(_stamp)"
-if [ "$BEFORE" = "$AFTER" ]; then
-  grn "  PASS  all ${#LIVE_FILES[@]} live runtime files unchanged"; pass=$((pass+1))
+# There is no second guard on the real $HOME/.claude/mission-control. With HOME redirected,
+# only a script that hardcodes an absolute path could reach it, and a "newer than the run
+# start" check there cannot tell that from a live loop writing its own board, which is the
+# false red this sandbox exists to remove.
+SDIFF="$(_sandbox_diff)"
+if [ -z "$SDIFF" ]; then
+  grn "  PASS  all ${#LIVE_FILES[@]} sandbox runtime files unchanged, no new files"; pass=$((pass+1))
 else
-  red "  FAIL  a live runtime file CHANGED during the fixture run:"
-  diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") | sed 's/^/          /'
+  red "  FAIL  the sandbox runtime dir CHANGED during the fixture run:"
+  printf '%s\n' "$SDIFF" | sed 's/^/          /'
   fail=$((fail+1))
 fi
 

@@ -33,7 +33,7 @@ profiles/
   fixture.env        points the engine at the file-backed adapters (committed)
   local.env          your real values (GITIGNORED)
 fixtures/example/    a board + tracker + host dataset the whole engine can run against
-test/smoke.sh        runs the engine against the fixtures; asserts the live board is untouched
+test/smoke.sh        runs the engine against the fixtures under a temp HOME; asserts the sandbox is untouched
 ```
 
 ## No provider is named in the engine
@@ -58,8 +58,9 @@ degrades deliberately rather than breaking. See `adapters/CONTRACT.md`.
 ```
 
 `profiles/fixture.env` redirects every write target into the fixture directory, so nothing
-touches the real board. The smoke test stamps the live runtime files first and re-checks
-them at the end, so a script that escapes fails the run.
+touches the real board. The smoke test also runs with `HOME` set to a temp dir, stamps that
+sandbox's runtime dir first and re-checks it at the end, so a script that writes under
+`$HOME/.claude/mission-control` fails the run. A running loop cannot turn it red.
 
 To drive one script by hand:
 

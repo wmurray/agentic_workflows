@@ -123,3 +123,16 @@ triage. The tick runs it as step 1.7, beside the other scripts, and both the rec
 and Prep-write 2 read its lines. Prep-write 2 still acts on one row per tick under the existing
 prep-write cap; the remaining rows come back on the next sweep because their `review_seen` has not
 moved. The sweep is read-only, like `mc-review-check`.
+
+## The smoke run gets its own HOME (2026-10-09)
+
+The smoke test's safety check hashed the live runtime files under `~/.claude/mission-control`
+before and after the fixture run. A running loop that wrote the real board during a smoke run
+changed `state.json` and turned the run red, though no engine script had touched it. The fixture
+section now runs with `HOME` set to a fresh temp dir, so every script that resolves
+`$HOME/.claude/mission-control` lands in a sandbox, and the check stamps that sandbox's runtime
+dir (the named files plus any new file) instead. One smoke case writes a board and a new file
+into the sandbox and asserts the diff names both, so the check is shown to catch a stray write.
+The old "newer than the run start" guard on the real dir was dropped: only a script that
+hardcodes an absolute path could reach it now, and a live loop writing its own board looks the
+same to that check. `MC_WORKLOG_DIR` and the fixture profile's redirections are unchanged.
