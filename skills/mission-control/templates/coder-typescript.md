@@ -33,7 +33,21 @@ git fetch origin
 git worktree add -b {BRANCH_PREFIX}{TICKET_SLUG} ../{REPO_LOWER}-wt-{TICKET_SLUG} {BASE_REF}   # branch convention: {BRANCH_PREFIX}<TICKET> (that is your {BRANCH})
 cd ../{REPO_LOWER}-wt-{TICKET_SLUG}
 ```
-Do ALL work, test runs, and commits inside the worktree. If the worktree needs install/build artifacts the repo gitignores, bootstrap them before running tests (note what you copied/installed in your return).
+Do ALL work, test runs, and commits inside the worktree. A new worktree has none of the gitignored files the main checkout relies on, so set it up from inside the worktree before running any test:
+1. **Copy the env files the main checkout has.** Each of `.env`, `.env.local`, and `.npmrc` that exists in `{REPO_PATH}`; skip any that are absent. Copy them whole with `cp`. **Never read, print, or grep an env file's contents.**
+   ```
+   [ -f {REPO_PATH}/.env ] && cp {REPO_PATH}/.env .
+   [ -f {REPO_PATH}/.env.local ] && cp {REPO_PATH}/.env.local .
+   [ -f {REPO_PATH}/.npmrc ] && cp {REPO_PATH}/.npmrc .
+   ```
+2. **Install dependencies with the repo's package manager**, with the lockfile flag for its version:
+   - `.yarnrc.yml` exists (yarn 2+) → `yarn install --immutable`
+   - `yarn.lock` and no `.yarnrc.yml` (yarn 1) → `yarn install --frozen-lockfile`
+   - `package-lock.json` (npm) → `npm ci`
+
+   If the install refuses because the lockfile is out of date, do NOT regenerate the lockfile; stop and report it.
+
+Note what you copied (file names only) and which install command you ran in your return.
 
 ## Process (TDD, per the plan)
 1. Scaffold the empty `describe`/`it` blocks for the plan's cases. Then proceed — do NOT pause (the plan is approved).
