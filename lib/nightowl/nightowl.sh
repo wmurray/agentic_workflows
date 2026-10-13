@@ -11,6 +11,7 @@
 #   status   [--date D]                 read-only table of the night's tasks
 #   settings [--date D] <id>            print the task's permission profile
 #   path     [--date D]                 the night's report file
+#   drop     [--date D] <id>            remove a task from the manifest, closing its pane if any
 #
 # Task ops (what a pane's profile allows it to run, for its own id only):
 #   finish         --date D <id>                         record result.json: report + work log
@@ -499,6 +500,23 @@ op_status() {
   jq -r '.tasks[] | [.id, .kind, .status, (.worktree // ""), (.handle // "")] | @tsv' "$(manifest)"
 }
 
+# --- drop ------------------------------------------------------------------------------
+op_drop() {
+  orchestrator_only
+  [ "${#ARGS[@]}" -eq 1 ] || usage "drop needs one task id"
+  DATE="${DATE:-$(latest_date)}"; local id="${ARGS[0]}" h wt
+  [ -n "$DATE" ] || die 3 "no nightowl manifest found in $REPORT_DIR"
+  need_task "$id"
+  lock
+  h="$(tget "$id" .handle)"; wt="$(tget "$id" .worktree)"
+  # Close the pane first: a task still running after it leaves the manifest has nowhere to report.
+  if [ -n "$h" ] && [ "$(tget "$id" .torn_down)" != true ]; then
+    "$RUNNER" teardown "$h" >/dev/null 2>&1 || die 1 "could not close the pane for $id ($h); task kept"
+  fi
+  mput --arg id "$id" '.tasks |= map(select(.id != $id))'
+  echo "dropped $id; its worktree and task dir are left in place: $wt, $(task_dir "$id")"
+}
+
 case "$op" in
   confirm)        op_confirm ;;
   launch)         op_launch ;;
@@ -509,7 +527,8 @@ case "$op" in
   pending-review) op_pending_review ;;
   morning)        op_morning ;;
   status)         op_status ;;
+  drop)           op_drop ;;
   path)           DATE="${DATE:-$(latest_date)}"; [ -n "$DATE" ] || DATE="$(date +%Y-%m-%d)"; report; echo ;;
-  -h|--help|help) sed -n '2,32p' "$NO_SELF" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|help) awk 'NR > 1 && !/^#/ { exit } NR > 1 { sub(/^# ?/, ""); print }' "$NO_SELF" ;;
   *) usage "unknown op '$op'" ;;
 esac

@@ -10,6 +10,7 @@ nightowl.sh confirm tasks.json      # validate the confirmed list into tonight's
 nightowl.sh launch                  # worktree + settings.json + brief.md + pane per task
 nightowl.sh morning [--teardown]    # reconcile panes, finish late results, print a table
 nightowl.sh status                  # read-only table
+nightowl.sh drop <id>               # remove a task from the manifest, closing its pane if any
 ```
 
 The header of `nightowl.sh` lists every op, flag and exit code.
