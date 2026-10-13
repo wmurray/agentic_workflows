@@ -95,6 +95,8 @@ expect "unknown op is usage"       2 "$NO" frob
 expect "confirm needs a file"      2 "$NO" confirm --date "$D"
 expect "an empty list is refused"  3 "$NO" confirm --date "$D" "$(printf '' | tasks)"
 expect "bad date is usage"         2 "$NO" status --date 2026-1-2
+says "report dir defaults to XDG state" '^/xdg/nightowl/2026-01-02\.md$' env -u NIGHTOWL_REPORT_DIR XDG_STATE_HOME=/xdg "$NO" path --date 2026-01-02
+says "  … or ~/.local/state without it" '^/h/\.local/state/nightowl/2026-01-02\.md$' env -u NIGHTOWL_REPORT_DIR -u XDG_STATE_HOME HOME=/h "$NO" path --date 2026-01-02
 
 echo "confirm: the human-gated task list"
 expect "bad kind refused"          3 "$NO" confirm --date "$D" "$(task a deploy | tasks)"

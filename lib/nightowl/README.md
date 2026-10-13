@@ -67,6 +67,10 @@ $NIGHTOWL_REPORT_DIR/<date>.md              the report: one section per finished
 $NIGHTOWL_REPORT_DIR/<date>/<id>/           settings.json, brief.md, result.json
 ```
 
+`NIGHTOWL_REPORT_DIR` defaults to `${XDG_STATE_HOME:-$HOME/.local/state}/nightowl`. Keep it
+out of `~/.claude`: Claude Code protects that tree, so a `dontAsk` pane cannot write its
+`result.json` or a review payload there.
+
 Each finished task also appends one line to the work log (`worklog.sh --source nightowl`).
 Nothing here writes the mission-control board; its loop picks the work up from the work log
 and the PR host on its next tick.
