@@ -48,6 +48,9 @@ The profile is `settings.template.json`, filled per task by `nightowl.sh setting
   not see the pane's `--settings`, so a rewritten command is matched against these rules.
   Add the rtk form of anything in `NIGHTOWL_ALLOW_EXTRA` that rtk rewrites
   (`npx tsc` becomes `rtk tsc`, `bundle exec rspec` becomes `rtk rspec`).
+  Tracker reads (`jira issue view`, `jira issue list`, `acli jira workitem view`) are
+  allowed for every kind. The directories in `NIGHTOWL_LIBRARY_DIRS` (installed library
+  sources such as a gem home) are readable and never editable.
   Research tasks also get web search and fetch, and writes to `NIGHTOWL_NOTES_DIR` when it
   is set, plus any rules in `NIGHTOWL_RESEARCH_ALLOW` (a docs tool, say).
 - **Denied, always:** `op`, `sentry-cli`, `kubectl`, `aws`, ssh, everything in
