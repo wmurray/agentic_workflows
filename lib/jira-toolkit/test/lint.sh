@@ -430,6 +430,22 @@ printf '%s' "$adf" | jq -e '[.content[].type] == ["heading","bulletList","ordere
 printf '%s' "$adf" | jq -e '.content[1].content[0].content[0].content | any(.marks[]?.type=="strong")' >/dev/null && ok "bold mark" || bad "bold mark"
 printf '%s' "$adf" | jq -e '.content[3].content | any(.type=="hardBreak")' >/dev/null && ok "trailing backslash → hardBreak" || bad "hardBreak"
 printf '' | python3 "$T/md-to-adf.py" | jq -e '.content | length == 1' >/dev/null && ok "empty input still yields one paragraph" || bad "empty input"
+adf=$(printf '> quoted line' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '.content == [{"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"quoted line"}]}]}]' >/dev/null && ok "one-line blockquote" || bad "one-line blockquote: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf 'before\n\n> first\n> second\n\nafter' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '[.content[].type] == ["paragraph","blockquote","paragraph"] and (.content[1].content | length == 1) and .content[1].content[0].content[0].text == "first second"' >/dev/null && ok "consecutive > lines form one blockquote" || bad "multi-line blockquote: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf '> a **bold** word' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '.content[0].type == "blockquote" and (.content[0].content[0].content | any(.text == "bold" and .marks[0].type == "strong"))' >/dev/null && ok "bold mark inside blockquote" || bad "blockquote bold: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf '```python\ndef f():\n    return 1\n```' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '.content == [{"type":"codeBlock","attrs":{"language":"python"},"content":[{"type":"text","text":"def f():\n    return 1"}]}]' >/dev/null && ok "fenced block with language" || bad "fenced with language: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf 'intro\n\n```\nplain one\nplain two\n```\n\noutro' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '[.content[].type] == ["paragraph","codeBlock","paragraph"] and (.content[1] | has("attrs") | not) and .content[1].content[0].text == "plain one\nplain two"' >/dev/null && ok "fenced block without language" || bad "fenced no language: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf '```\nx = **not bold** and `not code`\n```' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '.content[0].content == [{"type":"text","text":"x = **not bold** and `not code`"}]' >/dev/null && ok "fence content stays literal" || bad "fence literal: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf '1. one\n2. two\n\n```\ncode\n```\n\n3. three' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '[.content[].type] == ["orderedList","codeBlock","orderedList"] and (.content[0] | has("attrs") | not) and .content[2].attrs.order == 3' >/dev/null && ok "ordered list resumes at 3 after a code block" || bad "list resume: $(printf '%s' "$adf" | jq -c .content)"
+adf=$(printf '1. one\n2. two\n\n> aside\n\n3. three' | python3 "$T/md-to-adf.py")
+printf '%s' "$adf" | jq -e '[.content[].type] == ["orderedList","blockquote","orderedList"] and .content[2].attrs.order == 3' >/dev/null && ok "ordered list resumes at 3 after a blockquote" || bad "list resume after quote: $(printf '%s' "$adf" | jq -c .content)"
 
 echo
 if [ "$fail" -eq 0 ]; then printf '\033[32m%s passed, 0 failed\033[0m\n' "$pass"; else printf '\033[31m%s passed, %s FAILED\033[0m\n' "$pass" "$fail"; exit 1; fi

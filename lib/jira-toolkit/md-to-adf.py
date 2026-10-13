@@ -2,8 +2,15 @@
 """Convert a small markdown subset to Atlassian Document Format (ADF).
 
 Supports: headings (#..######), bullet lists (-/*), ordered lists (N.),
+blockquotes (> lines), fenced code blocks (``` with an optional language),
 bold (**text**), inline code (`text`), blank-line-separated paragraphs.
 Reads markdown from stdin, writes an ADF doc (JSON) to stdout.
+
+Consecutive > lines form one blockquote; a bare > line splits it into
+paragraphs. Fenced code is kept verbatim (no inline marks, newlines kept),
+and an unclosed fence runs to the end of the input. An ordered list that
+resumes after a code block or blockquote continues the earlier list's
+numbering (attrs.order), unless its first marker is an explicit "1.".
 
 Wrapped continuation lines (a non-blank line that doesn't start a new
 list item / heading / block) are folded into the same paragraph or list
@@ -20,6 +27,9 @@ INLINE_RE = re.compile(r"(\*\*.+?\*\*|`.+?`|\*.+?\*)")
 BULLET_RE = re.compile(r"^[-*]\s+(.*)$")
 ORDERED_RE = re.compile(r"^\d+\.\s+(.*)$")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+QUOTE_RE = re.compile(r"^>\s?(.*)$")
+FENCE_RE = re.compile(r"^(`{3,})\s*([^`\s]*)[^`]*$")
+ORDERED_NUM_RE = re.compile(r"^(\d+)\.\s")
 
 
 def inline_nodes(text):
@@ -65,11 +75,17 @@ def block_content(lines):
 
 
 def is_block_start(stripped):
-    """True if this line starts a NEW block (list item, heading) rather
-    than continuing the current one."""
+    """True if this line starts a NEW block (list item, heading, quote,
+    fence) rather than continuing the current one."""
     if not stripped:
         return True
-    return bool(BULLET_RE.match(stripped) or ORDERED_RE.match(stripped) or HEADING_RE.match(stripped))
+    return bool(
+        BULLET_RE.match(stripped)
+        or ORDERED_RE.match(stripped)
+        or HEADING_RE.match(stripped)
+        or QUOTE_RE.match(stripped)
+        or FENCE_RE.match(stripped)
+    )
 
 
 def consume_continuations(lines, i, n, first_text):
@@ -110,6 +126,60 @@ def consume_list(lines, i, n, marker_re):
     return items, i
 
 
+def consume_fence(lines, i, n, fence):
+    """Collect the raw lines after an opening fence up to the closing fence
+    (a backtick run at least as long, with nothing else on the line)."""
+    body = []
+    while i < n:
+        closing = lines[i].strip()
+        if closing.startswith(fence) and not closing.strip("`"):
+            return body, i + 1
+        body.append(lines[i])
+        i += 1
+    return body, i
+
+
+def code_block(body, language):
+    node = {"type": "codeBlock"}
+    if language:
+        node["attrs"] = {"language": language}
+    text = "\n".join(body)
+    node["content"] = [{"type": "text", "text": text}] if text else []
+    return node
+
+
+def consume_quote(lines, i, n):
+    """Consume consecutive > lines into one blockquote. A bare > line
+    separates paragraphs inside it."""
+    paragraphs = [[]]
+    while i < n:
+        m = QUOTE_RE.match(lines[i].strip())
+        if not m:
+            break
+        inner = m.group(1).strip()
+        if inner:
+            paragraphs[-1].append(inner)
+        elif paragraphs[-1]:
+            paragraphs.append([])
+        i += 1
+    content = [{"type": "paragraph", "content": block_content(p)} for p in paragraphs if p]
+    return {"type": "blockquote", "content": content or [{"type": "paragraph", "content": []}]}, i
+
+
+def resumed_order(content, first_marker):
+    """Start number for an ordered list that resumes one interrupted by
+    code blocks or blockquotes; None for a fresh list."""
+    if first_marker == 1:
+        return None
+    j = len(content) - 1
+    while j >= 0 and content[j]["type"] in ("codeBlock", "blockquote"):
+        j -= 1
+    if j == len(content) - 1 or j < 0 or content[j]["type"] != "orderedList":
+        return None
+    prev = content[j]
+    return prev.get("attrs", {}).get("order", 1) + len(prev["content"])
+
+
 def parse(md):
     lines = md.split("\n")
     content = []
@@ -137,8 +207,23 @@ def parse(md):
 
         ordered = ORDERED_RE.match(stripped)
         if ordered:
+            order = resumed_order(content, int(ORDERED_NUM_RE.match(stripped).group(1)))
             items, i = consume_list(lines, i, n, ORDERED_RE)
-            content.append({"type": "orderedList", "content": items})
+            node = {"type": "orderedList", "content": items}
+            if order is not None:
+                node["attrs"] = {"order": order}
+            content.append(node)
+            continue
+
+        fence = FENCE_RE.match(stripped)
+        if fence:
+            body, i = consume_fence(lines, i + 1, n, fence.group(1))
+            content.append(code_block(body, fence.group(2)))
+            continue
+
+        if QUOTE_RE.match(stripped):
+            node, i = consume_quote(lines, i, n)
+            content.append(node)
             continue
 
         i += 1
