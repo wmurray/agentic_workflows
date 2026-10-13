@@ -91,10 +91,12 @@ in the result. Do not paste secrets or production URLs into a brief.
 "$NO" launch
 ```
 
-`confirm` exits 3 with a reason on an invalid task (an unprefixed push branch, a review
-without `owner/repo#N`, a worktree that is the main checkout). Fix the list and rerun.
+`confirm` exits 3 with a reason on an invalid task (an id over 23 characters, an unprefixed
+push branch, a review without `owner/repo#N`, a worktree that is the main checkout). Fix the list and rerun.
 `launch` prints one line per task; a `launch-failed` task stays in the manifest for a
-retry with `"$NO" launch <id>`.
+retry with `"$NO" launch <id>`. To take a task off the night instead (one confirmed by
+mistake, or a failed launch not worth retrying), run `"$NO" drop <id>`: it closes the task's
+pane if it has one and removes it from the manifest, leaving its worktree in place.
 
 Finish by telling the maintainer where the report will be (`"$NO" path`) and that
 `/nightowl morning` gathers it.

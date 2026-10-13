@@ -95,6 +95,8 @@ expect "unknown op is usage"       2 "$NO" frob
 expect "confirm needs a file"      2 "$NO" confirm --date "$D"
 expect "an empty list is refused"  3 "$NO" confirm --date "$D" "$(printf '' | tasks)"
 expect "bad date is usage"         2 "$NO" status --date 2026-1-2
+says "help lists every op through the exit codes" '5 orchestrator op run from inside' "$NO" help
+says "  … including drop"              '^  drop ' "$NO" help
 says "report dir defaults to XDG state" '^/xdg/nightowl/2026-01-02\.md$' env -u NIGHTOWL_REPORT_DIR XDG_STATE_HOME=/xdg "$NO" path --date 2026-01-02
 says "  … or ~/.local/state without it" '^/h/\.local/state/nightowl/2026-01-02\.md$' env -u NIGHTOWL_REPORT_DIR -u XDG_STATE_HOME HOME=/h "$NO" path --date 2026-01-02
 
@@ -274,6 +276,20 @@ says "morning --json is the task list" '^4$' sh -c "'$NO' morning --date $D --js
 expect "morning --teardown"            0 "$NO" morning --date "$D" --teardown
 says "teardown closed finished panes"  '^teardown nightowl-pr1' cat "$FX/runner-calls"
 lacks "teardown skips unlaunched"      'teardown .*bad1' cat "$FX/runner-calls"
+
+echo "drop: take a task off the night"
+expect "a pane cannot drop"            5 env NIGHTOWL_TASK=res1 "$NO" drop --date "$D" res1
+expect "drop an unknown task"          3 "$NO" drop --date "$D" nope
+expect "drop needs an id"              2 "$NO" drop --date "$D"
+: > "$FX/runner-calls"
+expect "drop a task with a pane"       0 "$NO" drop --date "$D" res1
+says "  … closes its pane"             '^teardown nightowl-res1' cat "$FX/runner-calls"
+lacks "  … and leaves the manifest"    '"res1"' jq -c '[.tasks[].id]' "$M"
+: > "$FX/runner-calls"
+expect "drop a task that never launched" 0 "$NO" drop --date "$D" bad1
+[ ! -s "$FX/runner-calls" ] && ok "  … with no pane to close" || bad "drop called the runner: $(cat "$FX/runner-calls")"
+says "other tasks are kept"            '^\["pr1","rev1"\]$' jq -c '[.tasks[].id]' "$M"
+expect "a dropped id can be confirmed again" 0 "$NO" confirm --date "$D" "$(task bad1 plan | tasks)"
 
 echo "mission-control state untouched"
 [ ! -e "$MC_HOME" ] && ok "nothing written under MC_HOME" || bad "MC_HOME was written: $(ls -R "$MC_HOME")"
