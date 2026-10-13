@@ -294,6 +294,11 @@ result and carry on with what you can do.
 - Never merge, never mark a PR ready, never move or comment on a tracker ticket. The
   mission-control loop does that admin from the board and the work log.
 - Never push to a branch the maintainer did not author.
+- Write shell commands plainly so the permission rules can read them: one command, or a
+  short && chain or pipe of plain commands. Write every path and every nightowl op in full,
+  one op per command. No \$VAR or \$(...) as a command or path, no for or while loops, and
+  cd only into your worktree or task dir. If a command is refused, split it into plain
+  single commands and retry once before giving up on the shell.
 EOF
     case "$kind" in
       draft-pr|flake) cat <<EOF
