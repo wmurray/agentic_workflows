@@ -1,5 +1,5 @@
 {
-  "_nightowl": "Per-pane permission profile for one nightowl task. nightowl.sh fills the {{PLACEHOLDERS}}, appends the _nightowl_kinds entry for the task's kind (and _nightowl_notes for research when NIGHTOWL_NOTES_DIR is set), adds NIGHTOWL_DENY_* and NIGHTOWL_ALLOW_EXTRA, then drops every _nightowl key. Deny wins over allow in every settings source, so the deny list is the hard boundary; the allow list only decides what runs without a prompt. A path rule starting with a single / here becomes //absolute once the path is filled in. The rtk allow rules match commands an rtk PreToolUse hook has rewritten (cat to rtk read, git log to rtk git log); every Bash deny rule not starting with * gets an rtk twin at render time, so a rewritten push or merge is denied too.",
+  "_nightowl": "Per-pane permission profile for one nightowl task. nightowl.sh fills the {{PLACEHOLDERS}}, appends the _nightowl_kinds entry for the task's kind (and _nightowl_notes for research when NIGHTOWL_NOTES_DIR is set), adds NIGHTOWL_DENY_* and NIGHTOWL_ALLOW_EXTRA, then drops every _nightowl key. Deny wins over allow in every settings source, so the deny list is the hard boundary; the allow list only decides what runs without a prompt. A path rule starting with a single / here becomes //absolute once the path is filled in. The rtk allow rules match commands an rtk PreToolUse hook has rewritten (cat to rtk read, git log to rtk git log); every Bash deny rule not starting with * gets an rtk twin at render time, so a rewritten push or merge is denied too. There are no Write(path) rules: Claude Code matches file writes against Edit(path) rules only and ignores Write ones.",
   "sandbox": { "enabled": false },
   "env": {
     "NIGHTOWL_DATE": "{{DATE}}",
@@ -11,10 +11,8 @@
     "allow": [
       "Read(/{{WORKTREE}}/**)",
       "Edit(/{{WORKTREE}}/**)",
-      "Write(/{{WORKTREE}}/**)",
       "Read(/{{TASK_DIR}}/**)",
       "Edit(/{{TASK_DIR}}/**)",
-      "Write(/{{TASK_DIR}}/**)",
       "Glob",
       "Grep",
       "Bash(git status*)",
@@ -162,19 +160,12 @@
       "Read(**/.env)",
       "Read(**/.env.*)",
       "Edit(~/.claude/settings*.json)",
-      "Write(~/.claude/settings*.json)",
       "Edit(/{{MC_HOME}}/**)",
-      "Write(/{{MC_HOME}}/**)",
       "Edit(/{{LIB}}/**)",
-      "Write(/{{LIB}}/**)",
       "Edit(/{{REVIEW_TOOLKIT}}/**)",
-      "Write(/{{REVIEW_TOOLKIT}}/**)",
       "Edit(/{{REPORT_DIR}}/*.json)",
-      "Write(/{{REPORT_DIR}}/*.json)",
       "Edit(/{{REPORT_DIR}}/*.md)",
-      "Write(/{{REPORT_DIR}}/*.md)",
-      "Edit(/{{TASK_DIR}}/settings*.json)",
-      "Write(/{{TASK_DIR}}/settings*.json)"
+      "Edit(/{{TASK_DIR}}/settings*.json)"
     ]
   },
   "_nightowl_kinds": {
@@ -204,6 +195,6 @@
   "_nightowl_notes": {
     "kinds": ["research"],
     "additionalDirectories": ["{{NOTES_DIR}}"],
-    "allow": ["Read(/{{NOTES_DIR}}/**)", "Edit(/{{NOTES_DIR}}/**)", "Write(/{{NOTES_DIR}}/**)"]
+    "allow": ["Read(/{{NOTES_DIR}}/**)", "Edit(/{{NOTES_DIR}}/**)"]
   }
 }
