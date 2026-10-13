@@ -41,7 +41,7 @@ unset _src _t
 # --- config: $NIGHTOWL_ENV, else nightowl.env next to this file; environment wins -------
 NO_VARS="NIGHTOWL_REPORT_DIR NIGHTOWL_NOTES_DIR NIGHTOWL_DENY_EXTRA NIGHTOWL_DENY_DEPLOY NIGHTOWL_ALLOW_EXTRA NIGHTOWL_RESEARCH_ALLOW
 NIGHTOWL_BRANCH_PREFIXES NIGHTOWL_PERMISSION_MODE NIGHTOWL_RUNNER NIGHTOWL_WORKSPACE NIGHTOWL_MODEL
-NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_LEAK_DENYLIST NIGHTOWL_LIBRARY_DIRS"
+NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_WORKTREE_SETUP NIGHTOWL_LEAK_DENYLIST NIGHTOWL_LIBRARY_DIRS"
 _saved=""
 for _v in $NO_VARS; do [ -n "${!_v+set}" ] && _saved="$_saved$_v=$(printf '%q' "${!_v}");"; done
 _envf="${NIGHTOWL_ENV:-$NO_DIR/nightowl.env}"
@@ -67,6 +67,7 @@ WORKLOG="${NIGHTOWL_WORKLOG:-$NO_DIR/../mission-control/worklog.sh}"
 REVIEW_TOOLKIT="${NIGHTOWL_REVIEW_TOOLKIT:-$NO_DIR/../review-toolkit}"
 MAX_TASKS="${NIGHTOWL_MAX_TASKS:-4}"
 WORKTREE_CMD="${NIGHTOWL_WORKTREE_CMD:-}"
+WORKTREE_SETUP="${NIGHTOWL_WORKTREE_SETUP:-}"
 LEAK_DENYLIST="${NIGHTOWL_LEAK_DENYLIST:-${MC_DENYLIST:-$HOME/.claude/mc-leak-denylist.txt}}"
 MC_HOME_DIR="${MC_HOME:-$HOME/.claude/mission-control}"
 TEMPLATE="$NO_DIR/settings.template.json"
@@ -239,7 +240,7 @@ op_settings() {
 }
 
 # --- launch ----------------------------------------------------------------------------
-make_worktree() { # make_worktree <id>
+add_worktree() { # add_worktree <id>: create the task worktree, or check an existing one
   local id="$1" repo wt branch base push kind
   repo="$(tget "$id" .repo)"; wt="$(tget "$id" .worktree)"; branch="$(tget "$id" .branch)"
   base="$(tget "$id" .base)"; push="$(tget "$id" .push)"; kind="$(tget "$id" .kind)"
@@ -269,6 +270,22 @@ make_worktree() { # make_worktree <id>
     elif [ -n "$has_local" ]; then git -C "$repo" worktree add -q --detach "$wt" "$branch"
     else git -C "$repo" worktree add -q --detach "$wt" "$base"; fi
   fi >&2 || { echo "git worktree add failed for $wt"; return 1; }
+}
+
+# A fresh worktree has no gitignored env files, installed dependencies or per-worktree
+# test database. NIGHTOWL_WORKTREE_SETUP runs once, inside each worktree nightowl creates,
+# with NO_REPO, NO_WORKTREE, NO_BRANCH and NO_KIND set. A failed setup removes the
+# worktree so a retried launch starts clean.
+make_worktree() { # make_worktree <id>
+  local id="$1" wt repo
+  wt="$(tget "$id" .worktree)"; repo="$(tget "$id" .repo)"
+  if [ -d "$wt" ]; then add_worktree "$id"; return; fi
+  add_worktree "$id" || return 1
+  [ -n "$WORKTREE_SETUP" ] || return 0
+  ( cd "$wt" && NO_REPO="$repo" NO_WORKTREE="$wt" NO_BRANCH="$(tget "$id" .branch)" NO_KIND="$(tget "$id" .kind)" \
+      bash -c "$WORKTREE_SETUP" ) >&2 && return 0
+  git -C "$repo" worktree remove --force "$wt" >/dev/null 2>&1 || true
+  echo "NIGHTOWL_WORKTREE_SETUP failed in $wt; removed it so a retry starts clean"; return 1
 }
 
 write_brief() { # write_brief <id> <file>

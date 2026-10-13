@@ -316,6 +316,20 @@ expect "drop a task that never launched" 0 "$NO" drop --date "$D" bad1
 says "other tasks are kept"            '^\["pr1","rev1"\]$' jq -c '[.tasks[].id]' "$M"
 expect "a dropped id can be confirmed again" 0 "$NO" confirm --date "$D" "$(task bad1 plan | tasks)"
 
+echo "worktree setup: runs once in each new worktree"
+D2=2026-01-03
+M2="$FX/report/$D2.manifest.json"
+expect "confirm a setup night"          0 "$NO" confirm --date "$D2" "$( (task su1 plan; task su2 plan; task su3 plan) | tasks)"
+expect "launch with a setup hook"       0 env NIGHTOWL_WORKTREE_SETUP='printf "%s|%s|%s\n" "$PWD" "$NO_REPO" "$NO_KIND" > .setup-ran' "$NO" launch --date "$D2" su1
+says "setup ran inside the worktree"    "wt-su1\|$FX/repo\|plan$" cat "$FX/wt-su1/.setup-ran"
+git -C "$FX/repo" worktree add -q --detach "$FX/wt-su2" origin/main
+expect "launch into an existing worktree" 0 env NIGHTOWL_WORKTREE_SETUP='touch .setup-ran' "$NO" launch --date "$D2" su2
+[ ! -e "$FX/wt-su2/.setup-ran" ] && ok "  … skips setup" || bad "setup ran in a worktree nightowl did not create"
+expect "a failing setup fails the launch" 1 env NIGHTOWL_WORKTREE_SETUP='exit 7' "$NO" launch --date "$D2" su3
+says "  … marks it launch-failed"       '^launch-failed$' jq -r '.tasks[] | select(.id == "su3") | .status' "$M2"
+says "  … naming the setup hook"        'NIGHTOWL_WORKTREE_SETUP failed' jq -r '.tasks[] | select(.id == "su3") | .error' "$M2"
+[ ! -d "$FX/wt-su3" ] && ok "  … and removes the half-made worktree" || bad "failed setup left $FX/wt-su3"
+
 echo "mission-control state untouched"
 [ ! -e "$MC_HOME" ] && ok "nothing written under MC_HOME" || bad "MC_HOME was written: $(ls -R "$MC_HOME")"
 
