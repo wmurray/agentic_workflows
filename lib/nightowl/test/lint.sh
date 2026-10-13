@@ -133,6 +133,17 @@ for rule in 'Bash(op *)' 'Bash(sentry-cli *)' 'Bash(kubectl *)' 'Bash(aws *)' 'B
             'Bash(*merge.sh*)'; do
   says "denies $rule" "$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')" jq -r '.permissions.deny[]' <<<"$S"
 done
+for rule in 'Bash(rtk git push*)' 'Bash(rtk gh pr merge*)' 'Bash(rtk gh pr ready*)' 'Bash(rtk gh pr create*)' \
+            'Bash(rtk gh api*-X*)' 'Bash(rtk gh api*--method*)' 'Bash(rtk gh api*-f *)' 'Bash(rtk gh api*-F *)' \
+            'Bash(rtk gh api*--field*)' 'Bash(rtk gh api*--raw-field*)' 'Bash(rtk gh api*--input*)' \
+            'Bash(rtk gh api graphql*)' 'Bash(rtk curl *)' 'Bash(rtk dogcli *)' 'Bash(rtk shipit *)'; do
+  says "denies $rule" "^$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')\$" jq -r '.permissions.deny[]' <<<"$S"
+done
+lacks "no rtk twin of a wildcard-led deny" '^Bash\(rtk \*' jq -r '.permissions.deny[]' <<<"$S"
+for rule in 'Bash(head)' 'Bash(sed -n *)' 'Bash(jq *)' 'Bash(rtk read *)' 'Bash(rtk wc *)' 'Bash(rtk ls*)' 'Bash(rtk git log*)'; do
+  says "allows $rule" "^$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')\$" jq -r '.permissions.allow[]' <<<"$S"
+done
+lacks "no allow rule for a push or merge" '(git push|gh pr (merge|ready|create)|merge\.sh)' jq -r '.permissions.allow[]' <<<"$S"
 says "no OS sandbox"               '^false$' jq '.sandbox.enabled' <<<"$S"
 says "unattended mode is dontAsk"  '^dontAsk$' jq -r '.permissions.defaultMode' <<<"$S"
 says "edits scoped to the worktree" "^Edit\(/$FX/wt-pr1/\*\*\)$" jq -r '.permissions.allow[]' <<<"$S"

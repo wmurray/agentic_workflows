@@ -40,14 +40,22 @@ The profile is `settings.template.json`, filled per task by `nightowl.sh setting
 
 - **No OS sandbox.** Isolation is the worktree plus the permission rules.
 - **Allowed without a prompt:** read and edit inside the task's worktree and task dir,
-  read-only git and gh commands, local commits, and `NIGHTOWL_ALLOW_EXTRA` (test runners).
+  read-only git and gh commands, read-only pipe stages (`head`, `tail`, `wc`, `sed -n`,
+  `jq`, `sort`, `uniq`, `cut`, `diff`), local commits, and `NIGHTOWL_ALLOW_EXTRA` (test
+  runners). The same read shapes are allowed in their `rtk` form, for machines whose rtk
+  PreToolUse hook rewrites `cat` to `rtk read` or `git log` to `rtk git log`. The hook does
+  not see the pane's `--settings`, so a rewritten command is matched against these rules.
+  Add the rtk form of anything in `NIGHTOWL_ALLOW_EXTRA` that rtk rewrites
+  (`npx tsc` becomes `rtk tsc`, `bundle exec rspec` becomes `rtk rspec`).
   Research tasks also get web search and fetch, and writes to `NIGHTOWL_NOTES_DIR` when it
   is set, plus any rules in `NIGHTOWL_RESEARCH_ALLOW` (a docs tool, say).
 - **Denied, always:** `op`, `sentry-cli`, `kubectl`, `aws`, ssh, everything in
   `NIGHTOWL_DENY_EXTRA` and `NIGHTOWL_DENY_DEPLOY`, every PR merge path, `gh pr ready`,
   direct `git push` and `gh pr create`, `gh api` writes, tracker status moves, comments and
-  edits, the mission-control `mc` CLI, and reads of credential files. Deny wins over allow in
-  every settings source, so a user-level allow cannot reopen these.
+  edits, the mission-control `mc` CLI, and reads of credential files. Every `Bash(...)` deny
+  rule also gets an `rtk` twin (`Bash(rtk git push*)`), because the rtk hook can auto-allow a
+  rewritten command and only a deny on the rewritten form stops it. Deny wins over allow in
+  every settings source, and over a hook's allow, so neither can reopen these.
 - **Outward writes go through guarded ops:** `push` (the task's own prefixed branch, no
   force), `draft-pr` (DRAFT only, one per task), `pending-review` (a PENDING review, refused
   if the payload carries an `event`). `draft-pr` tasks may also call the review-toolkit

@@ -210,6 +210,8 @@ render_settings() { # render_settings <id>: the filled profile on stdout
     . as $t
     | .permissions.allow += (($t._nightowl_kinds[$kind].allow // []) + $allow)
     | .permissions.deny += $deny
+    # An rtk hook rewrites `git push` to `rtk git push`, which no plain rule matches.
+    | .permissions.deny += [.permissions.deny[] | select(startswith("Bash(") and (startswith("Bash(*") | not)) | "Bash(rtk " + .[5:]]
     | if $notes != "" and ($t._nightowl_notes.kinds | index($kind)) then
         .permissions.allow += $t._nightowl_notes.allow
         | .permissions.additionalDirectories += $t._nightowl_notes.additionalDirectories
