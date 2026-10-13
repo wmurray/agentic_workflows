@@ -163,6 +163,25 @@ lacks "review cannot push"         'nightowl\.sh (push|draft-pr)' jq -r '.permis
 says "review may preload pending"  'nightowl\.sh pending-review' jq -r '.permissions.allow[]' <<<"$R"
 says "review may use review-post"  'review-post\.sh' jq -r '.permissions.allow[]' <<<"$R"
 X="$("$NO" settings --date "$D" res1)"
+for rule in 'Bash(rg *)' 'Bash(grep *)' 'Bash(ls*)' 'Bash(cat *)' 'Bash(git log*)' 'Bash(git show*)' 'Bash(git diff*)' \
+            'Bash(jira issue view*)' 'Bash(rtk grep *)' 'Bash(rtk read *)' 'Bash(rtk git log*)' 'Bash(rtk git show*)' 'Bash(rtk git diff*)'; do
+  says "research allows $rule" "^$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')\$" jq -r '.permissions.allow[]' <<<"$X"
+done
+for rule in 'Bash(git push*)' 'Bash(rtk git push*)' 'Bash(gh pr create*)' 'Bash(rtk gh pr create*)' 'Bash(gh pr merge*)' \
+            'Bash(gh pr comment*)' 'Bash(gh api*--method*)' 'Bash(rtk gh api*--method*)' 'Bash(jira issue move*)' \
+            'Bash(jira issue comment*)' 'Bash(jira issue edit*)' 'Bash(acli jira workitem transition*)' 'Bash(mc *)' \
+            'mcp__claude_ai_Atlassian__addCommentToJiraIssue'; do
+  says "research denies $rule" "^$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')\$" jq -r '.permissions.deny[]' <<<"$X"
+done
+lacks "research has no outward op"   '(nightowl\.sh (push|draft-pr|pending-review)|review-(post|reply)\.sh)' jq -r '.permissions.allow[]' <<<"$X"
+EX="$(jq -r '.permissions.allow[] | select(startswith("Edit("))' <<<"$X" | grep -vE "^Edit\(/$FX/(wt-res1|report/$D/res1)/\*\*\)$")"
+[ -z "$EX" ] && ok "research edits only its own dirs" || bad "research may edit elsewhere: $EX"
+X="$(NIGHTOWL_LIBRARY_DIRS="$FX/notes, ~/no-such-gems/" "$NO" settings --date "$D" res1)"
+says "library dirs are readable"      "^Read\(/$FX/notes/\*\*\)$" jq -r '.permissions.allow[]' <<<"$X"
+says "  … never editable"             "^Edit\(/$FX/notes/\*\*\)$" jq -r '.permissions.deny[]' <<<"$X"
+says "  … ~ expands to HOME"          "^Read\(/$HOME/no-such-gems/\*\*\)$" jq -r '.permissions.allow[]' <<<"$X"
+lacks "  … and are not working dirs"  "$FX/notes" jq -r '.permissions.additionalDirectories[]' <<<"$X"
+X="$("$NO" settings --date "$D" res1)"
 lacks "research without notes dir" "$FX/notes" printf '%s' "$X"
 says "research may search the web" '^WebSearch$' jq -r '.permissions.allow[]' <<<"$X"
 X="$(NIGHTOWL_NOTES_DIR="$FX/notes" "$NO" settings --date "$D" res1)"

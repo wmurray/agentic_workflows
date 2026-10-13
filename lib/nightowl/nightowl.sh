@@ -41,7 +41,7 @@ unset _src _t
 # --- config: $NIGHTOWL_ENV, else nightowl.env next to this file; environment wins -------
 NO_VARS="NIGHTOWL_REPORT_DIR NIGHTOWL_NOTES_DIR NIGHTOWL_DENY_EXTRA NIGHTOWL_DENY_DEPLOY NIGHTOWL_ALLOW_EXTRA NIGHTOWL_RESEARCH_ALLOW
 NIGHTOWL_BRANCH_PREFIXES NIGHTOWL_PERMISSION_MODE NIGHTOWL_RUNNER NIGHTOWL_WORKSPACE NIGHTOWL_MODEL
-NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_LEAK_DENYLIST"
+NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_LEAK_DENYLIST NIGHTOWL_LIBRARY_DIRS"
 _saved=""
 for _v in $NO_VARS; do [ -n "${!_v+set}" ] && _saved="$_saved$_v=$(printf '%q' "${!_v}");"; done
 _envf="${NIGHTOWL_ENV:-$NO_DIR/nightowl.env}"
@@ -53,6 +53,7 @@ eval "$_saved"; unset _saved _v _envf
 # its result.json or review payload there.
 REPORT_DIR="${NIGHTOWL_REPORT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nightowl}"
 NOTES_DIR="${NIGHTOWL_NOTES_DIR:-}"
+LIBRARY_DIRS="${NIGHTOWL_LIBRARY_DIRS:-}"
 DENY_EXTRA="${NIGHTOWL_DENY_EXTRA:-curl, wget}"
 DENY_DEPLOY="${NIGHTOWL_DENY_DEPLOY:-terraform, pulumi, heroku, flyctl, vercel, netlify, gcloud, az}"
 ALLOW_EXTRA="${NIGHTOWL_ALLOW_EXTRA:-}"
@@ -196,12 +197,15 @@ op_confirm() {
 
 # --- settings --------------------------------------------------------------------------
 render_settings() { # render_settings <id>: the filled profile on stdout
-  local id="$1" kind wt branch deny_rules allow_rules notes=""
+  local id="$1" kind wt branch deny_rules allow_rules libs notes=""
   kind="$(tget "$id" .kind)"; wt="$(tget "$id" .worktree)"; branch="$(tget "$id" .branch)"
   deny_rules="$( { _list "$DENY_EXTRA"; _list "$DENY_DEPLOY"; } | awk '{ if (index($0, "(")) print; else { print "Bash(" $0 " *)"; print "Bash(" $0 ")" } }' | jq -R . | jq -sc .)"
   allow_rules="$( { _list "$ALLOW_EXTRA"; [ "$kind" = research ] && _list "$RESEARCH_ALLOW"; } | jq -R . | jq -sc .)"
   [ -n "$NOTES_DIR" ] && notes="$(_abs "$NOTES_DIR" || printf '%s' "$NOTES_DIR")"
-  jq --arg kind "$kind" --argjson deny "$deny_rules" --argjson allow "$allow_rules" --arg notes "$notes" \
+  # Installed library sources (a gem home, say) are read-only for every kind. Bash can already
+  # grep them; this lets the Read tool open them too.
+  libs="$(_list "$LIBRARY_DIRS" | while IFS= read -r d; do d="${d/#\~/$HOME}"; _abs "$d" || printf '%s\n' "${d%/}"; done | jq -R . | jq -sc .)"
+  jq --arg kind "$kind" --argjson deny "$deny_rules" --argjson allow "$allow_rules" --arg notes "$notes" --argjson libs "$libs" \
      --arg WORKTREE "$wt" --arg TASK_DIR "$(task_dir "$id")" --arg NIGHTOWL "$NO_SELF" \
      --arg DATE "$DATE" --arg ID "$id" --arg BRANCH "$branch" --arg MC_HOME "$MC_HOME_DIR" \
      --arg NOTES_DIR "$notes" --arg REVIEW_TOOLKIT "$(_abs "$REVIEW_TOOLKIT" || printf '%s' "$REVIEW_TOOLKIT")" \
@@ -213,6 +217,8 @@ render_settings() { # render_settings <id>: the filled profile on stdout
     . as $t
     | .permissions.allow += (($t._nightowl_kinds[$kind].allow // []) + $allow)
     | .permissions.deny += $deny
+    | .permissions.allow += [$libs[] | "Read(/" + . + "/**)"]
+    | .permissions.deny += [$libs[] | "Edit(/" + . + "/**)"]
     # An rtk hook rewrites `git push` to `rtk git push`, which no plain rule matches.
     | .permissions.deny += [.permissions.deny[] | select(startswith("Bash(") and (startswith("Bash(*") | not)) | "Bash(rtk " + .[5:]]
     | if $notes != "" and ($t._nightowl_notes.kinds | index($kind)) then
