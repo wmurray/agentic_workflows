@@ -14,7 +14,8 @@
 #
 # Task ops (what a pane's profile allows it to run, for its own id only):
 #   finish         --date D <id>                         record result.json: report + work log
-#   push           --date D <id>                         push the task's own branch, no force
+#   push           --date D <id>                         push the task's own branch, no force;
+#                                                        leak-checked where .mc-leak-guard is
 #   draft-pr       --date D <id> --title T --body-file F open a DRAFT PR for that branch
 #   pending-review --date D <id> <payload.json>          preload a PENDING review on the task's PR
 #
@@ -39,7 +40,7 @@ unset _src _t
 # --- config: $NIGHTOWL_ENV, else nightowl.env next to this file; environment wins -------
 NO_VARS="NIGHTOWL_REPORT_DIR NIGHTOWL_NOTES_DIR NIGHTOWL_DENY_EXTRA NIGHTOWL_DENY_DEPLOY NIGHTOWL_ALLOW_EXTRA NIGHTOWL_RESEARCH_ALLOW
 NIGHTOWL_BRANCH_PREFIXES NIGHTOWL_PERMISSION_MODE NIGHTOWL_RUNNER NIGHTOWL_WORKSPACE NIGHTOWL_MODEL
-NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD"
+NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_LEAK_DENYLIST"
 _saved=""
 for _v in $NO_VARS; do [ -n "${!_v+set}" ] && _saved="$_saved$_v=$(printf '%q' "${!_v}");"; done
 _envf="${NIGHTOWL_ENV:-$NO_DIR/nightowl.env}"
@@ -64,6 +65,7 @@ WORKLOG="${NIGHTOWL_WORKLOG:-$NO_DIR/../mission-control/worklog.sh}"
 REVIEW_TOOLKIT="${NIGHTOWL_REVIEW_TOOLKIT:-$NO_DIR/../review-toolkit}"
 MAX_TASKS="${NIGHTOWL_MAX_TASKS:-4}"
 WORKTREE_CMD="${NIGHTOWL_WORKTREE_CMD:-}"
+LEAK_DENYLIST="${NIGHTOWL_LEAK_DENYLIST:-${MC_DENYLIST:-$HOME/.claude/mc-leak-denylist.txt}}"
 MC_HOME_DIR="${MC_HOME:-$HOME/.claude/mission-control}"
 TEMPLATE="$NO_DIR/settings.template.json"
 KINDS="plan repro draft-pr review flake research"
@@ -403,9 +405,26 @@ pushable() { # pushable <id>: refuse unless this task may push its branch right 
   [ "$cur" = "$branch" ] || die 4 "worktree is on '$cur', not the task branch '$branch'"
 }
 
+# A repo that opts in with .mc-leak-guard has its added lines checked against the private
+# denylist before a push. This runs as the script, not the pane, which cannot read the list.
+# It reports a count only: printing the matched terms would leak them into the pane.
+leak_check() { # leak_check <id>
+  local id="$1" wt base diff pats n
+  wt="$(tget "$id" .worktree)"
+  [ -f "$wt/.mc-leak-guard" ] || return 0
+  [ -f "$LEAK_DENYLIST" ] || die 4 "leak guard is on but no denylist at $LEAK_DENYLIST; push refused"
+  base="$(tget "$id" .base)"; base="${base#origin/}"
+  { [ -n "$base" ] && [ "$base" != HEAD ]; } || base=HEAD
+  diff="$(git -C "$wt" diff "origin/$base...HEAD")" || die 4 "leak check could not diff against origin/$base; push refused"
+  pats="$(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$LEAK_DENYLIST")"
+  [ -n "$pats" ] || return 0
+  n="$(printf '%s\n' "$diff" | grep '^+' | grep -v '^+++ ' | grep -ciE -f <(printf '%s\n' "$pats"))"
+  [ "${n:-0}" -eq 0 ] || die 4 "leak check: $n added line(s) match the denylist; push refused"
+}
+
 op_push() {
   [ -n "$DATE" ] && [ "${#ARGS[@]}" -eq 1 ] || usage "push needs --date and one task id"
-  local id="${ARGS[0]}"; own_task "$id"; need_task "$id"; pushable "$id"
+  local id="${ARGS[0]}"; own_task "$id"; need_task "$id"; pushable "$id"; leak_check "$id"
   git -C "$(tget "$id" .worktree)" push -u origin "$(tget "$id" .branch)" || die 1 "git push failed"
 }
 
