@@ -47,7 +47,9 @@ _envf="${NIGHTOWL_ENV:-$NO_DIR/nightowl.env}"
 [ -f "$_envf" ] && . "$_envf"
 eval "$_saved"; unset _saved _v _envf
 
-REPORT_DIR="${NIGHTOWL_REPORT_DIR:-$HOME/.claude/nightowl}"
+# Not under ~/.claude: Claude Code protects that tree, so a dontAsk pane could not write
+# its result.json or review payload there.
+REPORT_DIR="${NIGHTOWL_REPORT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nightowl}"
 NOTES_DIR="${NIGHTOWL_NOTES_DIR:-}"
 DENY_EXTRA="${NIGHTOWL_DENY_EXTRA:-curl, wget}"
 DENY_DEPLOY="${NIGHTOWL_DENY_DEPLOY:-terraform, pulumi, heroku, flyctl, vercel, netlify, gcloud, az}"
