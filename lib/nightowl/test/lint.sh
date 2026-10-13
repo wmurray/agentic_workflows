@@ -36,8 +36,8 @@ export NIGHTOWL_REPORT_DIR="$FX/report" MC_WORKLOG_DIR="$FX/worklog" NIGHTOWL_NO
 export NIGHTOWL_RUNNER="$FX/bin/runner" NIGHTOWL_WORKSPACE="night" NIGHTOWL_MODEL=""
 export NIGHTOWL_BRANCH_PREFIXES="nightowl/, me/" NIGHTOWL_DENY_EXTRA="curl, Bash(dogcli *)"
 export NIGHTOWL_DENY_DEPLOY="shipit" NIGHTOWL_ALLOW_EXTRA="Bash(make test*)"
-export NIGHTOWL_WORKTREE_CMD="" MC_HOME="$FX/mc-home"
-unset MC_WORKLOG NIGHTOWL_DATE NIGHTOWL_TASK
+export NIGHTOWL_WORKTREE_CMD="" MC_HOME="$FX/mc-home" NIGHTOWL_LEAK_DENYLIST="$FX/denylist"
+unset MC_WORKLOG NIGHTOWL_DATE NIGHTOWL_TASK MC_DENYLIST
 D=2026-01-02
 
 # The runner stub: spawn prints a handle and logs argv (one arg per line); status reads
@@ -203,6 +203,20 @@ git -C "$FX/wt-pr1" -c user.email=t@example.com -c user.name=t commit -q --allow
 expect "push own branch"               0 "$NO" push --date "$D" pr1
 says "branch reached origin"           'nightowl/pr1' git -C "$FX/origin.git" branch --list 'nightowl/pr1'
 expect "review task cannot push"       4 "$NO" push --date "$D" rev1
+echo "push: leak check where the repo carries .mc-leak-guard"
+gc() { git -C "$FX/wt-pr1" -c core.hooksPath=/dev/null -c user.email=t@example.com -c user.name=t "$@"; }
+touch "$FX/wt-pr1/.mc-leak-guard"
+expect "a guarded push needs the denylist" 4 "$NO" push --date "$D" pr1
+printf '# private terms\n\nzorblax\nquux[0-9]+\n' > "$FX/denylist"
+printf 'plain words\n' > "$FX/wt-pr1/notes.txt"; gc add notes.txt; gc commit -q -m clean
+expect "a clean diff pushes"           0 "$NO" push --date "$D" pr1
+printf 'about Zorblax\nand quux42\n' >> "$FX/wt-pr1/notes.txt"; gc commit -q -am leaky
+expect "a hit refuses the push"        4 "$NO" push --date "$D" pr1
+says "  … with the line count"         '2 added line\(s\) match' "$NO" push --date "$D" pr1
+lacks "  … but not the terms"          '(zorblax|quux)' "$NO" push --date "$D" pr1
+lacks "  … and nothing reached origin" 'leaky' git -C "$FX/origin.git" log --format=%s nightowl/pr1
+gc reset -q --hard HEAD~1
+rm -f "$FX/wt-pr1/.mc-leak-guard"
 git -C "$FX/wt-pr1" checkout -q -b nightowl/other
 expect "push refuses a switched branch" 4 "$NO" push --date "$D" pr1
 git -C "$FX/wt-pr1" checkout -q nightowl/pr1

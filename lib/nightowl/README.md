@@ -57,12 +57,20 @@ The profile is `settings.template.json`, filled per task by `nightowl.sh setting
   rewritten command and only a deny on the rewritten form stops it. Deny wins over allow in
   every settings source, and over a hook's allow, so neither can reopen these.
 - **Outward writes go through guarded ops:** `push` (the task's own prefixed branch, no
-  force), `draft-pr` (DRAFT only, one per task), `pending-review` (a PENDING review, refused
+  force, and leak-checked in a repo that carries `.mc-leak-guard`; see below), `draft-pr` (DRAFT only, one per task), `pending-review` (a PENDING review, refused
   if the payload carries an `event`). `draft-pr` tasks may also call the review-toolkit
   `review-reply.sh`, and `review` tasks `review-post.sh`; both keep their own allowlists and
   kill switch.
 - A pane carries `NIGHTOWL_TASK`. Orchestrator ops exit 5 inside it, and task ops act only
   for that id.
+
+A pane cannot read the maintainer's leak denylist, so a brief cannot ask it to grep for
+leaks before pushing. `push` does it instead: in a worktree with `.mc-leak-guard` at its
+root, the op reads the denylist (`NIGHTOWL_LEAK_DENYLIST`, else `MC_DENYLIST`, else
+`$HOME/.claude/mc-leak-denylist.txt`; blank and `#` lines skipped, one case-insensitive
+extended regex per line), checks the added lines of `git diff origin/<base>...HEAD`, and
+refuses the push with exit 4 on a hit. It prints how many lines matched, never the terms. A
+missing denylist also refuses.
 
 With `dontAsk` mode anything outside the allow list is refused rather than left waiting on
 a prompt, and the brief tells the task to note a refusal in its result and carry on.
