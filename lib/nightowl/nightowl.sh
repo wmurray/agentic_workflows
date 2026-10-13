@@ -69,6 +69,7 @@ TEMPLATE="$NO_DIR/settings.template.json"
 KINDS="plan repro draft-pr review flake research"
 PUSH_KINDS="draft-pr flake"
 TERMINAL="done partial blocked failed"
+MAX_ID=23
 
 die()    { echo "nightowl: $2" >&2; exit "$1"; }
 usage()  { die 2 "$1 (see the header of $NO_SELF)"; }
@@ -137,7 +138,9 @@ validate() { # validate <task json> <other worktrees…>: prints an error and re
   repo="$(jq -r '.repo // ""' <<<"$t")"; wt="$(jq -r '.worktree // ""' <<<"$t")"
   branch="$(jq -r '.branch // ""' <<<"$t")"; push="$(jq -r '.push // false' <<<"$t")"
   pr="$(jq -r '.pr // ""' <<<"$t")"
-  [[ "$id" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || { echo "id '$id' must be lowercase letters, digits and dashes"; return 1; }
+  [[ "$id" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "id '$id' must be lowercase letters, digits and dashes"; return 1; }
+  # The pane's agent is named nightowl-<id>, and agent names over 32 characters fail at spawn.
+  [ "${#id}" -le "$MAX_ID" ] || { echo "id '$id' is ${#id} characters; the limit is $MAX_ID so the pane name nightowl-$id fits in 32"; return 1; }
   _in "$kind" "$KINDS" || { echo "$id: kind '$kind' is not one of: $KINDS"; return 1; }
   [ -n "$(jq -r '.brief // ""' <<<"$t")" ] || { echo "$id: no brief"; return 1; }
   [ -n "$(jq -r '.title // ""' <<<"$t")" ] || { echo "$id: no title"; return 1; }

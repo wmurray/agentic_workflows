@@ -20,7 +20,7 @@ The header of `nightowl.sh` lists every op, flag and exit code.
 
 | field | required | meaning |
 |---|---|---|
-| `id` | yes | short slug, lowercase letters, digits and dashes, up to 40 chars |
+| `id` | yes | short slug, lowercase letters, digits and dashes, up to 23 chars (the pane is named `nightowl-<id>` and agent names stop at 32) |
 | `kind` | yes | `plan`, `repro`, `draft-pr`, `review`, `flake` or `research` |
 | `title` | yes | one line, used in the report and PR title suggestion |
 | `brief` | yes | what the task should do, in full; the pane sees nothing else |
