@@ -41,7 +41,7 @@ unset _src _t
 # --- config: $NIGHTOWL_ENV, else nightowl.env next to this file; environment wins -------
 NO_VARS="NIGHTOWL_REPORT_DIR NIGHTOWL_NOTES_DIR NIGHTOWL_DENY_EXTRA NIGHTOWL_DENY_DEPLOY NIGHTOWL_ALLOW_EXTRA NIGHTOWL_RESEARCH_ALLOW
 NIGHTOWL_BRANCH_PREFIXES NIGHTOWL_PERMISSION_MODE NIGHTOWL_RUNNER NIGHTOWL_WORKSPACE NIGHTOWL_MODEL
-NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_WORKTREE_SETUP NIGHTOWL_LEAK_DENYLIST NIGHTOWL_LIBRARY_DIRS"
+NIGHTOWL_WORKLOG NIGHTOWL_REVIEW_TOOLKIT NIGHTOWL_MAX_TASKS NIGHTOWL_WORKTREE_CMD NIGHTOWL_WORKTREE_SETUP NIGHTOWL_LEAK_DENYLIST NIGHTOWL_LIBRARY_DIRS NIGHTOWL_COMMENT_RULES"
 _saved=""
 for _v in $NO_VARS; do [ -n "${!_v+set}" ] && _saved="$_saved$_v=$(printf '%q' "${!_v}");"; done
 _envf="${NIGHTOWL_ENV:-$NO_DIR/nightowl.env}"
@@ -70,6 +70,7 @@ WORKTREE_CMD="${NIGHTOWL_WORKTREE_CMD:-}"
 WORKTREE_SETUP="${NIGHTOWL_WORKTREE_SETUP:-}"
 LEAK_DENYLIST="${NIGHTOWL_LEAK_DENYLIST:-${MC_DENYLIST:-$HOME/.claude/mc-leak-denylist.txt}}"
 MC_HOME_DIR="${MC_HOME:-$HOME/.claude/mission-control}"
+COMMENT_RULES="${NIGHTOWL_COMMENT_RULES:-$NO_DIR/../../skills/comment-cleanup/RULES.md}"
 TEMPLATE="$NO_DIR/settings.template.json"
 KINDS="plan repro draft-pr review flake research"
 PUSH_KINDS="draft-pr flake"
@@ -288,6 +289,23 @@ make_worktree() { # make_worktree <id>
   echo "NIGHTOWL_WORKTREE_SETUP failed in $wt; removed it so a retry starts clean"; return 1
 }
 
+# Gotcha: a pane cannot read outside its worktree, so the rules are copied in.
+comment_pass_footer() { # comment_pass_footer <id>
+  local base; base="$(tget "$1" .base)"
+  [ -r "$COMMENT_RULES" ] || { echo "nightowl: comment rules not found at $COMMENT_RULES" >&2; return 1; }
+  cat <<EOF
+
+## Before you push: comment pass
+
+Make a comment pass the last code step: after any review fixes, before the push op. Scope it
+to comments your branch adds or edits (git diff ${base:-origin/main}...HEAD), commit it on
+its own, then rerun the tests and linter. The rules are copied below from
+$(_abs "$(dirname "$COMMENT_RULES")")/$(basename "$COMMENT_RULES").
+
+EOF
+  sed -n '/^## /,$p' "$COMMENT_RULES" | sed 's/^## /### /'
+}
+
 write_brief() { # write_brief <id> <file>
   local id="$1" kind; kind="$(tget "$id" .kind)"
   {
@@ -331,6 +349,7 @@ EOF
       ;;
       research) [ -n "$NOTES_DIR" ] && printf -- '- Research notes may be written under %s.\n' "$NOTES_DIR" ;;
     esac
+    case "$kind" in draft-pr|flake) comment_pass_footer "$id" || return 1 ;; esac
     cat <<EOF
 
 ## When you are done
