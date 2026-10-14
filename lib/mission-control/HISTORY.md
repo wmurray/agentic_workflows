@@ -136,3 +136,17 @@ into the sandbox and asserts the diff names both, so the check is shown to catch
 The old "newer than the run start" guard on the real dir was dropped: only a script that
 hardcodes an absolute path could reach it now, and a live loop writing its own board looks the
 same to that check. `MC_WORKLOG_DIR` and the fixture profile's redirections are unchanged.
+
+## The loop paces itself when idle (2026-10-14)
+
+The loop ticked every 10 minutes whether or not there was work, so a quiet board still paid for
+six ticks an hour, all night. `mc-pace.sh record --writes <n>` now runs as tick step 5. It logs
+one line per tick to `ticks.jsonl` (time, idle, writes, idle streak, live workers, input and output
+tokens, next wake) and prints the next delay: 600 seconds after a writing tick, then 1200 and 1800
+on consecutive idle ticks, and 3600 for an idle tick between 22:00 and 07:00. A row with a live
+worker caps the delay at 600 so its result is harvested promptly. A dynamic `/loop` (`mc prompt
+dynamic`, no interval) passes that delay to `ScheduleWakeup`; a fixed cron ignores it and keeps
+the log. `mc wake` makes the next tick schedule a 10 minute wake. It cannot shorten the wake
+already scheduled. The script also writes `.loop-next-wake`. dash.sh reads it so a planned 60
+minute sleep does not show as LOOP SILENT. None of this changes a running loop until it is
+restarted with `mc prompt dynamic`.
