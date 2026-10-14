@@ -49,7 +49,7 @@ lib/             Shell helpers (workspace context, PR radar)
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/strict-refactor-pass`  | Pure rename/extract/simplify refactor — no behaviour changes.                                                                                                                                                          |
 | `/audit-debug-artifacts` | Scans changed files for leftover debug statements (`console.log`, `binding.pry`, `debugger`, etc.).                                                                                                                    |
-| `/comment-cleanup`       | Removes unnecessary comments left by agents in changed code.                                                                                                                                                           |
+| `/comment-cleanup`       | Removes unnecessary comments left by agents in changed code. Its rules live in `skills/comment-cleanup/RULES.md`, which the coder templates, nightowl push briefs and `/reply-comments` also run as a pre-push pass. |
 
 ### Git / PR lifecycle
 
