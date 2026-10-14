@@ -1,12 +1,9 @@
 ---
 name: comment-cleanup
-description: Analyzes changes to code and cleans up unnecessary comments left by agents.
-disable-model-invocation: true
+description: Run before pushing a branch. Removes comments in the branch's own diff that restate the code, and keeps only Why/Invariant/Gotcha/Ref/Perf comments.
 ---
 
 # Comment Cleanup
-
-> **Note:** This skill is `disable-model-invocation`. It cannot be called with `/comment-cleanup` from inside another skill: read the file and apply its rules directly.
 
 Task: run the comment pass in [`RULES.md`](RULES.md), next to this file. It holds the
 rules (which comments to keep, the five prefixes, the format) and the pass itself (scope
