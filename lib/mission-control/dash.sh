@@ -195,13 +195,20 @@ render() {
   # the state write"; without this, a long manual session holding the lock would starve
   # last_tick_epoch and false-fire LOOP SILENT). Fall back to state.last_tick_epoch for
   # transition / older loops that haven't adopted the sidecar yet.
-  local hbfile ltick stale_secs now_s age pausef
+  local hbfile ltick stale_secs now_s age pausef nwfile nwake
   hbfile="${MC_HEARTBEAT_FILE:-$HOME/.claude/mission-control/.loop-heartbeat}"
   ltick=$(cat "$hbfile" 2>/dev/null | tr -dc '0-9')
   [[ -z "$ltick" ]] && ltick=$(jq -r '.last_tick_epoch // empty' "$STATE")
   stale_secs="${MC_LOOP_STALE_SECS:-1500}"   # ~2.5× a 10-min tick
   pausef="${MC_PAUSE_FILE:-$HOME/.claude/mission-control/PAUSED}"
   # Suppress the silent-alarm when the loop is intentionally paused (idle ≠ dead).
+  # Why: a dynamic /loop idles up to 60 min between ticks, so the alarm waits for the wake
+  # mc-pace.sh planned, plus the same grace a fixed tick gets.
+  nwfile="${MC_NEXT_WAKE_FILE:-$HOME/.claude/mission-control/.loop-next-wake}"
+  nwake=$(cat "$nwfile" 2>/dev/null | tr -dc '0-9')
+  if [[ -n "$ltick" && -n "$nwake" && "$nwake" -gt "$ltick" ]]; then
+    (( nwake - ltick + 900 > stale_secs )) && stale_secs=$(( nwake - ltick + 900 ))
+  fi
   if [[ -n "$ltick" && ! -f "$pausef" ]]; then
     now_s=$(date +%s); age=$(( now_s - ltick ))
     if [[ "$age" -gt "$stale_secs" ]]; then
