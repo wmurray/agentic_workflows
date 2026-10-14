@@ -596,9 +596,8 @@ says "  … under the one-prep-write cap"           yes '[Oo]ne prep-write per t
 says "  … no longer asks for a hand-run per-row check" no 'for each `in-review` ticket with an open PR, run' pw2
 
 # --- 6g. comment pass before push ---------------------------------------------------
-# Agent-written comments piled up across hands with nothing checking them. Both coder
-# templates carry the shared rules up front and run the pass before their pre-push
-# verification, which doubles as the rerun of specs and linter the pass needs.
+# Why: the pre-push verification doubles as the rerun of specs and linter the pass needs,
+# so both coder templates must run the pass before it.
 echo
 echo "comment pass   (rules ↔ coder templates ↔ fills)"
 echo "────────────────────────────────────────────────────────────────"
