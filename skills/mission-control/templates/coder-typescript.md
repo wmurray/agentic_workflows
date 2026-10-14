@@ -1,10 +1,13 @@
 # Coder worker template — a TypeScript repo
 
-Spawn with agent type `typescript-developer`, `run_in_background: true`. Fill `{PLACEHOLDERS}`. The org-valued ones (`{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{STYLE_GUIDE}`) come from the overlay's **Template fills** section.
+Spawn with agent type `typescript-developer`, `run_in_background: true`. Fill `{PLACEHOLDERS}`. The org-valued ones (`{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{STYLE_GUIDE}` `{COMMENT_RULES}`) come from the overlay's **Template fills** section.
 
 ---
 
 Implement ticket **{TICKET}** in the **{REPO}** repo at `{REPO_PATH}` ({STACK — e.g. React Native + Expo + TypeScript}). Read `{REPO_PATH}/AGENTS.md` first for conventions.
+
+## Comment rules (read before you write code)
+Read `{COMMENT_RULES}` now; it is the whole comment policy. In short: write a comment only for non-obvious context, prefixed `Why:` `Invariant:` `Gotcha:` `Ref:` or `Perf:`; never restate the code; prefer a rename or an extracted method over an explanatory comment; one comment per point, directly above the line it explains; no ticket or PR numbers in comments.
 
 ## Approved plan
 Read the full plan at: `{PLAN_PATH}`
@@ -54,7 +57,10 @@ Note what you copied (file names only) and which install command you ran in your
 2. One failing test at a time → minimal code to pass → confirm green. Mind the gotchas the plan flagged (mock setup, fire-and-forget async needing `waitFor`, timer behavior, etc.). **For a bug/defect fix, the first test for each symptom MUST reproduce that symptom against the REAL path and red on the unfixed code — never stub the layer the bug lives in** (a mock that ignores the real server filter, or a read policy replacing the network, makes a test that passes either way and proves nothing — a real miss from an earlier ticket). If the plan carries a `## Discovery / investigation summary`, its "scenarios the fix must cover" are your failing-test checklist.
 3. **Commit after EACH passing step** (raw `git commit`, NOT the `/commit-changes` skill — it's `disable-model-invocation`; apply its conventions by hand). **Use plain `git` (e.g. `/usr/bin/git`), NOT `rtk git`, for ALL mutating git ops (add/commit/reset/rebase) — the rtk wrapper has been observed to drop unstaged changes in a worktree (a stray `reset` in the reflog). `rtk git` is fine for read-only ops (status/log/diff) only.** **For the four DESTRUCTIVE ops, use the wrapper `{MC_HOME}/mc-gitop.sh` instead of raw git — `mc-gitop reset-hard <ref>` (base-freshness), `mc-gitop restore-path <path>...`, `mc-gitop checkout-path <ref> -- <path>...`, `mc-gitop branch-del <branch>...`. Raw `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` / `git branch -D` trip the ask-only safety guard, which has no human to answer under the loop and hangs the tick. The wrapper runs the identical op in the cwd; cd into the worktree first.** End every commit message with the harness attribution line for the model you are running as (`Co-Authored-By: Claude <your model> <noreply@anthropic.com>`); never copy another model's name.
 4. Follow the existing sibling component/spec style; mirror the pattern the plan identified.
-5. **Comment discipline.** Write a comment ONLY when it adds non-obvious context (Why / Invariant / Gotcha / Ref / Perf); never write one that restates what the code already says. **NEVER put ticket numbers (ABC-XXXX), PR numbers, or "as of <ticket>" change-history into code or test comments** — they are noise the moment the ticket closes and the comment must read evergreen. Describe behavior by what it *is*, not which ticket introduced it (e.g. "the native signup screen", NOT "the ABC-1544 behaviour"). Same rule for any TODO — no bare ticket refs.
+5. **Comment discipline.** Follow `{COMMENT_RULES}` (summarized at the top) in every comment you write, code and tests alike.
+
+## Comment pass (last code step, before the verification below)
+After the last implementation commit (and in an address round, after the fixes), run the comment pass in `{COMMENT_RULES}`. Scope it to comments this branch adds or edits (`git diff {BASE_REF}...HEAD`); in an address round, only comments this round's commits add or edit. Leave older comments in touched files alone. Commit it on its own (skip the commit when nothing changed). The verification below is the rerun of specs and linter the pass requires.
 
 ## Pre-push verification (ALL must pass)
 - Run the project's test command for the affected specs → green (note iOS + Android if RN).

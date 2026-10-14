@@ -122,6 +122,7 @@ file path or the name of an installed skill. The reader reads a path and loads a
 | `{CATCH_ALL_GROUP}` | `Standalone Tickets` (the catch-all folder below) |
 | `{STYLE_GUIDE}` | path to your prose style guide, or the name of a skill that holds it (e.g. the value of `$WRITING_STYLE_SKILL`), or `(none)` |
 | `{PR_BODY_GUIDE}` | the PR-body layout the orchestrator applies to a draft PR: `skills/create-pr/SKILL.md` (its Output Contract; the default), another file path, or the name of a skill that holds your layout (e.g. the value of `$PR_DESCRIPTION_SKILL`) |
+| `{COMMENT_RULES}` | absolute path to this toolkit's `skills/comment-cleanup/RULES.md`, the shared comment rules. The coder templates carry a summary up front and run the pre-push comment pass from it |
 | `{SURFACES}` | the Surfaces section below, pasted in (the field-check worker uses it to name the app in QA cases) |
 | `{CONTEXT_DOCS}` | what the pre-plan critic may resolve ambiguity from: your domain glossary, project context docs, ADR folders (paths, one per line) |
 | `{REPLY_POST_WRAPPER}` | empty (the default: kickback replies stay private drafts), or the guarded reply wrapper the loop publishes them through, e.g. `~/.claude/lib/review-toolkit/review-reply.sh`. No worker sees it; the loop calls it in Prep-write 5. See "Kickback address" below |

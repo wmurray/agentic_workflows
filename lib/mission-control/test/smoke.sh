@@ -595,6 +595,32 @@ says "Prep-write 2 triggers on the sweep"          yes 'Trigger.*NEEDS-TRIAGE.*m
 says "  … under the one-prep-write cap"           yes '[Oo]ne prep-write per tick' pw2
 says "  … no longer asks for a hand-run per-row check" no 'for each `in-review` ticket with an open PR, run' pw2
 
+# --- 6g. comment pass before push ---------------------------------------------------
+# Agent-written comments piled up across hands with nothing checking them. Both coder
+# templates carry the shared rules up front and run the pass before their pre-push
+# verification, which doubles as the rerun of specs and linter the pass needs.
+echo
+echo "comment pass   (rules ↔ coder templates ↔ fills)"
+echo "────────────────────────────────────────────────────────────────"
+COMMENT_RULES_MD="$_MC_LIB/../../skills/comment-cleanup/RULES.md"
+says "the shared rules file names all five prefixes" yes '^5$' grep -cE '^- `(Why|Invariant|Gotcha|Ref|Perf):`' "$COMMENT_RULES_MD"
+says "  … scopes the pass to the branch diff"  yes 'git diff <base>\.\.\.HEAD' cat "$COMMENT_RULES_MD"
+says "  … carries the format rules"            yes 'extract a method so its name carries one' cat "$COMMENT_RULES_MD"
+says "driver lists {COMMENT_RULES} as a fill"  yes '\{COMMENT_RULES\}' driver_fills
+says "SKILL fills list names {COMMENT_RULES}"  yes '.' grep -nE '\{COMMENT_RULES\}.*filled from the overlay' "$MC_SKILL_MD"
+coder_order() { # rules up front, then the pass, then the verification, per template
+  local t; for t in "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md; do
+    awk -v t="$(basename "$t")" '/^## Comment rules/{r=NR} /^## Process/{p=NR} /^## Comment pass/{c=NR} /^## Pre-push verification/{v=NR}
+      END{print t ": " ((r && r<p && p<c && c<v) ? "ordered" : "out of order")}' "$t"
+  done
+}
+says "both coder templates: rules, process, pass, verify" no 'out of order' coder_order
+says "both coder templates read {COMMENT_RULES} up front" no ':0$' grep -c '^Read `{COMMENT_RULES}` now' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md
+says "both coder passes scope to the branch diff" no ':0$' grep -c 'git diff {BASE_REF}\.\.\.HEAD' "$TEMPLATES"/coder-rails.md "$TEMPLATES"/coder-typescript.md
+rc_fix_push() { sed -n '/^## 4\. Fix and push/,/^## 5\./p' "$REPLY_SKILL_MD" | tr '\n' ' '; }
+says "reply-comments runs the comment pass before it pushes" yes 'comment pass.*COMMENT_RULES.*git push origin' rc_fix_push
+says "  … and names COMMENT_RULES in its config" yes '^\| `COMMENT_RULES` \|' cat "$REPLY_SKILL_MD"
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"
