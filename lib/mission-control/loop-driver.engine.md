@@ -59,13 +59,13 @@ You are the loop driver for the LIVE mission-control board. You started as a pur
 reconcile writes (tracker status-sync + assignee-fix), and — **only while `CODER_SPAWN_LIVE` is armed** —
 the flag-gated coder-spawn path, and — **only while `mc-guard.sh check fields` passes** — the Final field
 check (Prep-write 6). **Everything else outward stays gated/manual.**
-Run under `/loop` (~10 min tick, matching the cron `3-59/10`).
+Run under `/loop`: a fixed ~10 min cron (`3-59/10`), or a dynamic `/loop` that paces itself through tick step 5.
 
 **Canonical paths — read these by ABSOLUTE path; NEVER `find`/search for them (a `find /` is slow disk-spin and always avoidable — every mission-control file is at a fixed location):**
 - SKILL (the playbook this driver defers to): `$MC_SKILL_DIR/SKILL.md`
 - Worker templates: `$MC_SKILL_DIR/templates/` — `bug-investigator.md` · `planner.md` · `coder-rails.md` · `coder-typescript.md` · `reviewer.md` · `field-check.md`
 - Board state: `$MC_HOME/state.json` · Inbox: `$MC_HOME/mc-inbox` · this driver: `$MC_HOME/loop-driver.md`
-- Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-review-sweep.sh` `mc-gitop.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
+- Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-review-sweep.sh` `mc-gitop.sh` `mc-pace.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
 - **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition and the field wrappers (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock, unless the operator opened that wrapper or its group (`merge`, `fields`). An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
 - **Destructive git under the loop → always via `mc-gitop.sh`, never raw.** When you (or a coder/worktree step) clean up a branch or reset a worktree, use `mc-gitop.sh` — `branch-del <branch>` / `reset-hard <ref>` / `restore-path <path>...` / `checkout-path <ref> -- <path>...`. Raw `git branch -D` / `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` trip the ask-only destructive-safety guard, which has no human to answer under the unattended loop and HANGS the tick (observed: `git branch -D <branch-prefix>-ABC-2006` froze a live tick). The wrapper runs the identical op in the cwd; it is deliberately named so its own invocation matches none of the guard's patterns.
 
@@ -244,7 +244,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - **Absent** → not paused; proceed to step 1.
    - **Present, NO `mode=drain` line → FULL freeze (bare `mc pause`).** Emit one line
      (`tick @ HH:MM — ⏸ paused (mc resume to unpause)`) and **end the tick immediately** — no poll,
-     no reconcile, no propose, no write, no heartbeat. Honor unconditionally.
+     no reconcile, no propose, no write, no heartbeat. Honor unconditionally. (Under a dynamic
+     `/loop` the one exception is step 5's pace call and `ScheduleWakeup`.)
    - **Present, WITH a `mode=drain` line → DRAIN pause (`mc pause --drain`).** RUN the tick, but in
      "finish in-flight, take no new intake" mode — **SKIP every INTAKE write, KEEP everything else.**
      Emit `tick @ HH:MM — ⏸ drain (finishing in-flight, no new intake)`.
@@ -670,7 +671,7 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    the board's own words back to it.
 4. **Emit ONE terse line** to your pane (e.g. `tick @ HH:MM — reconcile clean · ingested ABC-2008
    → planner spawned · prepped triage ABC-2003 (3 items → 📝) · 1 ⛔ gate · would spawn coder ABC-9002`)
-   and **stop until the next tick.** When you took a prep-class write this tick, say so plainly and
+   then run step 5 and **stop until the next tick.** When you took a prep-class write this tick, say so plainly and
    truthfully ("ingested ABC-N → planner spawned" / "prepped triage ABC-N → 📝 N items"); when you only
    proposed, keep the "would …" framing. Emit one terse tick line; detail goes on the board. Anything
    that blocked the tick goes in that line. Never paste detail and never ask for a routing decision.
@@ -679,6 +680,19 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    to one of the Bash calls you already make this tick and use its output verbatim. (The harness
    also prints the true fire time on its own "Running scheduled task (…)" line above your output —
    if you ever can't run `date`, drop the `@ HH:MM` entirely and rely on that, rather than guess.)
+5. **Pace: run `$MC_HOME/mc-pace.sh record --writes <n>` as the tick's last call, every tick.**
+   `<n>` is the number of writes this tick made: board writes, outward writes, spawns and inbox
+   drains. A tick that only proposed is `0`. Pass `--in-tokens`/`--out-tokens` only when the
+   harness shows you this tick's usage; otherwise the script reads them from the transcript or
+   logs null. It appends one line to `$MC_HOME/ticks.jsonl` and prints a delay in seconds:
+   600 after a writing tick, then 1200 and 1800 on consecutive idle ticks, 3600 for an idle tick
+   between 22:00 and 07:00, and never above 600 while a row has a live worker.
+   - **Dynamic `/loop` (started with no interval):** call `ScheduleWakeup` with that delay as
+     `delaySeconds` and the same `[mc-loop]` prompt you were woken with. Without that call the
+     loop stops for good.
+   - **Fixed-interval cron:** ignore the delay. The record still feeds `ticks.jsonl`.
+   - **Full-freeze pause (step 0):** under a dynamic `/loop` still run
+     `mc-pace.sh record --writes 0` and schedule the wake, or `mc resume` has nothing to resume.
 
 ## The writes you may make (prep-class only)
 
@@ -1375,6 +1389,14 @@ create the cron. `mc prompt` extracts the prompt LIVE from this file, so it neve
 rides along so de-dup + teardown still find the job. (Note: `/loop 10m` schedules `*/10`, not the
 offset `3-59/10` — the herd-offset is cosmetic and lost via this path; a direct `CronCreate` uses the
 exact offset. Either way the marker is what matters.) `mc prompt 15m` overrides the interval.
+
+**Dynamic start (idle backoff):** `mc prompt dynamic` copies `/loop <the marker prompt>` with no
+interval. The loop then creates no cron: each tick ends with step 5's `ScheduleWakeup`, so it wakes
+10 min after a writing tick and backs off to 20, 30 and (overnight) 60 min while idle. `mc wake`
+makes the next tick schedule a 10 min wake; it cannot shorten a wake already scheduled. Before a
+dynamic start, tear down any `[mc-loop]` cron (the stop procedure below), or both fire. To stop a
+dynamic loop, tell the loop-pane agent to stop; it calls `ScheduleWakeup` with `stop: true`. A
+`CronList` does not show a dynamic loop.
 
 **Starting / restarting (replace-on-restart de-dup — ALWAYS do this, never a bare `CronCreate`):**
 1. `CronList`.

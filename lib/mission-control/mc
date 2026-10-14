@@ -23,6 +23,7 @@
 #   mc pause                      # ⏸ PAUSE the loop (full freeze): it no-ops at its next tick (no writes/spawns)
 #   mc pause --drain              # ⏸ PAUSE new intake only — in-flight work finishes to its next human gate
 #   mc resume                     # ▶️ unpause: the loop acts again next tick
+#   mc wake                       # dynamic /loop: the next tick schedules a 10 min wake
 #   mc coder on|off               # 🟢/⚪ arm/disarm the loop's autonomous coder-spawn (default off)
 #   mc gate1 auto|manual          # 🟢/⚪ let the loop approve Gate 1 itself when a plan has no open
 #                                #   questions and passes the critic + size fences (default manual = propose only)
@@ -97,7 +98,8 @@ mc() {
   # extracted LIVE from loop-driver.md's canonical spec (never a hardcoded copy, so it
   # can't drift) and always carries the `[mc-loop]` marker — which is what makes the
   # created cron findable for de-dup + end-of-day teardown. Optional interval arg
-  # (default 10m, matching the canonical cadence): `mc prompt` / `mc prompt 15m`.
+  # (default 10m, matching the canonical cadence): `mc prompt` / `mc prompt 15m`. `mc prompt dynamic`
+  # copies it with no interval, for the self-pacing idle backoff (loop-driver tick step 5).
   # (Replaces the old standalone `mcloop`, whose string lacked the marker.) Local action.
   if [[ "$1" == "guard" ]]; then
     local gs="${MC_GUARD_SCRIPT:-$HOME/.claude/mission-control/mc-guard.sh}"
@@ -109,6 +111,12 @@ mc() {
     esac
     return 0
   fi
+  if [[ "$1" == "wake" ]]; then
+    local ps="${MC_PACE_SCRIPT:-$HOME/.claude/mission-control/mc-pace.sh}"
+    [[ -x "$ps" ]] || { printf 'mc: no mc-pace.sh at %s\n' "$ps" >&2; return 1; }
+    "$ps" reset
+    return $?
+  fi
   if [[ "$1" == "prompt" || "$1" == "loop-prompt" || "$1" == "loop" ]]; then
     local driver="${MC_LOOP_DRIVER:-$HOME/.claude/mission-control/loop-driver.md}"
     local interval="${2:-10m}"
@@ -119,7 +127,8 @@ mc() {
       printf 'mc: could not find the [mc-loop] prompt in %s\n' "$driver" >&2
       return 1
     fi
-    cmd="/loop ${interval} ${p}"
+    # Why: `dynamic` drops the interval, so /loop self-paces through the driver's tick step 5.
+    if [[ "$interval" == "dynamic" ]]; then cmd="/loop ${p}"; else cmd="/loop ${interval} ${p}"; fi
     printf '%s\n' "$cmd"
     if command -v pbcopy >/dev/null 2>&1; then
       printf '%s' "$cmd" | pbcopy && printf 'mc: ↑ /loop start command copied — paste into the loop-pane agent.\n'
@@ -260,6 +269,8 @@ CONTROL VERBS (queued → orchestrator acts)
 LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
     dash | board            launch the dashboard in this pane (full-screen; Ctrl-C to quit)
     prompt | loop [10m]     print + copy the canonical `/loop` START command (paste into the loop agent)
+                            `dynamic` = no interval: the loop backs off 10/20/30 min when idle, 60 overnight
+    wake                    make the dynamic loop's next tick schedule a 10 min wake (the current wake stands)
     ls | queue | show       show what's queued
     pause [--drain]|resume  ⏸/▶️ the loop; immediate, not queued. bare = full freeze (no-op tick);
                             --drain = stop NEW intake only, in-flight finishes to its next human gate

@@ -49,7 +49,7 @@ LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/mc-inbox"
   "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO" "$LIVE/KICKBACK_AUTO"
-  "$LIVE/SPRINT_PLAN_AUTO"
+  "$LIVE/SPRINT_PLAN_AUTO" "$LIVE/.loop-pace" "$LIVE/.loop-next-wake" "$LIVE/ticks.jsonl"
 )
 _stamp() {
   local f
@@ -619,6 +619,68 @@ says "both coder passes scope to the branch diff" no ':0$' grep -c 'git diff {BA
 rc_fix_push() { sed -n '/^## 4\. Fix and push/,/^## 5\./p' "$REPLY_SKILL_MD" | tr '\n' ' '; }
 says "reply-comments runs the comment pass before it pushes" yes 'comment pass.*COMMENT_RULES.*git push origin' rc_fix_push
 says "  … and names COMMENT_RULES in its config" yes '^\| `COMMENT_RULES` \|' cat "$REPLY_SKILL_MD"
+# --- 6h. loop pace: idle backoff and the per-tick log ---------------------------------
+# Why: a dynamic /loop sleeps as long as mc-pace.sh says, so a wrong delay either spends
+# tokens on idle ticks or leaves work waiting, and dash must not call a planned 60 min
+# sleep a dead loop.
+echo
+echo "loop pace   (mc-pace.sh ↔ tick step 5 ↔ dash)"
+echo "────────────────────────────────────────────────────────────────"
+PACE_HOME="$WORK/pace"; mkdir -p "$PACE_HOME/transcripts"
+echo '{"tickets":[]}' > "$PACE_HOME/state.json"
+_noon=1768392000    # 2026-01-14 12:00 UTC
+_night=1768431600   # 2026-01-14 23:00 UTC
+pace() { TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$1" "$_MC_LIB/mc-pace.sh" record --writes "$2" "${@:3}"; }
+pace_seq() { printf '%s ' "$(pace "$_noon" 3)" "$(pace "$_noon" 0)" "$(pace "$_noon" 0)" "$(pace "$_noon" 0)" "$(pace "$_night" 0)" "$(pace "$_night" 1)"; }
+says "write, idle ×3, night idle, night write → 600 1200 1800 1800 3600 600" yes '^600 1200 1800 1800 3600 600 $' pace_seq
+ticks_n() { wc -l < "$PACE_HOME/ticks.jsonl" | tr -d ' '; }
+says "ticks.jsonl gets one line per record"   yes '^6$' ticks_n
+pace_last() { tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.idle) \(.writes) \(.idle_streak) \(.next_wake_s) \(.next_wake) \(.in_tokens) \(.out_tokens)"'; }
+says "  … with idle, writes, streak, wake and null tokens" yes '^false 1 0 600 2026-01-14T23:10:00Z null null$' pace_last
+says "  … and the planned wake for dash"      yes "^$((_night + 600))\$" cat "$PACE_HOME/.loop-next-wake"
+pace_worker() { echo '{"tickets":[{"ticket":"X","lane":"implement","worker":"coder-x"}]}' > "$PACE_HOME/state.json"; pace "$_noon" 0; pace "$_night" 0; echo '{"tickets":[]}' > "$PACE_HOME/state.json"; }
+says "a live worker caps an idle wake at 600" yes '^600$' pace_worker
+says "  … night or day"                        no  '^(1200|1800|3600)$' pace_worker
+pace_reset() { pace "$_noon" 0 >/dev/null; MC_HOME="$PACE_HOME" "$_MC_LIB/mc-pace.sh" reset >/dev/null; printf '%s %s' "$(pace "$_noon" 0)" "$(pace "$_noon" 0)"; }
+says "reset (mc wake): next idle tick 600, then the backoff resumes" yes '^600 1200$' pace_reset
+run  "record without --writes is a usage error" 2 env MC_HOME="$PACE_HOME" "$_MC_LIB/mc-pace.sh" record
+run  "a non-numeric token count is a usage error" 2 env MC_HOME="$PACE_HOME" "$_MC_LIB/mc-pace.sh" record --writes 0 --in-tokens lots
+pace_flags() { pace "$_noon" 2 --in-tokens 4100 --out-tokens 230 >/dev/null; tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'; }
+says "token flags land in the tick line"      yes '^4100 230$' pace_flags
+# The transcript repeats message m1's usage on two content blocks; m0 predates the last tick.
+cat > "$PACE_HOME/transcripts/s.jsonl" <<'JSONL'
+{"type":"assistant","timestamp":"2026-01-14T11:00:00Z","message":{"id":"m0","usage":{"input_tokens":999,"output_tokens":999}}}
+{"type":"user","timestamp":"2026-01-14T12:01:00Z","message":{"content":"tick"}}
+{"type":"assistant","timestamp":"2026-01-14T12:02:00Z","message":{"id":"m1","usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":5,"output_tokens":40}}}
+{"type":"assistant","timestamp":"2026-01-14T12:02:01Z","message":{"id":"m1","usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":5,"output_tokens":40}}}
+{"type":"assistant","timestamp":"2026-01-14T12:03:00Z","message":{"id":"m2","usage":{"input_tokens":20,"output_tokens":7}}}
+JSONL
+pace_tr() { MC_LOOP_TRANSCRIPT_DIR="$PACE_HOME/transcripts" pace "$((_noon + 600))" 0 >/dev/null; tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'; }
+says "tokens come from the transcript since the last tick, once per message" yes '^1035 47$' pace_tr
+pace_ro() { local a b; a=$(shasum "$PACE_HOME/state.json"); pace "$_noon" 0 >/dev/null; b=$(shasum "$PACE_HOME/state.json"); [ "$a" = "$b" ] && echo unchanged; }
+says "mc-pace never writes state.json"        yes '^unchanged$' pace_ro
+
+# dash: a heartbeat 28 min old is LOOP SILENT on a fixed tick, but not while a planned wake is pending.
+dash_hb() {
+  local now; now=$(date +%s)
+  echo $((now - 1680)) > "$PACE_HOME/.hb"
+  if [ "$1" = wake ]; then echo $((now + 120)) > "$PACE_HOME/.nw"; else rm -f "$PACE_HOME/.nw"; fi
+  MC_HEARTBEAT_FILE="$PACE_HOME/.hb" MC_NEXT_WAKE_FILE="$PACE_HOME/.nw" MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_ADDRESS_FILE="$WORK/KICKBACK_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh"
+}
+says "dash: stale heartbeat, no planned wake → LOOP SILENT" yes 'LOOP SILENT' dash_hb none
+says "dash: stale heartbeat, wake still ahead → quiet"      no  'LOOP SILENT' dash_hb wake
+
+# Gotcha: mc prompt copies to the clipboard through pbcopy, so these stub it out.
+mc_dyn() { MC_LOOP_DRIVER="$DRIVER" bash -c 'pbcopy() { cat >/dev/null; }; . "$0"; mc prompt dynamic' "$_MC_LIB/mc" 2>&1 | head -1; }
+says "mc prompt dynamic drops the interval"  yes '^/loop \[mc-loop\] Mission-control loop tick' mc_dyn
+mc_fixed() { MC_LOOP_DRIVER="$DRIVER" bash -c 'pbcopy() { cat >/dev/null; }; . "$0"; mc prompt' "$_MC_LIB/mc" 2>&1 | head -1; }
+says "mc prompt keeps 10m by default"        yes '^/loop 10m \[mc-loop\]' mc_fixed
+mc_wake() { MC_PACE_SCRIPT="$_MC_LIB/mc-pace.sh" MC_HOME="$PACE_HOME" bash -c '. "$0"; mc wake' "$_MC_LIB/mc"; cat "$PACE_HOME/.loop-pace"; }
+says "mc wake resets the pace"               yes '^reset$' mc_wake
+tick_flat() { tick_steps | tr '\n' ' '; }
+says "the tick ends with a numbered pace step" yes '^5\. \*\*Pace: run `\$MC_HOME/mc-pace\.sh record --writes <n>`' tick_steps
+says "  … which schedules the wake under a dynamic /loop" yes 'ScheduleWakeup.*delaySeconds.*\[mc-loop\]' tick_flat
+says "  … and still runs during a full-freeze pause"      yes 'Full-freeze pause.*mc-pace\.sh record --writes 0' tick_flat
 
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
