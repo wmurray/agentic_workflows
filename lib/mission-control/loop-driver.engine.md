@@ -23,7 +23,7 @@ alone.
   roles named below · the **ticket-detail command** · the release-freeze window (if any) ·
   the notes-vault path · the **Template fills** table (the org values the worker templates
   take: `{MC_HOME}` `{BRANCH_PREFIX}` `{BASE_REF}` `{WORKTREE_RECIPE}` `{TICKET_DETAIL_CMD}`
-  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}`,
+  `{VAULT_PROJECTS_DIR}` `{CATCH_ALL_GROUP}` `{STYLE_GUIDE}` `{TEST_CONVENTIONS}` `{COMMENT_RULES}`,
   plus `{PR_BODY_GUIDE}`, which you apply yourself when you open a draft PR, and
   `{REPLY_POST_WRAPPER}`, which you call yourself in Prep-write 5 and which may be empty).
 
