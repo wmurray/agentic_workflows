@@ -212,7 +212,7 @@ says "brief asks for plain commands"   'one op per command' cat "$BF"
 says "brief rules out loops and vars"  'no for or while loops' cat "$BF"
 says "brief bounds cd"                 'cd only into your worktree or task dir' cat "$BF"
 says "brief says split and retry"      'split it into plain' cat "$BF"
-# A pushing task gets the comment pass from the script, whatever the evening brief says.
+# Why: a pushing task gets the comment pass from the script, whatever the evening brief says.
 says "push brief has the comment pass" '^## Before you push: comment pass$' cat "$BF"
 says "  … scoped to the branch diff"   'git diff origin/main\.\.\.HEAD' cat "$BF"
 says "  … names the rules file"        'skills/comment-cleanup/RULES\.md' cat "$BF"
