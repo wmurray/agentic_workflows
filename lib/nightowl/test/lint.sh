@@ -212,6 +212,15 @@ says "brief asks for plain commands"   'one op per command' cat "$BF"
 says "brief rules out loops and vars"  'no for or while loops' cat "$BF"
 says "brief bounds cd"                 'cd only into your worktree or task dir' cat "$BF"
 says "brief says split and retry"      'split it into plain' cat "$BF"
+# A pushing task gets the comment pass from the script, whatever the evening brief says.
+says "push brief has the comment pass" '^## Before you push: comment pass$' cat "$BF"
+says "  … scoped to the branch diff"   'git diff origin/main\.\.\.HEAD' cat "$BF"
+says "  … names the rules file"        'skills/comment-cleanup/RULES\.md' cat "$BF"
+says "  … carries the prefixes"        '^- `Invariant:`' cat "$BF"
+says "  … and the format rules"        'extract a method' cat "$BF"
+says "  … before the done section"     '^comment-pass<done$' awk '/^## Before you push/{c=NR} /^## When you are done/{d=NR} END{print (c && c<d) ? "comment-pass<done" : "out of order"}' "$BF"
+lacks "a review brief has no comment pass" 'comment pass' cat "$(sed -n 5p "$FX/spawn-rev1.args")"
+lacks "a research brief has no comment pass" 'comment pass' cat "$(sed -n 5p "$FX/spawn-res1.args")"
 says "task dir is a working dir, so cd into it is allowed" "^$FX/report/$D/pr1\$" jq -r '.permissions.additionalDirectories[]' "$SF"
 says "every task is running"           '^running$' jq -r '[.tasks[].status] | unique | .[]' "$M"
 says "handle recorded"                 '^nightowl-pr1\|' jq -r '.tasks[] | select(.id=="pr1") | .handle' "$M"
@@ -226,6 +235,16 @@ touch "$FX/runner-fail"
 expect "launch reports a failed spawn" 1 "$NO" launch --date "$D" bad1
 rm -f "$FX/runner-fail"
 says "failed spawn marked"             '^launch-failed$' jq -r '.tasks[] | select(.id=="bad1") | .status' "$M"
+
+echo "comment pass: flake briefs, and a missing rules file"
+D0=2025-12-31; M0="$FX/report/$D0.manifest.json"
+"$NO" confirm --date "$D0" "$( (task fl1 flake '| .push=true | .branch="nightowl/fl1"'
+                               task nr1 draft-pr '| .push=true | .branch="nightowl/nr1"') | tasks)" >/dev/null 2>&1
+expect "launch a flake task"           0 "$NO" launch --date "$D0" fl1
+says "flake brief has the comment pass" '^## Before you push: comment pass$' cat "$(sed -n 5p "$FX/spawn-fl1.args")"
+expect "missing rules fail the launch" 1 env NIGHTOWL_COMMENT_RULES="$FX/no-rules.md" "$NO" launch --date "$D0" nr1
+says "  … naming the path"             'comment rules not found' env NIGHTOWL_COMMENT_RULES="$FX/no-rules.md" "$NO" launch --date "$D0" nr1
+says "  … and the task is marked"      '^launch-failed$' jq -r '.tasks[] | select(.id=="nr1") | .status' "$M0"
 
 echo "push / draft-pr / pending-review wrappers"
 git -C "$FX/wt-pr1" -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m work

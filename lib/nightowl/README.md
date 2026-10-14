@@ -76,6 +76,12 @@ extended regex per line), checks the added lines of `git diff origin/<base>...HE
 refuses the push with exit 4 on a hit. It prints how many lines matched, never the terms. A
 missing denylist also refuses.
 
+A `draft-pr` or `flake` brief also ends with a comment pass, appended by `launch` whatever
+the evening brief says: the last code step before `push` checks the comments the branch
+adds or edits against the shared rules in `skills/comment-cleanup/RULES.md`
+(`NIGHTOWL_COMMENT_RULES` overrides the path). The rules are copied into the brief, since
+the pane cannot read outside its worktree. A missing rules file fails that task's launch.
+
 With `dontAsk` mode anything outside the allow list is refused rather than left waiting on
 a prompt, and the brief tells the task to note a refusal in its result and carry on.
 
