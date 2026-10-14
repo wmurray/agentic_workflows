@@ -30,6 +30,7 @@ Org values come from env vars in your shell profile, never from this file.
 | `MC_HOME` | `$HOME/.claude/mission-control` | the mission-control runtime dir (work log, board) |
 | `SOURCE_DIR` | `$HOME/Projects` | root folder holding your repo checkouts |
 | `MC_GATE1_PATH_DENY` | empty | paths a fix must never touch without you; an item whose fix touches one is held |
+| `COMMENT_RULES` | this toolkit's `skills/comment-cleanup/RULES.md` (resolve this skill's directory through its symlink, then `../comment-cleanup/RULES.md`) | the shared comment rules the pre-push comment pass applies (step 4) |
 
 Write each as `${VAR:-default}` in commands, e.g. `${REPLY_POST_WRAPPER:-}` and
 `${MC_AUTO_POST_REPORT:-${MC_HOME:-$HOME/.claude/mission-control}/auto-post-report.md}`.
@@ -97,7 +98,9 @@ Print the triage table (thread link, classification, planned fix or reply) befor
 ## 4. Fix and push
 
 For the mechanical and clear items only, in the worktree: one commit per thread (or one
-grouped commit naming each thread), no drive-by changes. Run the repo's pre-push
+grouped commit naming each thread), no drive-by changes. Then run the comment pass in
+the rules file `COMMENT_RULES` names (see Configuration) over the comments those fix commits add or edit, and nothing older on the
+branch; commit it on its own when it changes anything. Then run the repo's pre-push
 verification (its `AGENTS.md`, or the test and lint commands for the files you touched). Red
 → stop fixing, push nothing, and hold every fix item with the failure named. Green → a normal
 `git push origin HEAD:<headRefName>`, never forced. A rejected push (the branch moved) stops
