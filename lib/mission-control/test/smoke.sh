@@ -287,6 +287,12 @@ says "mc-adopt --keys lists adopt and ambiguous"  yes '^ENG-105 ENG-106 ENG-222 
 adopt_ro() { local a b; a=$(shasum "$WORK/state.json"); "$_MC_LIB/mc-adopt.sh" >/dev/null 2>&1; b=$(shasum "$WORK/state.json"); [ "$a" = "$b" ] && echo unchanged; }
 says "mc-adopt never writes state.json"           yes '^unchanged$'                  adopt_ro
 run  "mc-adopt exits 1 when the host fails"       1 env MC_HOST=nosuch "$_MC_LIB/mc-adopt.sh"
+inbound_sprint() { "$_MC_LIB/mc-inbound.sh" | sed -n '/^inbound (sprint)/,/^inbound (background)/p'; }
+says "mc-inbound does not plan a ticket with my open PR" no  'ENG-105'               inbound_sprint
+says "  … it lists it under open PR"                     yes '^inbound \(open PR\): 1 .*' "$_MC_LIB/mc-inbound.sh"
+says "  … with its summary"                              yes '^  ENG-105  Ready ticket'  "$_MC_LIB/mc-inbound.sh"
+says "  … and still plans the teammate-PR ticket"        yes 'ENG-101'               inbound_sprint
+says "  … a failed mc-adopt leaves the tiers unfiltered" yes '^inbound \(open PR\): unknown' env MC_HOST=nosuch "$_MC_LIB/mc-inbound.sh"
 says "review-check keeps the real note"  yes  'members_controller'       "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the bot thread"  no  'Gemfile.lock'             "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the resolved"    no  'stray whitespace'         "$_MC_LIB/mc-review-check.sh" example-org/app 202
