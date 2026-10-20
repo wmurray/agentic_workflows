@@ -720,6 +720,23 @@ says "the tick ends with a numbered pace step" yes '^5\. \*\*Pace: run `\$MC_HOM
 says "  … which schedules the wake under a dynamic /loop" yes 'ScheduleWakeup.*delaySeconds.*\[mc-loop\]' tick_flat
 says "  … and still runs during a full-freeze pause"      yes 'Full-freeze pause.*mc-pace\.sh record --writes 0' tick_flat
 
+# --- 6i. adopt: a named tick step and a lock-wrapped prep-write ----------------------
+# Why: a detector the driver mentions only in prose gets skipped (see 6f), so the adopt sweep
+# is a numbered step and Prep-write 7 is pinned to its switch, lock and cap.
+echo
+echo "adopt   (driver tick ↔ Prep-write 7)"
+echo "────────────────────────────────────────────────────────────────"
+pw7() { awk '/^### Prep-write 7/{f=1} f&&/^## /{exit} f' "$DRIVER"; }
+drain_skip() { awk '/^     - \*\*SKIP \(intake/{f=1} f&&/^     - \*\*KEEP/{exit} f' "$DRIVER"; }
+says "the tick has a numbered adopt-sweep step"     yes '^[0-9.]+\. \*\*Adopt sweep.*mc-adopt\.sh' tick_steps
+says "Prep-write 7 names the ADOPT_OFF switch"      yes 'ADOPT_OFF'                                pw7
+says "  … is lock-wrapped"                         yes 'mc-lock\.sh check loop'                   pw7
+says "  … under the one-prep-write cap"            yes 'one-prep-write cap'                       pw7
+says "  … stamps the row cycle background"         yes 'cycle: "background"'                      pw7
+says "  … and spawns no planner"                   yes 'Do not spawn the critic, investigator or planner' pw7
+says "a drain pause skips adopting"                 yes 'would adopt'                              drain_skip
+says "the driver counts six internal writes"        yes '^1$'  grep -c 'The SIX internal writes' "$DRIVER"
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"

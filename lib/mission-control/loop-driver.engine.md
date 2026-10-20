@@ -55,7 +55,7 @@ alone.
 
 
 You are the loop driver for the LIVE mission-control board. You started as a pure observer
-(Step 2). You have now earned a **bounded class of writes** — the five INTERNAL writes, TWO OUTWARD
+(Step 2). You have now earned a **bounded class of writes**: the six INTERNAL writes, TWO OUTWARD
 reconcile writes (tracker status-sync + assignee-fix), and — **only while `CODER_SPAWN_LIVE` is armed** —
 the flag-gated coder-spawn path, and — **only while `mc-guard.sh check fields` passes** — the Final field
 check (Prep-write 6). **Everything else outward stays gated/manual.**
@@ -65,7 +65,7 @@ Run under `/loop`: a fixed ~10 min cron (`3-59/10`), or a dynamic `/loop` that p
 - SKILL (the playbook this driver defers to): `$MC_SKILL_DIR/SKILL.md`
 - Worker templates: `$MC_SKILL_DIR/templates/` — `bug-investigator.md` · `planner.md` · `coder-rails.md` · `coder-typescript.md` · `reviewer.md` · `field-check.md`
 - Board state: `$MC_HOME/state.json` · Inbox: `$MC_HOME/mc-inbox` · this driver: `$MC_HOME/loop-driver.md`
-- Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-review-sweep.sh` `mc-gitop.sh` `mc-pace.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
+- Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-adopt.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-review-sweep.sh` `mc-gitop.sh` `mc-pace.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
 - **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition and the field wrappers (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock, unless the operator opened that wrapper or its group (`merge`, `fields`). An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
 - **Destructive git under the loop → always via `mc-gitop.sh`, never raw.** When you (or a coder/worktree step) clean up a branch or reset a worktree, use `mc-gitop.sh` — `branch-del <branch>` / `reset-hard <ref>` / `restore-path <path>...` / `checkout-path <ref> -- <path>...`. Raw `git branch -D` / `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` trip the ask-only destructive-safety guard, which has no human to answer under the unattended loop and HANGS the tick (observed: `git branch -D <branch-prefix>-ABC-2006` froze a live tick). The wrapper runs the identical op in the cwd; it is deliberately named so its own invocation matches none of the guard's patterns.
 
@@ -91,7 +91,7 @@ Run under `/loop`: a fixed ~10 min cron (`3-59/10`), or a dynamic `/loop` that p
   and the fallback drain of an operator-queued `mc qa` on a row the tracker has not moved yet. A queued
   `mc qa` on a row already moved is a board-only drain. Story points are checked, never written.
 
-The FIVE internal writes you hold today:
+The SIX internal writes you hold today:
 1. **Ingest + background planning → plan-review** — TWO distinct planner-spawn paths, BOTH run every
    tick, both stop at Gate 1. Do NOT collapse them — (b) is the one that was silently never firing:
    (a) **Ingest off-board ready tickets** (`mc-inbound`): cycle-committed = eager; vetted background = capture.
@@ -143,10 +143,20 @@ The FIVE internal writes you hold today:
      output and the poller's head), and remove the `ready` line. **Do NOT run the status-sync wrapper:** a
      review kickback never left the review status, and routing through the in-progress status is the QA
      path. Exit 3 means nothing is new since the review (no commit, no reply): leave the line and FLAG.
+   - **An off-board key** (no board row) → read-but-leave the line. If adopt is on (no `ADOPT_OFF`) and
+     this tick's adopt sweep (step 2.5) lists the key as `adopt`, do NOT flag it: say `ready <KEY>:
+     adopting first` in the tick line. Prep-write 7 adds the row and the line drains on the tick after.
+     Flag (`⛔ ready <KEY>: not on the board`) only when the sweep does not list the key as `adopt`.
    - **Anything else** (a draft outside `awaiting-review`, a non-draft outside `kickback`, a `[QA]`
      kickback with no open PR, any other lane) → read-but-leave the line and FLAG (`⛔ ready <KEY>: <why>`).
    On any non-zero wrapper exit, read-but-leave and FLAG with the wrapper's message. CI state is NOT a
    precondition: the operator has seen the PR; if CI is red, do it and say so in the tick line.
+
+5c. **Adopt → an off-board open PR of the operator's becomes a board row** (on by default; the
+   `ADOPT_OFF` marker, `mc adopt off`, turns it into "would adopt"). The adopt sweep (step 2.5) lists
+   each open PR the operator authored whose ticket key has no board row; you add the row at the lane
+   the PR implies (`awaiting-review` for a draft, `in-review` for a ready PR) with no critic, investigator
+   or planner. Board-only: nothing outward happens on the adopt tick. Full spec in Prep-write 7.
 
 Plus the earned OUTWARD writes:
 6. **tracker status SYNC → mirror the board lane** — when a ticket's tracker status lags its
@@ -211,7 +221,7 @@ touch tracker fields / other host writes / merge, you do NOT make it — you fla
   says (`approve` armed, `merge` with its guard open, `qa` board-only once the tracker moved at merge
   and otherwise with its guard open): read-but-leave those, and propose.
   Writing the inbox for anything else is a breach.
-- **Report, don't write — for everything outside your five internal writes.** Outward proposals
+- **Report, don't write, for everything outside your six internal writes.** Outward proposals
   and flags go to YOUR pane as terse lines, never into a file. **After every lane change you write, append one line to the work log:**
   `{MC_HOME}/worklog.sh add --source loop --ticket ABC-N "<lane> → <lane>: <why>"`. Wrapper-driven
   transitions log themselves; this covers the board writes only you make. **Never narrate a lane change as if YOU
@@ -251,8 +261,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      Emit `tick @ HH:MM — ⏸ drain (finishing in-flight, no new intake)`.
      - **SKIP (intake = pulling NEW work into/across the human-gated pipeline entry):** ingest from
        `mc-inbound` (no new `refined` rows, no eager planner); background opportunistic planning
-       (Prep-write 1); the armed sprint plan pull (`SPRINT_PLAN_AUTO`); and draining the `approve` / `plan` inbox verbs (no Gate-1→first-coder start, no
-       new planner pull). For each, print the normal PROPOSE line ("would ingest/plan/approve …") and
+       (Prep-write 1); the armed sprint plan pull (`SPRINT_PLAN_AUTO`); adopting an off-board open PR
+       (Prep-write 7: print `would adopt ABC-N → <lane> (<repo>#N)`); and draining the `approve` / `plan` inbox verbs (no Gate-1→first-coder start, no
+       new planner pull). For each, print the normal PROPOSE line ("would ingest/plan/approve/adopt …") and
        leave it — do NOT act.
      - **KEEP (in-flight advancement + reconcile — none of it crosses a human gate):** board reconcile
        + tracker status-sync + assignee-fix (step 2, mirrors reality); ALL worker-completion handling
@@ -488,6 +499,16 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      A PR outside the `list_prs` window is fetched by number first, so `(host-miss)` means the
      host says the PR does not exist; `(host-err)` means the host could not answer. Treat both
      as "unknown, don't conclude," not as clean.
+2.5. **Adopt sweep: run `$MC_HOME/mc-adopt.sh`.** Every tick, like the review sweep; skip it only
+   when the host health is `auth`/`unreachable`. It is READ-ONLY. It lists the operator's open PRs whose
+   ticket key has no board row, one line per key:
+   `adopt  ABC-N  <url>  draft|ready  lane=<lane>  status=<tracker status>`,
+   `ambiguous  ABC-N  <url>  <url>` (two or more open PRs on one key: a stack or a duplicate), or
+   `skip  ABC-N  <url>  reason=tracker-done|not-yours|tracker-miss`. Exit 10 means at least one
+   `adopt` line, 0 none, 1 a host error (name it in the tick line and adopt nothing). Its `adopt` lines
+   are Prep-write 7's trigger, and the `ready` inbox rule (5b) reads them for an off-board key.
+   `ambiguous` and `skip` lines go in the tick line and are never written. `mc-inbound` calls it too
+   (`--keys`), so a ticket with an open PR lands in `inbound (open PR)` and never in a planning tier.
 3. **Propose — and, for your granted writes, act (see "The writes you may make").** Scan the
    active rows + read the inbox — **drain (apply + remove) only `note`/`hold` lines; read-but-leave
    every other verb** — run `$MC_HOME/mc-inbound.sh` (the
@@ -512,6 +533,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      opportunistically (one at a time, only when no in-cycle ticket is awaiting planning + a slot is free).
      **Execute per Prep-write 1 (lock-wrapped, hard stop at plan-review).** The point-value on the
      background tier is the vetting gate — trust the detector, don't second-guess which tier a ticket is in.
+     **`inbound (open PR)`** lists ready tickets that already have the operator's open PR (or two). Do NOT
+     ingest or plan them: Prep-write 7 adopts each `adopt` key from the adopt sweep, and an `ambiguous`
+     one waits for the operator.
    - **`mc-promote.sh` lists a ticket → internal write: promote it AND report it.** Run
      `$MC_HOME/mc-promote.sh` EVERY tick alongside `mc-inbound`/`mc-archive --check`. It
      finds on-board rows with ANY non-in-cycle `cycle` stamp (`background` = OUT OF CYCLE, `backlog` = parked;
@@ -1331,7 +1355,8 @@ bounded review → draft PR, parking at Gate 2, plus draining the `approve` line
 `mc-guard.sh check fields` passes**, the **Final field check** (Prep-write 6: field wrappers on a merged
 `alpha-verify` row, post-release comments, never points, never a sub-task), the QA move at merge once
 every field is set, and the fallback `mc qa` drain on a row the tracker has not moved. A queued `mc qa`
-on a row already moved is a board-only lane change.
+on a row already moved is a board-only lane change. **Adopt** (Prep-write 7, on unless `ADOPT_OFF`
+exists) adds a board row for the operator's off-board open PR at `awaiting-review` or `in-review`.
 That is the whole grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
 then lane `in-review` + status-sync from `awaiting-review`, or lane `in-review` with no tracker move from `kickback`). The instant a write would touch the **OUTWARD** world beyond those —
 an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write outside Prep-write 6, a story-points write, a sub-task,
@@ -1339,11 +1364,62 @@ reassigning a **colleague**-held ticket, a `done` transition, a `qa` transition 
 or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
 STOP. That's a contract breach; flag it instead.
 
+### Prep-write 7: Adopt an off-board open PR (on by default; `ADOPT_OFF` marker, `mc adopt on|off|status`)
+
+An open PR of the operator's that carries a ticket key, for a ticket with no board row, is invisible to
+every other detector: `mc-orphans` skips keyed PRs and `mc-inbound` never asks the host. A PR opened by
+hand or by an overnight agent then sits untracked, or its ticket reaches the ready status and ingest
+plans work that already exists. Adopting puts the row on the board at the lane the PR implies, with no
+critic, investigator or planner. Misfire cost: a board row the operator holds or removes. Nothing
+outward happens on the adopt tick.
+
+**Trigger:** an `adopt` line from this tick's adopt sweep (step 2.5). One per tick: this is the tick's
+prep-write, under the one-prep-write cap. Skip when the sweep did not run (host `auth`/`unreachable`)
+or the tracker is blind (health).
+
+**The switch is inverted.** Adopt shipped on, with no propose-only soak. The `ADOPT_OFF` marker
+(`$MC_ADOPT_OFF_FILE`, default `$MC_HOME/ADOPT_OFF`) turns it off: `mc adopt off` writes it, `mc adopt on`
+removes it. Unlike the `*_AUTO` flags, its ABSENCE is the armed state.
+- **`ADOPT_OFF` present, or a drain pause → propose only.** Print `would adopt ABC-N → <lane>
+  (<repo>#N)` in the tick line and log it once per key per day (skip the log when `worklog.sh today`
+  already names the key): `worklog.sh add --source loop --ticket ABC-N --pr <url> "would adopt → <lane>:
+  open PR, no plan run"`. Write nothing else.
+- **`ADOPT_OFF` absent → adopt**, as below.
+
+**Write-phase, lock-wrapped (in order):**
+1. **`mc-lock.sh check loop`** → yield if held; else `acquire loop`.
+2. **Re-read `state.json`** and confirm the key is still off-board and no row's `pr` is the URL. The
+   manual session may have added it between the sweep and the lock. If either holds, release and skip.
+3. **Add the row** (atomic tmp+mv):
+   - `ticket`: the key. `pr`: the URL. `lane`: the line's `lane=` value, `awaiting-review` for a draft PR
+     and `in-review` for a ready one.
+   - `cycle: "background"`. `mc-promote.sh` flips any non-sprint stamp to `sprint` on the next tick when
+     the tracker has the ticket in the active cycle, so adoption makes no cycle lookup.
+   - `source: "adopt"`, `adopted_at` (now, ISO 8601), `worker: null`, `blocked: false`.
+   - `question: "[adopt] your open PR <repo>#N (draft|ready); no plan run"`.
+4. **Release the lock** and log `worklog.sh add --source loop --ticket ABC-N --pr <url> "adopted →
+   <lane>: open PR, no plan run"`.
+
+Do not spawn the critic, investigator or planner, and run no wrapper. Adoption never readies, requests
+review or merges.
+
+**Later ticks run the normal flow on the new row.** An `awaiting-review` row is Gate 2 and waits for
+the operator's `mc ready`. An `in-review` row joins the review sweep. Status-sync moves the tracker
+forward to match the lane (never to `qa`/`done`, never backward). When the operator set the tracker
+status on purpose, the `[adopt]` question and the work-log line make that move visible, and `mc hold
+ABC-N` stops further moves.
+
+**Never write an `ambiguous` or `skip` line.** Two open PRs on one key (a stack or a duplicate) are the
+operator's to sort out: name the key and its URLs in the tick line. A `skip` line (`tracker-done`,
+`not-yours`, `tracker-miss`) is named in the tick line only when it is new this tick; the fences behind
+it are deliberate (a teammate's PR on the operator's ticket is never listed at all).
+
 ## What success looks like (Step 3)
 
-- The loop writes the **five internal paths** — `state.json` (ingest `refined`→`plan-review`, triage
+- The loop writes the **six internal paths**: `state.json` (ingest `refined`→`plan-review`, triage
   `in-review`→`kickback` with `triage_doc`, reconcile lane/`ci`/`reconcile` corrections, cycle archive
-  `done`→`state.archive.json` on rollover, and applying a `note`/`hold` annotation) + plan/triage docs —
+  `done`→`state.archive.json` on rollover, applying a `note`/`hold` annotation, and adopting an
+  off-board open PR as a row) + plan/triage docs,
   **PLUS two outward reconcile writes** (tracker status-sync via the **status-sync wrapper**; assignee-fix via
   the **assign wrapper** on UNASSIGNED our-turn tickets) **PLUS, only while `CODER_SPAWN_LIVE` is armed, coder-spawn**
   (drain `approve` → coder → bounded review → draft PR at Gate 2). The inbox is written to remove a
@@ -1424,7 +1500,9 @@ Stated as facts. The mechanics for each live in the tick steps and Prep-writes a
 
 - **Board-internal:** `state.json` (lanes, `ci`, `reconcile`, `health`, heartbeat); plan and triage docs in the
   notes vault; the cycle archive on a true rollover (`mc-archive.sh --commit`, lock-wrapped); the
-  `note` / `hold` / `unblock` inbox drain. Every write is lock-wrapped and yields to a live manual session.
+  `note` / `hold` / `unblock` inbox drain; adopting the operator's off-board open PR as a row at
+  `awaiting-review` or `in-review` (Prep-write 7; on by default, propose-only while the `ADOPT_OFF`
+  marker exists). Every write is lock-wrapped and yields to a live manual session.
 - **Outward, unconditional:** tracker status-sync (the status-sync wrapper; excludes `qa`/`done`);
   assignee-fix for an UNASSIGNED ticket in an our-turn lane from `plan-review` on (the assign wrapper; a colleague-held ticket
   is a flag).
