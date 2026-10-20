@@ -253,7 +253,7 @@ says "mc-poll flags the regression"      yes  'REGRESSED'                "$_MC_L
 says "mc-poll names no provider"          no  '(?i)jira|github|gh-'      "$_MC_LIB/mc-poll.sh"
 says "mc-poll shows runner live status"  yes  '●coder[^ ]*@inprocess:running'  "$_MC_LIB/mc-poll.sh"
 # An open PR older than the host's list window. MC_FIXTURE_LIST_LIMIT=2 keeps only the two
-# newest PRs (301, 302) in list_prs, so every board PR falls outside it, as an old open PR
+# newest PRs (307, 308) in list_prs, so every board PR falls outside it, as an old open PR
 # does past the live window. ENG-221 points at a PR the host does not have at all.
 jq '.tickets += [{"ticket":"ENG-221","lane":"in-review","cycle":"sprint","worker":null,"blocked":false,
   "pr":"https://example.invalid/example-org/app/pull/299"}]' "$WORK/state.json" > "$WORK/state.host-window.json"
@@ -272,6 +272,21 @@ says "mc-inbound skips a teammate ticket"   no  'ENG-104'                  "$_MC
 says "mc-orphans finds the orphan"       yes  '301'                      "$_MC_LIB/mc-orphans.sh"
 says "mc-orphans skips the teammate PR"   no  '302'                      "$_MC_LIB/mc-orphans.sh"
 says "mc-promote finds the promotion"    yes  'ENG-204'                  "$_MC_LIB/mc-promote.sh"
+# mc-adopt: my open PRs whose key is off the board (host/prs.json 303-308).
+run  "mc-adopt"                                   0,10 "$_MC_LIB/mc-adopt.sh"
+says "mc-adopt adopts a nightowl-style draft"     yes '^adopt +ENG-222 .*/pull/305 +draft +lane=awaiting-review' "$_MC_LIB/mc-adopt.sh"
+says "  … and a ready ticket with an open PR"     yes '^adopt +ENG-105 .*/pull/303'  "$_MC_LIB/mc-adopt.sh"
+says "  … flags two PRs on one key"               yes '^ambiguous +ENG-106 '         "$_MC_LIB/mc-adopt.sh"
+says "  … skips a done ticket"                    yes '^skip +ENG-223 .*tracker-done' "$_MC_LIB/mc-adopt.sh"
+says "  … ignores a teammate's PR"                no  'ENG-101'                      "$_MC_LIB/mc-adopt.sh"
+says "  … ignores PRs already on the board"       no  'ENG-20[1-5]'                  "$_MC_LIB/mc-adopt.sh"
+says "  … ignores the keyless orphan"             no  '/pull/301'                    "$_MC_LIB/mc-adopt.sh"
+# Gotcha: grep -E has no (?i), so the pattern spells out both cases.
+says "mc-adopt names no provider"                 no  '[Jj][Ii][Rr][Aa]|[Gg][Ii][Tt][Hh][Uu][Bb]' "$_MC_LIB/mc-adopt.sh"
+says "mc-adopt --keys lists adopt and ambiguous"  yes '^ENG-105 ENG-106 ENG-222 $' bash -c '"$0" --keys | tr "\n" " "' "$_MC_LIB/mc-adopt.sh"
+adopt_ro() { local a b; a=$(shasum "$WORK/state.json"); "$_MC_LIB/mc-adopt.sh" >/dev/null 2>&1; b=$(shasum "$WORK/state.json"); [ "$a" = "$b" ] && echo unchanged; }
+says "mc-adopt never writes state.json"           yes '^unchanged$'                  adopt_ro
+run  "mc-adopt exits 1 when the host fails"       1 env MC_HOST=nosuch "$_MC_LIB/mc-adopt.sh"
 says "review-check keeps the real note"  yes  'members_controller'       "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the bot thread"  no  'Gemfile.lock'             "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the resolved"    no  'stray whitespace'         "$_MC_LIB/mc-review-check.sh" example-org/app 202
@@ -699,6 +714,7 @@ run "list_ready in → all ready"    0 bash -c 'test -n "$("$0" list_ready "Read
 run "mc-promote no-ops"        0,1,3,4 "$_MC_LIB/mc-promote.sh"
 run "mc-archive no auto-roll"    0,1,3 "$_MC_LIB/mc-archive.sh"
 run "mc-inbound single-tier"       0,1 "$_MC_LIB/mc-inbound.sh"
+run "mc-adopt cycle-less"         0,10 "$_MC_LIB/mc-adopt.sh"
 printf 'cycles vetting\n' > "$WORK/tracker/capabilities"
 
 # --- 8. the safety assertion --------------------------------------------------------

@@ -29,8 +29,8 @@ host()    { "$MC_ADAPTERS/host/${MC_HOST:-github}.sh"     "$@"; }
 | Op | Args | Output | Consumers |
 |---|---|---|---|
 | `list_ready` | `<status> <cycle:in\|out\|any> [vetted]` | TSV `key⇥summary`, one per line | mc-inbound (×2 tiers) |
-| `fields_of` | `<key…>` (comma- or space-joined) | TSV `key⇥status⇥assignee` | mc-poll, mc-archive |
-| `mine_of` | `<key…>` | bare `key` per line — the subset assigned to the operator | mc-poll (sprint plan queue) |
+| `fields_of` | `<key…>` (comma- or space-joined) | TSV `key⇥status⇥assignee` | mc-poll, mc-archive, mc-adopt |
+| `mine_of` | `<key…>` | bare `key` per line — the subset assigned to the operator | mc-poll (sprint plan queue), mc-adopt |
 | `in_active_cycle` | `<key…>` | bare `key` per line — the subset in the active cycle | mc-promote *(optional: `cycles`)* |
 | `active_cycle` | — | TSV `id⇥name` of the open cycle (empty if none) | mc-archive *(optional: `cycles`)* |
 | `detail_of` | `<key>` | one ticket's full detail (description / AC / issue type / parent) as plain text | ingest (driver + SKILL), worker briefs |
@@ -86,8 +86,8 @@ but callers must already branch on `capabilities` so a cycle-less fast-follow ad
 |---|---|---|
 | `MC_READY_STATUS` | the "ready to start" status | mc-inbound |
 | `MC_STATUS_RANK` | status → progress-rank table | mc-poll (regression detection) |
-| `MC_TERMINAL_DONE` | statuses meaning shipped | mc-archive (pre-sweep guard) |
-| `MC_TICKET_KEY_REGEX` | ticket-key shape (`[A-Z]+-[0-9]+`) | mc-orphans, dash |
+| `MC_TERMINAL_DONE` | statuses meaning shipped | mc-archive (pre-sweep guard), mc-adopt |
+| `MC_TICKET_KEY_REGEX` | ticket-key shape (`[A-Z]+-[0-9]+`) | mc-orphans, mc-adopt, dash |
 | `MC_POINTS_FIELD` | the vetting field name | jira.sh `list_ready … vetted` |
 | `MC_TRACKER_OPERATOR` | the operator's tracker identity; empty = the CLI user | jira.sh `list_ready`, `mine_of` |
 
@@ -97,7 +97,7 @@ but callers must already branch on `capabilities` so a cycle-less fast-follow ad
 
 | Op | Args | Output | Consumers |
 |---|---|---|---|
-| `list_prs` | `<repo> <state:all\|open> [mine]` | JSON array of PR objects (superset schema) | mc-poll, mc-orphans |
+| `list_prs` | `<repo> <state:all\|open> [mine]` | JSON array of PR objects (superset schema) | mc-poll, mc-orphans, mc-adopt |
 | `get_pr` | `<repo> <num>` | ONE PR object (same superset schema); empty if not found | mc-poll |
 | `review_threads` | `<repo> <num>` | JSON `{reviewDecision, threads[], reviews[]}` | mc-review-check *(optional: `review_threads`)* |
 | `whoami` | — | prints identity on success; nonzero + stderr on failure | mc-health |
@@ -106,7 +106,7 @@ but callers must already branch on `capabilities` so a cycle-less fast-follow ad
 **`list_prs`** returns one superset schema so both consumers `jq` what they need:
 `number, title, headRefName, isDraft, author, url, state, reviewDecision, mergeable,
 mergedAt, statusCheckRollup, reviewRequests`. `mine` adds an author=me filter
-(mc-orphans' default; mc-poll omits it). It is a bounded page of the newest PRs (GitHub:
+(mc-orphans' default and mc-adopt's; mc-poll omits it). It is a bounded page of the newest PRs (GitHub:
 `-L 60`), so an older PR that is still open can fall outside it.
 
 **`get_pr`** fetches one PR by number, in the `list_prs` schema, for exactly that case.
@@ -144,7 +144,7 @@ classification — the adapter only supplies the probe.
 ### Profile config
 | Var | Meaning | Consumer |
 |---|---|---|
-| `MC_REPOS` | watched repos | mc-poll, mc-orphans |
+| `MC_REPOS` | watched repos | mc-poll, mc-orphans, mc-adopt |
 | `MC_REVIEW_BOTS` | bot logins to ignore | mc-review-check |
 | `MC_FREEZE_CHECK_PATTERN` | CI freeze-guard name substring (degrade to "no freeze" if unset) | mc-poll |
 
