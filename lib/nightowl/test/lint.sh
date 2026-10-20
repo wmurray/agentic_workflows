@@ -296,6 +296,9 @@ says "report has the pr link"          'pull/10' cat "$FX/report/$D.md"
 says "work log line written"           'nightowl pr1 \(draft-pr\) done: opened a draft' cat "$FX/worklog/"*.jsonl
 says "work log carries the ticket"     '"ticket":"ABC-1"' cat "$FX/worklog/"*.jsonl
 says "work log source is nightowl"     '"source":"nightowl"' cat "$FX/worklog/"*.jsonl
+# Why: the loop finds a nightowl draft through the PR host (mc-adopt); the logged PR is how a
+# reader joins the work-log line to the board row it becomes.
+says "work log carries the PR"         '"pr":"https://' cat "$FX/worklog/"*.jsonl
 N1="$(grep -c '^## pr1' "$FX/report/$D.md")"
 "$NO" finish --date "$D" pr1 >/dev/null 2>&1
 [ "$(grep -c '^## pr1' "$FX/report/$D.md")" = "$N1" ] && ok "finish is idempotent" || bad "finish appended twice"

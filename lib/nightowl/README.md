@@ -98,8 +98,9 @@ out of `~/.claude`: Claude Code protects that tree, so a `dontAsk` pane cannot w
 `result.json` or a review payload there.
 
 Each finished task also appends one line to the work log (`worklog.sh --source nightowl`).
-Nothing here writes the mission-control board; its loop picks the work up from the work log
-and the PR host on its next tick.
+Nothing here writes the mission-control board. A task's draft PR reaches the board through the
+PR host: the loop's `mc-adopt` sweep finds the open PR on its next tick and adopts it at
+`awaiting-review`, unless the operator turned adopt off (`mc adopt off`).
 
 ## Config
 

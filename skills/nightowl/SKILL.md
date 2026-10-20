@@ -117,8 +117,9 @@ pending review it left, what is blocked and on whom, and the next human step (ap
 plan, read the repro, mark the draft ready, edit and submit the review). Link to the report
 file for detail. Then offer `"$NO" morning --teardown` to close the panes of finished tasks.
 
-The mission-control loop does the board and tracker admin from the work log and the PR host
-on its next tick. Do not move tickets or edit the board from here.
+The mission-control loop adopts each draft PR from the PR host through `mc-adopt` on its next
+tick (unless the operator ran `mc adopt off`), then does the tracker admin. Do not move tickets
+or edit the board from here.
 
 ## Rules
 

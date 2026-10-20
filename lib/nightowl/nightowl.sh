@@ -23,7 +23,8 @@
 # Files: $NIGHTOWL_REPORT_DIR/<date>.manifest.json   the night's tasks, handles, status
 #        $NIGHTOWL_REPORT_DIR/<date>.md              the report the journal tooling reads
 #        $NIGHTOWL_REPORT_DIR/<date>/<id>/           settings.json, brief.md, result.json
-# Nothing here writes the mission-control board.
+# Nothing here writes the mission-control board. The loop adopts a task's draft PR from the
+# PR host (mc-adopt) on its next tick, unless the operator turned adopt off.
 #
 # Exit: 0 ok · 1 a call failed · 2 usage · 3 invalid task or result · 4 guard refused ·
 #       5 orchestrator op run from inside a task pane
