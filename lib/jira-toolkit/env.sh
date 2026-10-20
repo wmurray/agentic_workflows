@@ -113,6 +113,20 @@ jt_guard() {   # jt_guard [GROUP] — refuse while the loop holds the writer loc
   [ -x "$g" ] || return 0
   "$g" check "$JT_NAME" ${1:+"$1"}
 }
+jt_mc_present() { [ -x "${MC_HOME:-$HOME/.claude/mission-control}/mc-guard.sh" ]; }
+jt_loop_active() { # does the loop hold a live writer lock? (mc-lock's `check manual` fails only then)
+  local l="${MC_HOME:-$HOME/.claude/mission-control}/mc-lock.sh"
+  [ -x "$l" ] && ! "$l" check manual >/dev/null 2>&1
+}
+jt_queued() {  # jt_queued VERB KEY: is `VERB KEY[: note]` queued in the mission-control inbox?
+  local inbox="${MC_INBOX:-${MC_HOME:-$HOME/.claude/mission-control}/mc-inbox}"
+  [ -f "$inbox" ] || return 1
+  awk -v v="$1" -v k="$(jt_key "$2")" '
+    { sub(/^[[:space:]]+/, ""); if ($0 ~ /^#/) next
+      t = $2; sub(/:.*/, "", t)
+      if ($1 == v && toupper(t) == k) { f = 1; exit } }
+    END { exit(f ? 0 : 1) }' "$inbox"
+}
 jt_worklog() { # jt_worklog [--ticket K] [--pr P] [--repo R] TEXT — record an outward write
   local w="${MC_HOME:-$HOME/.claude/mission-control}/worklog.sh"
   [ -x "$w" ] && MC_WORKLOG_SOURCE="$JT_NAME" "$w" add "$@" >/dev/null 2>&1 || true

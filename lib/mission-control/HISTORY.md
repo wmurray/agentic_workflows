@@ -150,3 +150,23 @@ the log. `mc wake` makes the next tick schedule a 10 minute wake. It cannot shor
 already scheduled. The script also writes `.loop-next-wake`. dash.sh reads it so a planned 60
 minute sleep does not show as LOOP SILENT. None of this changes a running loop until it is
 restarted with `mc prompt dynamic`.
+
+## merge.sh checks its own authorization (2026-10-20)
+
+The loop drained a queued `mc merge` with `mc guard off merge`, and the auto-mode classifier
+still blocked `merge.sh`. The guard and the classifier are separate gates, so letting the loop
+merge needs an allow rule, and an allow rule lets any agent session run the script on any PR.
+Before this change merge.sh trusted its caller for the "a human asked" part. Now, when
+mission-control is installed, commit mode merges only from a terminal or when the inbox holds a
+queued `merge <KEY>` for the PR's ticket, and exits 4 otherwise. While the loop holds the writer
+lock it also refuses `--allow-freeze`, `--allow-rebase-stale` and `--method`, which the driver
+already told the loop never to pass.
+
+The same audit closed five holes in the checks. `--method` was spliced into `gh pr merge
+--$method` unchecked, so `--method admin` became `--admin` and bypassed branch protection; it now
+takes squash, merge or rebase only. The merge is pinned with `--match-head-commit`, so a push
+between the checks and the merge fails it. A failed review-history read, or an APPROVED decision
+with no APPROVED review in the history, used to skip the stale-approval checks; both now refuse.
+A PR with no CI checks, a closed PR and a pending freeze check now refuse as well. The paginated
+review read is joined with `jq -s`, since `--paginate` prints one array per page. A second repo or
+PR number on the command line is an error instead of a silent overwrite.

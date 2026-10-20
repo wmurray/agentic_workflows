@@ -103,6 +103,71 @@ else bad "dependabot-merge: happy path calls — $(tr '\n' ';' < "$DM/calls")"; 
 rm -f "${DM:?}/bin/gh" "${DM:?}/calls" "${DM:?}/pr.json" "${DM:?}/repo.json" "${DM:?}/files.json" "${DM:?}/page.json"
 rmdir "${DM:?}/bin" "${DM:?}"
 
+echo "merge against a stub gh (no network)"
+# The stub serves $FX/pr.json and $FX/reviews.json (two pages, as --paginate prints them) and
+# logs every call. $MG/mc is a stand-in mission-control home: mc-guard passes, mc-lock reports
+# the loop as holder when $MG/mc/loop exists, and mc-inbox holds the queued lines.
+MG="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-mg.XXXXXX")"
+mkdir "$MG/bin" "$MG/mc"
+cat > "$MG/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$FX/calls"
+case "$1 $2" in
+  "pr view") cat "$FX/pr.json" ;;
+  "api repos/"*) [ -f "$FX/reviews.json" ] || exit 1; cat "$FX/reviews.json" ;;
+  "pr merge") exit 0 ;;
+  *) echo "stub gh: unexpected $*" >&2; exit 1 ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\nexit 0\n' > "$MG/mc/mc-guard.sh"
+printf '#!/usr/bin/env bash\n[ -f "$(dirname "$0")/loop" ] && exit 1; exit 0\n' > "$MG/mc/mc-lock.sh"
+chmod +x "$MG/bin/gh" "$MG/mc/mc-guard.sh" "$MG/mc/mc-lock.sh"
+# mg_fixture [<checks JSON>] [<inbox line>]: an approved, green PR on branch eng-12-fix, head abc123,
+# approved on the 2nd after a commit on the 1st. A missing reviews file makes the REST read fail.
+mg_fixture() {
+  : > "$MG/calls"; rm -f "$MG/mc/loop"
+  printf '# inbox\n%s\n' "${2:-merge ENG-12}" > "$MG/mc/mc-inbox"
+  local green='[{"name":"test","conclusion":"SUCCESS"}]'
+  jq -n --argjson c "${1:-$green}" '
+    {number:7, isDraft:false, reviewDecision:"APPROVED", mergeable:"MERGEABLE", state:"OPEN", mergedAt:null,
+     statusCheckRollup:$c, reviewRequests:[], latestReviews:[], labels:[], headRefName:"eng-12-fix",
+     headRefOid:"abc123", title:"Fix the thing",
+     commits:[{oid:"abc123", authoredDate:"2026-01-01T00:00:00Z", committedDate:"2026-01-01T00:00:00Z"}]}' > "$MG/pr.json"
+  printf '[{"state":"COMMENTED","submitted_at":"2026-01-01T12:00:00Z"}]\n[{"state":"APPROVED","submitted_at":"2026-01-02T00:00:00Z"}]\n' > "$MG/reviews.json"
+}
+mg() { (PATH="$MG/bin:$PATH" FX="$MG" MC_HOME="$MG/mc" "$T/merge.sh" example-org/app 7 "$@" </dev/null 2>&1); }
+merged() { grep -q '^pr merge' "$MG/calls"; }
+
+expect "merge: --method admin refused"  2 "$T/merge.sh" example-org/app 7 --method admin
+expect "merge: --method without value"  2 "$T/merge.sh" example-org/app 7 --method
+expect "merge: non-numeric PR refused"  2 "$T/merge.sh" example-org/app 7abc
+expect "merge: second repo refused"     2 "$T/merge.sh" example-org/app 7 example-org/other
+
+mg_fixture
+says "merge: queued merge runs" 'merged \(--squash\)' mg
+grep -q '^pr merge 7 -R example-org/app --squash --match-head-commit abc123$' "$MG/calls" \
+  && ok "merge: merges pinned to the checked head" || bad "merge: merge call: $(tr '\n' ';' < "$MG/calls")"
+mg_fixture "" "merge eng-12: QA cleared"
+says "merge: queued line with a note matches" 'merged' mg
+mg_fixture "" "merge ENG-13"
+says "merge: no queued line is not authorized" 'NOT AUTHORIZED.*merge ENG-12' mg
+merged && bad "merge: merged without a queued line" || ok "merge: nothing merged without a queued line"
+mg_fixture; touch "$MG/mc/loop"
+says "merge: loop may not pass --allow-freeze" 'NOT AUTHORIZED.*holds the writer lock' mg --allow-freeze
+merged && bad "merge: loop override merged" || ok "merge: nothing merged on a loop override"
+mg_fixture; touch "$MG/mc/loop"
+says "merge: loop runs a queued merge bare" 'merged' mg
+mg_fixture; rm "$MG/reviews.json"
+says "merge: unreadable review history refused" 'REFUSED.*could not read the review history' mg
+mg_fixture '[]'
+says "merge: no checks refused" 'REFUSED.*no CI checks reported' mg
+mg_fixture '[{"name":"test","conclusion":"SUCCESS"},{"name":"sprint freeze","status":"IN_PROGRESS"}]'
+says "merge: pending freeze check refused" 'REFUSED.*freeze check pending' mg
+mg_fixture "" "merge ENG-99"
+says "merge: --check needs no queued line" 'PASSES' mg --check
+
+rm -rf "${MG:?}"
+
 echo "request-review against a stub gh (no network)"
 # The stub serves $FX/pr.json for `pr view` and logs every call to $FX/calls; writes succeed.
 # The PR author is "me"; reviewers review on the 2nd, so a commit or reply on the 3rd is new.

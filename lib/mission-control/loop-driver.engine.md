@@ -592,7 +592,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      then run the post-merge field check (reconcile, above) on the row in the same tick so its
      `question` reads `merged · fields missing: …` straight away, or the QA move runs once the field
      check has.
-     Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. Writing the
+     Exit 3 → leave the line, `question: "[merge] refused: <wrapper's reason>"`, flag. Exit 4 means the
+     wrapper found no queued `merge ABC-N` for the PR's ticket, or you passed a flag: flag it, never retry. Writing the
      post-merge fields is Prep-write 6 under its own guard (`fields`), not part of the merge grant; the
      merged row becomes its trigger on the next prep-write slot. **`mc merge` is the ONLY thing that
      authorizes a merge — never propose merging a `ready-to-merge` PR on your own; merge is always the
