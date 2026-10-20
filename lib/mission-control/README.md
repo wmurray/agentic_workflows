@@ -153,6 +153,18 @@ The assignee check is the tracker adapter's `mine_of`; the operator's identity i
 `MC_TRACKER_OPERATOR`, or the CLI user when unset. When the `SPRINT_PLAN_AUTO` file
 (`MC_SPRINT_PLAN_FILE`) is present the loop pulls those tickets into planning itself.
 
+## Adopting an open PR
+
+An open PR the operator authored that carries a ticket key, for a ticket with no board row, is
+picked up by `mc-adopt.sh` (read-only, one `list_prs … open mine` call per repo). The loop runs
+it every tick and adds a row for each `adopt` line at the lane the PR implies: `awaiting-review`
+for a draft, `in-review` for a ready PR. The row gets `cycle: "background"` (mc-promote corrects
+it), `source: "adopt"` and an `[adopt]` question; no critic or planner runs. Two open PRs on one
+key, a done ticket, or a ticket the tracker does not assign to the operator are reported and never
+adopted, and a teammate's PR is never listed. `mc-inbound` asks `mc-adopt.sh --keys` so a ready
+ticket with an open PR is adopted instead of planned. Adopt is on by default; `mc adopt off`
+writes the `ADOPT_OFF` marker (`MC_ADOPT_OFF_FILE`) and the loop then only logs "would adopt".
+
 ## Kickback address
 
 After the loop triages new review comments on an open PR it can, when `KICKBACK_AUTO` is

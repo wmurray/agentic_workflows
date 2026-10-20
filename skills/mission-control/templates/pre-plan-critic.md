@@ -22,6 +22,8 @@ Also: sibling implementations in `{REPO_PATH}` of whatever this ticket touches, 
 
 Hunt for everything that would make this ticket un-plannable without a human: undefined terms, vague acceptance criteria, unstated load-bearing assumptions, contradictions with evidence or conventions, scope ambiguity, and for a bug whether the mechanism is grounded in evidence or would be guessed.
 
+Check whether the work already exists. If an open PR by the operator already implements {TICKET} (a remote branch or PR title in `{REPO_PATH}` that carries the key, e.g. `git ls-remote --heads origin` filtered on the lower-cased key), return `verdict: "needs-grill"` with one blocking question, "adopt #N as-is, or plan fresh?", and recommend adopting. The off-board PR detector misses a PR opened after it ran, or one outside the watched repos; this is the backstop.
+
 Resolve the mild cases yourself and label each **Confirmed / Inferred / Assumed** with its source. Flag as blocking only a decision whose answer changes the plan's shape and that nothing in the docs settles. Bias toward `ready`; a clean ticket earns a short summary, not invented doubt.
 
 ## Return (structured data, NOT a human message)
