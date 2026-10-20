@@ -29,6 +29,8 @@
 #                                #   questions and passes the critic + size fences (default manual = propose only)
 #   mc address on|off             # 🟢/⚪ let the loop fix the clear review-comment items in code + draft the
 #                                #   replies as private pending comments you publish (default off = propose only)
+#   mc adopt on|off               # 🟢/⚪ let the loop adopt your open PRs whose ticket is off the board
+#                                #   (default on; off = it only logs "would adopt")
 #   mc                            # (no args) show what's queued + pause state + usage
 #
 # `mc pause`/`mc resume` toggle a PAUSED flag file DIRECTLY (not queued) — the loop checks
@@ -215,6 +217,31 @@ mc() {
     return 0
   fi
 
+  # Adopt switch: a direct side effect (NOT queued). ON (default, marker absent) → the loop adds a
+  # board row for each `adopt` line mc-adopt.sh prints: your open PR on an off-board ticket, at the
+  # lane the PR implies, with no plan run (Prep-write 7). OFF (the ADOPT_OFF marker present) → the
+  # loop only prints + logs "would adopt". Inverted from the other switches on purpose: this one
+  # shipped on, so the marker is the opt-out. Effective next tick.
+  if [[ "$1" == "adopt" ]]; then
+    local aof="${MC_ADOPT_OFF_FILE:-$HOME/.claude/mission-control/ADOPT_OFF}"
+    case "$2" in
+      on|arm|auto)
+        rm -f "$aof"
+        printf 'mc: 🟢 adopt ON: the loop adopts your open PRs whose ticket is off the board. `mc adopt off` to stop.\n' ;;
+      off|disarm|propose|manual)
+        printf 'ADOPT_OFF %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" > "$aof"
+        printf 'mc: ⚪ adopt OFF (%s): the loop only logs "would adopt". `mc adopt on` to resume.\n' "$aof" ;;
+      ""|status|show)
+        if [[ -f "$aof" ]]; then
+          printf 'mc: ⚪ adopt OFF (%s): the loop only logs "would adopt". `mc adopt on` to resume.\n' "$aof"
+        else
+          printf 'mc: 🟢 adopt ON (default): the loop adopts your off-board open PRs.\n'
+        fi ;;
+      *) printf 'mc: usage: mc adopt [on|off|status]\n' >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
   # Read-only: the work log — today's entries, or the last N days. Every queued verb lands
   # here (source `mc`), as do the drain, the wrappers and the loop's lane changes.
   if [[ "$1" == "log" || "$1" == "worklog" ]]; then
@@ -284,6 +311,9 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
                             push to the PR branch, and draft each reply as a PRIVATE pending comment you
                             publish (or publishes them, when the profile names {REPLY_POST_WRAPPER}).
                             Default off = "would address N/M".
+    adopt on|off|status     🟢/⚪ let the loop adopt your open PR on a ticket that is not on the board:
+                            a row at awaiting-review (draft) or in-review (ready), no plan run.
+                            Default on; off = the loop only logs "would adopt".
     guard on|off [wrapper…] loop guard: manual-only wrappers (merge, qa, done, …) refuse with exit 4
     guard status            while the loop holds the writer lock. `off` is your per-wrapper override
                             (all if no name); `on` re-arms. Default ON. Never silent when off.
@@ -329,6 +359,18 @@ HELP
     printf 'mc: no inbox at %s — create it first (mission-control setup).\n' "$inbox" >&2
     return 1
   fi
+
+  # Gotcha: the loop leaves and flags a verb whose key has no board row, so say so now. Still
+  # queued: the row may be about to land (mc-adopt adopts an open PR on the next tick).
+  case "$1" in
+    approve|ready|merge|qa|changes|plan|hold|unblock|note)
+      local st="${MC_STATE:-$HOME/.claude/mission-control/state.json}" key
+      key=$(printf '%s' "${2%%:*}" | tr '[:lower:]' '[:upper:]')
+      if [[ -n "$key" && -r "$st" ]] \
+         && ! jq -e --arg k "$key" 'any(.tickets[]; (.ticket | ascii_upcase) == $k)' "$st" >/dev/null 2>&1; then
+        printf 'mc: ⚠ %s is not on the board; the loop flags this line until a row exists.\n' "$key" >&2
+      fi ;;
+  esac
 
   printf '%s\n' "$*" >> "$inbox"
   printf 'mc: queued -> %s\n' "$*"

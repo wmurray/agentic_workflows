@@ -49,7 +49,7 @@ LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/mc-inbox"
   "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO" "$LIVE/KICKBACK_AUTO"
-  "$LIVE/SPRINT_PLAN_AUTO" "$LIVE/.loop-pace" "$LIVE/.loop-next-wake" "$LIVE/ticks.jsonl"
+  "$LIVE/SPRINT_PLAN_AUTO" "$LIVE/ADOPT_OFF" "$LIVE/.loop-pace" "$LIVE/.loop-next-wake" "$LIVE/ticks.jsonl"
 )
 _stamp() {
   local f
@@ -293,6 +293,23 @@ says "  … it lists it under open PR"                     yes '^inbound \(open 
 says "  … with its summary"                              yes '^  ENG-105  Ready ticket'  "$_MC_LIB/mc-inbound.sh"
 says "  … and still plans the teammate-PR ticket"        yes 'ENG-101'               inbound_sprint
 says "  … a failed mc-adopt leaves the tiers unfiltered" yes '^inbound \(open PR\): unknown' env MC_HOST=nosuch "$_MC_LIB/mc-inbound.sh"
+# The adopt switch is inverted: on is the default, and `off` writes the ADOPT_OFF marker.
+AO="$WORK/ADOPT_OFF"
+mc_adopt() { env MC_ADOPT_OFF_FILE="$AO" bash -c '. "$0"; mc adopt "$1"' "$_MC_LIB/mc" "$1"; }
+says "mc adopt status is on by default"       yes 'adopt ON \(default\)'  mc_adopt status
+run  "mc adopt off"                           0 mc_adopt off
+run  "  … writes the ADOPT_OFF marker"        0 test -f "$AO"
+says "  … and status says off"               yes 'adopt OFF'              mc_adopt status
+run  "mc adopt on"                            0 mc_adopt on
+run  "  … removes the marker"                 0 test ! -e "$AO"
+: > "$WORK/adopt-inbox"
+mc_verb() { env MC_INBOX="$WORK/adopt-inbox" MC_STATE="$WORK/state.json" MC_WORKLOG_SH=/nonexistent bash -c '. "$0"; mc "$@"' "$_MC_LIB/mc" "$@"; }
+says "mc warns on a verb for an off-board key"    yes 'ENG-222 is not on the board'  mc_verb ready ENG-222
+says "  … and still queues it"                    yes 'queued -> ready ENG-222'      mc_verb ready ENG-222
+says "  … reads the key before a note"            yes 'ENG-223 is not on the board'  mc_verb note ENG-223: shipped
+say_quiet() { mc_verb "$@" 2>&1 | grep -q 'queued ->' && mc_verb "$@" 2>&1 | grep -c 'not on the board'; }
+says "  … stays quiet for an on-board key"        yes '^0$'                          say_quiet hold eng-201: waiting
+says "  … and for a local verb"                   no  'not on the board'             mc_verb ls
 says "review-check keeps the real note"  yes  'members_controller'       "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the bot thread"  no  'Gemfile.lock'             "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the resolved"    no  'stray whitespace'         "$_MC_LIB/mc-review-check.sh" example-org/app 202
