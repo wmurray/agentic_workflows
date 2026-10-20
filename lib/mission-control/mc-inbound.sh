@@ -80,8 +80,7 @@ if [ "$sprint_n" -eq 0 ] && [ "$bg_n" -eq 0 ]; then
   exit 0
 fi
 
-# Pull the tickets that already have my open PR out of both tiers. If mc-adopt fails the
-# tiers stand as they are; the pre-plan critic is the backstop for a PR it missed.
+# Why: a failed mc-adopt leaves the tiers unfiltered; the pre-plan critic is the backstop.
 open_rows=""; open_err=""
 adopt_keys=$("$_MC_LIB/mc-adopt.sh" --keys 2>/dev/null); [ $? -eq 1 ] && open_err=1
 if [ -n "$adopt_keys" ]; then

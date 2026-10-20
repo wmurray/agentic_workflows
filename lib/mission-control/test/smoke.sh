@@ -272,7 +272,7 @@ says "mc-inbound skips a teammate ticket"   no  'ENG-104'                  "$_MC
 says "mc-orphans finds the orphan"       yes  '301'                      "$_MC_LIB/mc-orphans.sh"
 says "mc-orphans skips the teammate PR"   no  '302'                      "$_MC_LIB/mc-orphans.sh"
 says "mc-promote finds the promotion"    yes  'ENG-204'                  "$_MC_LIB/mc-promote.sh"
-# mc-adopt: my open PRs whose key is off the board (host/prs.json 303-308).
+# Ref: host/prs.json 303-308 are the off-board open PRs these cases read.
 run  "mc-adopt"                                   0,10 "$_MC_LIB/mc-adopt.sh"
 says "mc-adopt adopts a nightowl-style draft"     yes '^adopt +ENG-222 .*/pull/305 +draft +lane=awaiting-review' "$_MC_LIB/mc-adopt.sh"
 says "  … and a ready ticket with an open PR"     yes '^adopt +ENG-105 .*/pull/303'  "$_MC_LIB/mc-adopt.sh"
@@ -293,7 +293,7 @@ says "  … it lists it under open PR"                     yes '^inbound \(open 
 says "  … with its summary"                              yes '^  ENG-105  Ready ticket'  "$_MC_LIB/mc-inbound.sh"
 says "  … and still plans the teammate-PR ticket"        yes 'ENG-101'               inbound_sprint
 says "  … a failed mc-adopt leaves the tiers unfiltered" yes '^inbound \(open PR\): unknown' env MC_HOST=nosuch "$_MC_LIB/mc-inbound.sh"
-# The adopt switch is inverted: on is the default, and `off` writes the ADOPT_OFF marker.
+# Why: the adopt switch is inverted, so on is the default and `off` writes the marker.
 AO="$WORK/ADOPT_OFF"
 mc_adopt() { env MC_ADOPT_OFF_FILE="$AO" bash -c '. "$0"; mc adopt "$1"' "$_MC_LIB/mc" "$1"; }
 says "mc adopt status is on by default"       yes 'adopt ON \(default\)'  mc_adopt status

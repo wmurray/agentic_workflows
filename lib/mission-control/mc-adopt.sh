@@ -46,10 +46,10 @@ TERMINAL_DONE="${MC_TERMINAL_DONE:-Done Closed Released Resolved}"
 
 board_prs=$(jq -r '.tickets[] | select(.pr != null) | .pr' "$STATE" 2>/dev/null) \
   || { echo "mc-adopt: cannot parse $STATE" >&2; exit 1; }
-# Space-joined: BSD awk rejects a newline inside a -v value.
+# Gotcha: BSD awk rejects a newline inside a -v value, so the keys are space-joined.
 board_keys=$(jq -r '[.tickets[].ticket | ascii_upcase] | join(" ")' "$STATE" 2>/dev/null)
 
-# key⇥url⇥draft|ready, one line per candidate PR.
+# Invariant: cands is key⇥url⇥draft|ready, one line per candidate PR.
 cands=""
 for repo in $REPOS; do
   data=$(host list_prs "$repo" open mine); rc=$?

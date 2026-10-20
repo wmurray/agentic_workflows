@@ -217,11 +217,7 @@ mc() {
     return 0
   fi
 
-  # Adopt switch: a direct side effect (NOT queued). ON (default, marker absent) → the loop adds a
-  # board row for each `adopt` line mc-adopt.sh prints: your open PR on an off-board ticket, at the
-  # lane the PR implies, with no plan run (Prep-write 7). OFF (the ADOPT_OFF marker present) → the
-  # loop only prints + logs "would adopt". Inverted from the other switches on purpose: this one
-  # shipped on, so the marker is the opt-out. Effective next tick.
+  # Why: inverted from the other switches. Adopt shipped on, so the ADOPT_OFF marker is the opt-out.
   if [[ "$1" == "adopt" ]]; then
     local aof="${MC_ADOPT_OFF_FILE:-$HOME/.claude/mission-control/ADOPT_OFF}"
     case "$2" in
