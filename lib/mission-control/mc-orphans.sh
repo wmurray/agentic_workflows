@@ -9,9 +9,9 @@
 # this does an UNSCOPED open-PR sweep per repo and subtracts what's tracked/ticketed.
 #
 # Orphan = open PR whose URL is not the `.pr` of any state.json ticket AND whose
-# title+branch match no ticket key ($MC_TICKET_KEY_REGEX). (A PR that HAS a ticket ref
-# but is missing from the board is a different signal — a ticketed-but-untracked PR —
-# deliberately NOT reported here, so the two never get conflated.)
+# title+branch match no ticket key ($MC_TICKET_KEY_REGEX). A PR that HAS a ticket key
+# but no board row is the other half: mc-adopt.sh reports it and the loop adopts it.
+# It is deliberately NOT reported here, so the two never get conflated.
 #
 # Scope: by default only PRs I authored (the ones I must shepherd). Set MC_ORPHAN_ALL=1
 # to include every author (e.g. dependabot bumps). Override the repo set with

@@ -20,6 +20,11 @@
 #
 #   • both tiers: not already a key in state.json (diffed below).
 #
+#   OPEN PR: a ticket from either tier that already has my open PR (mc-adopt.sh --keys)
+#            moves to a third section. The loop adopts it at the PR's lane instead of
+#            planning it; two open PRs on one key are flagged for the operator.
+#            mc-adopt runs only when a tier has rows, so a quiet tick costs no host call.
+#
 # The cycle clause is no longer a hard FILTER — it's a TIER signal: sprint work is
 # eager, background work is opportunistic. Capture is cheap (a refined row); the WIP
 # bound lives on PLANNING (background = one-at-a-time when idle), not on capture.
@@ -75,6 +80,22 @@ if [ "$sprint_n" -eq 0 ] && [ "$bg_n" -eq 0 ]; then
   exit 0
 fi
 
+# Why: a failed mc-adopt leaves the tiers unfiltered; the pre-plan critic is the backstop.
+open_rows=""; open_err=""
+adopt_keys=$("$_MC_LIB/mc-adopt.sh" --keys 2>/dev/null); [ $? -eq 1 ] && open_err=1
+if [ -n "$adopt_keys" ]; then
+  _by_open() {  # <in|out> <rows>: the rows whose key mc-adopt lists (in) or does not (out)
+    printf '%s\n' "$2" | awk -F'\t' -v want="$1" -v ks="$(printf '%s' "$adopt_keys" | tr '\n' ' ')" '
+      BEGIN { n = split(ks, a, " "); for (i = 1; i <= n; i++) k[a[i]] }
+      NF && ((toupper($1) in k) == (want == "in"))'
+  }
+  open_rows=$(_by_open in "$sprint_rows"; _by_open in "$bg_rows")
+  sprint_rows=$(_by_open out "$sprint_rows"); bg_rows=$(_by_open out "$bg_rows")
+  sprint_n=$(printf '%s' "$sprint_rows" | grep -c . || true)
+  bg_n=$(printf '%s' "$bg_rows" | grep -c . || true)
+fi
+open_n=$(printf '%s' "$open_rows" | grep -c . || true)
+
 if [ "$sprint_n" -gt 0 ]; then
   printf 'inbound (sprint): %s ticket(s) NOT on the board — ingest + plan NOW, cycle=sprint (→ Gate 1):\n' "$sprint_n"
   printf '%s\n' "$sprint_rows" | while IFS=$'\t' read -r k s; do [ -n "$k" ] && printf '  %s  —  %s\n' "$k" "$s"; done
@@ -87,4 +108,11 @@ if [ "$bg_n" -gt 0 ]; then
   printf '%s\n' "$bg_rows" | while IFS=$'\t' read -r k s; do [ -n "$k" ] && printf '  %s  —  %s\n' "$k" "$s"; done
 else
   printf 'inbound (background): none\n'
+fi
+
+if [ "$open_n" -gt 0 ]; then
+  printf 'inbound (open PR): %s ticket(s) already have your open PR; mc-adopt adopts them (or flags two PRs), do NOT plan:\n' "$open_n"
+  printf '%s\n' "$open_rows" | while IFS=$'\t' read -r k s; do [ -n "$k" ] && printf '  %s  %s\n' "$k" "$s"; done
+elif [ -n "$open_err" ]; then
+  printf 'inbound (open PR): unknown (mc-adopt failed; the tiers above are unfiltered)\n'
 fi

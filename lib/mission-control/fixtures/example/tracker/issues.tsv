@@ -10,6 +10,13 @@ ENG-102	Ready for Dev	me	out	yes	Backfill missing audit rows
 ENG-103	Ready for Dev	me	out	no	Investigate slow dashboard query
 # --- ready but someone else's → excluded from both tiers ---
 ENG-104	Ready for Dev	teammate	in	yes	Rotate the staging certificates
+# --- ready, in cycle, but my open PR already exists → mc-adopt, never planned ---
+ENG-105	Ready for Dev	me	in	yes	Ready ticket that already has my PR
+#
+# --- off the board with my open PR (host/prs.json 305-308) → mc-adopt ---
+ENG-106	To Do	me	out	yes	Ticket with two open PRs
+ENG-222	To Do	me	out	yes	Nightowl draft, ticket never made ready
+ENG-223	Done	me	in	yes	Shipped, follow-up PR still open
 #
 # --- on the scratch board: in flight ---
 ENG-201	In Progress	me	in	yes	Extract the notification mailer

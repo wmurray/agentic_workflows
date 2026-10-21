@@ -170,3 +170,22 @@ with no APPROVED review in the history, used to skip the stale-approval checks; 
 A PR with no CI checks, a closed PR and a pending freeze check now refuse as well. The paginated
 review read is joined with `jq -s`, since `--paginate` prints one array per page. A second repo or
 PR number on the command line is an error instead of a silent overwrite.
+
+## The loop adopts off-board open PRs (2026-10-20)
+
+An open PR of the operator's that carried a ticket key, for a ticket with no board row, was
+invisible to every detector. `mc-orphans` skips keyed PRs by design, and `mc-inbound` never asks
+the host. Two failures followed from that. A ticket that reached the ready status was planned
+although its PR already existed, and an overnight draft PR on a ticket that never reached the
+ready status was never seen at all. `mc-adopt.sh` is the read-only detector for that half. Tick
+step 2.5 runs it every tick, and Prep-write 7 adds a row for each `adopt` line at the lane the PR
+implies (`awaiting-review` for a draft, `in-review` for a ready PR), with `cycle: "background"`,
+`source: "adopt"` and no critic or planner. Its fences are deliberate: only the operator's own PRs, only
+tickets the tracker assigns to the operator, never a done ticket, and exactly one open PR per key
+(two are a stack or a duplicate, and the loop never guesses which). A teammate's PR on the
+operator's ticket is not listed. `mc-inbound` moves a ready ticket with an open PR out of its
+planning tiers, and the pre-plan critic asks "adopt as-is, or plan fresh?" when it finds a PR the
+detector missed. Unlike every earlier write, adopt was granted with no propose-only soak, because
+it is board-only and lands on a gate or waiting lane. Its switch is therefore inverted: the
+`ADOPT_OFF` marker (`mc adopt off`) turns it back into "would adopt". The internal-write count went
+from five to six.

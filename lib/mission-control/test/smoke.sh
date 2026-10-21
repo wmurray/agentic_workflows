@@ -49,7 +49,7 @@ LIVE_FILES=(
   "$LIVE/state.json" "$LIVE/state.archive.json" "$LIVE/.writer-lock"
   "$LIVE/.last-archived-sprint" "$LIVE/mc-inbox"
   "$LIVE/PAUSED" "$LIVE/CODER_SPAWN_LIVE" "$LIVE/LOOP_GUARD_OFF" "$LIVE/GATE1_AUTO" "$LIVE/KICKBACK_AUTO"
-  "$LIVE/SPRINT_PLAN_AUTO" "$LIVE/.loop-pace" "$LIVE/.loop-next-wake" "$LIVE/ticks.jsonl"
+  "$LIVE/SPRINT_PLAN_AUTO" "$LIVE/ADOPT_OFF" "$LIVE/.loop-pace" "$LIVE/.loop-next-wake" "$LIVE/ticks.jsonl"
 )
 _stamp() {
   local f
@@ -253,7 +253,7 @@ says "mc-poll flags the regression"      yes  'REGRESSED'                "$_MC_L
 says "mc-poll names no provider"          no  '(?i)jira|github|gh-'      "$_MC_LIB/mc-poll.sh"
 says "mc-poll shows runner live status"  yes  '●coder[^ ]*@inprocess:running'  "$_MC_LIB/mc-poll.sh"
 # An open PR older than the host's list window. MC_FIXTURE_LIST_LIMIT=2 keeps only the two
-# newest PRs (301, 302) in list_prs, so every board PR falls outside it, as an old open PR
+# newest PRs (307, 308) in list_prs, so every board PR falls outside it, as an old open PR
 # does past the live window. ENG-221 points at a PR the host does not have at all.
 jq '.tickets += [{"ticket":"ENG-221","lane":"in-review","cycle":"sprint","worker":null,"blocked":false,
   "pr":"https://example.invalid/example-org/app/pull/299"}]' "$WORK/state.json" > "$WORK/state.host-window.json"
@@ -272,6 +272,44 @@ says "mc-inbound skips a teammate ticket"   no  'ENG-104'                  "$_MC
 says "mc-orphans finds the orphan"       yes  '301'                      "$_MC_LIB/mc-orphans.sh"
 says "mc-orphans skips the teammate PR"   no  '302'                      "$_MC_LIB/mc-orphans.sh"
 says "mc-promote finds the promotion"    yes  'ENG-204'                  "$_MC_LIB/mc-promote.sh"
+# Ref: host/prs.json 303-308 are the off-board open PRs these cases read.
+run  "mc-adopt"                                   0,10 "$_MC_LIB/mc-adopt.sh"
+says "mc-adopt adopts a nightowl-style draft"     yes '^adopt +ENG-222 .*/pull/305 +draft +lane=awaiting-review' "$_MC_LIB/mc-adopt.sh"
+says "  … and a ready ticket with an open PR"     yes '^adopt +ENG-105 .*/pull/303'  "$_MC_LIB/mc-adopt.sh"
+says "  … flags two PRs on one key"               yes '^ambiguous +ENG-106 '         "$_MC_LIB/mc-adopt.sh"
+says "  … skips a done ticket"                    yes '^skip +ENG-223 .*tracker-done' "$_MC_LIB/mc-adopt.sh"
+says "  … ignores a teammate's PR"                no  'ENG-101'                      "$_MC_LIB/mc-adopt.sh"
+says "  … ignores PRs already on the board"       no  'ENG-20[1-5]'                  "$_MC_LIB/mc-adopt.sh"
+says "  … ignores the keyless orphan"             no  '/pull/301'                    "$_MC_LIB/mc-adopt.sh"
+# Gotcha: grep -E has no (?i), so the pattern spells out both cases.
+says "mc-adopt names no provider"                 no  '[Jj][Ii][Rr][Aa]|[Gg][Ii][Tt][Hh][Uu][Bb]' "$_MC_LIB/mc-adopt.sh"
+says "mc-adopt --keys lists adopt and ambiguous"  yes '^ENG-105 ENG-106 ENG-222 $' bash -c '"$0" --keys | tr "\n" " "' "$_MC_LIB/mc-adopt.sh"
+adopt_ro() { local a b; a=$(shasum "$WORK/state.json"); "$_MC_LIB/mc-adopt.sh" >/dev/null 2>&1; b=$(shasum "$WORK/state.json"); [ "$a" = "$b" ] && echo unchanged; }
+says "mc-adopt never writes state.json"           yes '^unchanged$'                  adopt_ro
+run  "mc-adopt exits 1 when the host fails"       1 env MC_HOST=nosuch "$_MC_LIB/mc-adopt.sh"
+inbound_sprint() { "$_MC_LIB/mc-inbound.sh" | sed -n '/^inbound (sprint)/,/^inbound (background)/p'; }
+says "mc-inbound does not plan a ticket with my open PR" no  'ENG-105'               inbound_sprint
+says "  … it lists it under open PR"                     yes '^inbound \(open PR\): 1 .*' "$_MC_LIB/mc-inbound.sh"
+says "  … with its summary"                              yes '^  ENG-105  Ready ticket'  "$_MC_LIB/mc-inbound.sh"
+says "  … and still plans the teammate-PR ticket"        yes 'ENG-101'               inbound_sprint
+says "  … a failed mc-adopt leaves the tiers unfiltered" yes '^inbound \(open PR\): unknown' env MC_HOST=nosuch "$_MC_LIB/mc-inbound.sh"
+# Why: the adopt switch is inverted, so on is the default and `off` writes the marker.
+AO="$WORK/ADOPT_OFF"
+mc_adopt() { env MC_ADOPT_OFF_FILE="$AO" bash -c '. "$0"; mc adopt "$1"' "$_MC_LIB/mc" "$1"; }
+says "mc adopt status is on by default"       yes 'adopt ON \(default\)'  mc_adopt status
+run  "mc adopt off"                           0 mc_adopt off
+run  "  … writes the ADOPT_OFF marker"        0 test -f "$AO"
+says "  … and status says off"               yes 'adopt OFF'              mc_adopt status
+run  "mc adopt on"                            0 mc_adopt on
+run  "  … removes the marker"                 0 test ! -e "$AO"
+: > "$WORK/adopt-inbox"
+mc_verb() { env MC_INBOX="$WORK/adopt-inbox" MC_STATE="$WORK/state.json" MC_WORKLOG_SH=/nonexistent bash -c '. "$0"; mc "$@"' "$_MC_LIB/mc" "$@"; }
+says "mc warns on a verb for an off-board key"    yes 'ENG-222 is not on the board'  mc_verb ready ENG-222
+says "  … and still queues it"                    yes 'queued -> ready ENG-222'      mc_verb ready ENG-222
+says "  … reads the key before a note"            yes 'ENG-223 is not on the board'  mc_verb note ENG-223: shipped
+say_quiet() { mc_verb "$@" 2>&1 | grep -q 'queued ->' && mc_verb "$@" 2>&1 | grep -c 'not on the board'; }
+says "  … stays quiet for an on-board key"        yes '^0$'                          say_quiet hold eng-201: waiting
+says "  … and for a local verb"                   no  'not on the board'             mc_verb ls
 says "review-check keeps the real note"  yes  'members_controller'       "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the bot thread"  no  'Gemfile.lock'             "$_MC_LIB/mc-review-check.sh" example-org/app 202
 says "review-check drops the resolved"    no  'stray whitespace'         "$_MC_LIB/mc-review-check.sh" example-org/app 202
@@ -682,6 +720,23 @@ says "the tick ends with a numbered pace step" yes '^5\. \*\*Pace: run `\$MC_HOM
 says "  … which schedules the wake under a dynamic /loop" yes 'ScheduleWakeup.*delaySeconds.*\[mc-loop\]' tick_flat
 says "  … and still runs during a full-freeze pause"      yes 'Full-freeze pause.*mc-pace\.sh record --writes 0' tick_flat
 
+# --- 6i. adopt: a named tick step and a lock-wrapped prep-write ----------------------
+# Why: a detector the driver mentions only in prose gets skipped (see 6f), so the adopt sweep
+# is a numbered step and Prep-write 7 is pinned to its switch, lock and cap.
+echo
+echo "adopt   (driver tick ↔ Prep-write 7)"
+echo "────────────────────────────────────────────────────────────────"
+pw7() { awk '/^### Prep-write 7/{f=1} f&&/^## /{exit} f' "$DRIVER"; }
+drain_skip() { awk '/^     - \*\*SKIP \(intake/{f=1} f&&/^     - \*\*KEEP/{exit} f' "$DRIVER"; }
+says "the tick has a numbered adopt-sweep step"     yes '^[0-9.]+\. \*\*Adopt sweep.*mc-adopt\.sh' tick_steps
+says "Prep-write 7 names the ADOPT_OFF switch"      yes 'ADOPT_OFF'                                pw7
+says "  … is lock-wrapped"                         yes 'mc-lock\.sh check loop'                   pw7
+says "  … under the one-prep-write cap"            yes 'one-prep-write cap'                       pw7
+says "  … stamps the row cycle background"         yes 'cycle: "background"'                      pw7
+says "  … and spawns no planner"                   yes 'Do not spawn the critic, investigator or planner' pw7
+says "a drain pause skips adopting"                 yes 'would adopt'                              drain_skip
+says "the driver counts six internal writes"        yes '^1$'  grep -c 'The SIX internal writes' "$DRIVER"
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"
@@ -699,6 +754,7 @@ run "list_ready in → all ready"    0 bash -c 'test -n "$("$0" list_ready "Read
 run "mc-promote no-ops"        0,1,3,4 "$_MC_LIB/mc-promote.sh"
 run "mc-archive no auto-roll"    0,1,3 "$_MC_LIB/mc-archive.sh"
 run "mc-inbound single-tier"       0,1 "$_MC_LIB/mc-inbound.sh"
+run "mc-adopt cycle-less"         0,10 "$_MC_LIB/mc-adopt.sh"
 printf 'cycles vetting\n' > "$WORK/tracker/capabilities"
 
 # --- 8. the safety assertion --------------------------------------------------------
