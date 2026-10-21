@@ -30,7 +30,8 @@ feature-flags.sh       write / verify the feature-flags labels field
 post-release-note.sh   comment a post-release task on the ticket (marked, never duplicated, never a sub-task)
 sprint-add.sh          add a ticket to the active sprint
 request-review.sh      draft → ready + request the reviewer team; on a reviewed PR, re-request its reviewers
-merge.sh               guarded PR merge: approved, approval current, CI green, not frozen, no veto label
+merge.sh               guarded PR merge: approved, approval current, CI green, not frozen, no veto label;
+                       with mission-control, only a queued `mc merge` (or a terminal) authorizes it
 dependabot-merge.sh    approve + merge Dependabot PRs only, manifest/lockfile-only diffs, <pr>@<sha>
 test/lint.sh           syntax + arg-handling + config-validation checks, no network
 ```
