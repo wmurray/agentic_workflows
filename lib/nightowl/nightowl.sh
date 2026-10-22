@@ -224,6 +224,7 @@ render_settings() { # render_settings <id>: the filled profile on stdout
     | .permissions.deny += [$libs[] | "Edit(/" + . + "/**)"]
     # An rtk hook rewrites `git push` to `rtk git push`, which no plain rule matches.
     | .permissions.deny += [.permissions.deny[] | select(startswith("Bash(") and (startswith("Bash(*") | not)) | "Bash(rtk " + .[5:]]
+    | if $notes != "" then .permissions.allow += $t._nightowl_notes.read else . end
     | if $notes != "" and ($t._nightowl_notes.kinds | index($kind)) then
         .permissions.allow += $t._nightowl_notes.allow
         | .permissions.additionalDirectories += $t._nightowl_notes.additionalDirectories
@@ -335,6 +336,11 @@ result and carry on with what you can do.
   one op per command. No \$VAR or \$(...) as a command or path, no for or while loops, and
   cd only into your worktree or task dir. If a command is refused, split it into plain
   single commands and retry once before giving up on the shell.
+EOF
+    # Why: a pane cannot read .env, so without this it assumes the shared test DB and tries to make its own.
+    [ -n "$WORKTREE_SETUP" ] && cat <<EOF
+- A setup hook prepared this worktree: env files, dependencies, and its own test database
+  where the repo uses one. Your test runs already use that database. Do not create another.
 EOF
     case "$kind" in
       draft-pr|flake) cat <<EOF
