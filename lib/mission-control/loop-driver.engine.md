@@ -247,6 +247,12 @@ Every tick, **re-read `$MC_HOME/state.json` from disk and reason from it.**
 Never rely on memory from a previous tick. The file is canonical; your context is disposable —
 this is what makes the loop killable/restartable with no lost work and bounds context growth.
 
+The file is canonical for the BOARD (lanes, fields, who holds what), not for REASONS. A reason stored
+in a row (`question`, `fields_missing`, `result`, a `ci` note) was true on the tick that wrote it and
+may have stopped being true since. So any reason you print in the tick line or write into a row's
+`question` this tick is recomputed this tick, from this tick's poll and tracker read; a reason carried
+from `state.json` is only ever quoted as "last known: …" and never restated as current.
+
 ## Each tick
 
 0. **PAUSE switch — check FIRST, before anything else.** Read `$MC_HOME/PAUSED`
@@ -704,7 +710,11 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    loop that parrots `question` reports "diff walk → ready" instead of "⛔ merge"). So when your
    poll disagrees with the board (e.g. APPROVED + CI green + MERGEABLE but lane still `in-review`),
    propose from **what the PR/the tracker actually say** and call out the lag as drift — do not restate
-   the board's own words back to it.
+   the board's own words back to it. **This covers every reason, not only Gate-2 ones.** "CI red",
+   "Feature Flags empty", "fields missing: …" and the like are facts of the tick that found them, so
+   before one goes into the tick line or a `question`, re-check it this tick from the poller's columns,
+   the `--check` output or the tracker read. A reason that no longer holds is dropped or replaced with
+   what holds now; one you did not re-check is quoted as "last known: …", never printed as current.
 4. **Emit ONE terse line** to your pane (e.g. `tick @ HH:MM — reconcile clean · ingested ABC-2008
    → planner spawned · prepped triage ABC-2003 (3 items → 📝) · 1 ⛔ gate · would spawn coder ABC-9002`)
    then run step 5 and **stop until the next tick.** When you took a prep-class write this tick, say so plainly and
