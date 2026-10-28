@@ -416,7 +416,9 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
      `ready-to-merge` but poller shows `re-review`/`ci=fail` → demote to `in-review` (stale);
      write the polled `ci`/`ci_detail` so the dash renders without polling (`ci_detail` = the failing
      check's short name ONLY, e.g. `feature flag manifest`; no prose, no colons: the dash prints its first
-     18 characters after a `✗:`); refresh the `reconcile`
+     18 characters after a `✗:`). **A merged PR has no CI:** the poller prints `-` in its CI column once
+     MERGED is set, so write `ci: "-"` and clear `ci_detail` on the row, and never carry a `fail` from
+     before the merge; refresh the `reconcile`
      field. Honor the catch-rules below + in step 3 when interpreting (they're your guardrails —
      a misread that advances a lane is the one way this bites, and it's board-only/reversible).
    - **BOARD-INTERNAL — cycle promotion (`background` → `sprint`):** **only if** the board has any
@@ -676,7 +678,9 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
      as "CI failing" / propose "fix CI."** A `frozen` PR that's otherwise APPROVED + green +
      mergeable is "⛔ ready-to-merge but ❄ release-frozen — clear with QA, then `mc merge`," not a
      broken build; a red freeze guard on a green build is not "CI failing". Only `ci=fail` (a real non-freeze failure)
-     is a build problem worth flagging.
+     is a build problem worth flagging, and only on an OPEN PR: a merged PR's checks are history
+     (its last run can be red on a check that has since expired), the poller prints `-` for them, and
+     "CI red" is never a reason on a row whose PR has merged.
    - gate lanes (`plan-review`/`awaiting-review`/`ready-to-merge`/`kickback`/`alpha-verify`
      — note: `in-review` is deliberately NOT a gate lane, per the rule just above)
      → "⛔ your turn: <reason>" (for `ready-to-merge`: "⛔ your merge — `mc merge ABC-N` or merge on PR host"
