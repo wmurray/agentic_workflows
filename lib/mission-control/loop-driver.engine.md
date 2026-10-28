@@ -440,6 +440,14 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - The **status-sync wrapper** itself **refuses** the two transitions needing extra fields — `qa` (→ the QA status,
        needs the **qa-transition wrapper**) and `done` (→ a terminal status, needs the **done-transition wrapper**), both exit 4. Those stay
        MANUAL: if the wrapper refuses, FLAG it, never hand-roll a raw tracker transition.
+     - **That refusal is about moving the TRACKER. The board moving to `done` is a different write, and
+       you apply it.** When this tick's poll shows a row's tracker status already at a terminal Done status
+       and the board lane is behind it (`product-review`, `qa`, `alpha-verify` or any earlier lane), set the
+       lane to `done` yourself: a `state.json`-only write inside this lock-wrapped phase, keeping
+       `release_note`/`result`, touching no tracker field, running no wrapper. Do NOT flag it and do NOT
+       wait for `mc done` (a manual-only verb the loop cannot drain; the loop guard refuses it with exit 4).
+       Record it as an APPLIED `drift[]` line `"ABC-N board <lane>→done (tracker already Done)"` and name it
+       in the tick line. Only the inverse (board `done`, tracker not Done) is a flag, never a lane move.
      - **Never touch a `blocked`/held ticket's status.**
      - Record each as an APPLIED `drift[]` line: `"ABC-N the tracker <old>→<new> (synced to board lane)"`.
    - **OUTWARD — assignee-fix (UNASSIGNED-only):** an **unassigned** ticket in an
@@ -491,7 +499,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - **OUTWARD — still FLAG-only (NOT granted; report as "would fix (manual): …"):** empty
      Release-Note/Testing-Notes/feature-flag field writes while the `fields` guard is ON (with it open,
      Prep-write 6 owns them); story points always; premature-`done`
-     (board `done` but the tracker ≠ Done — judgment); orphan PRs.
+     (board `done` but the tracker ≠ Done — judgment; the reverse, tracker Done with the board behind,
+     is the applied board write in the status-sync guards above, not a flag); orphan PRs.
    - **Never auto-advance a `blocked`/held ticket** — a block needs eyes; reflect reality around it but leave the lane.
    - **Draft-ness comes only from the poller's `DRAFT` column (`isDraft`), never from PR `state`.**
      A draft PR is also `state: OPEN`, so `state` alone says nothing about draft-ness.
@@ -1405,7 +1414,9 @@ review or merges.
 
 **Later ticks run the normal flow on the new row.** An `awaiting-review` row is Gate 2 and waits for
 the operator's `mc ready`. An `in-review` row joins the review sweep. Status-sync moves the tracker
-forward to match the lane (never to `qa`/`done`, never backward). When the operator set the tracker
+forward to match the lane (never to `qa`/`done`, never backward). The board lane does move to `done`
+on its own once the tracker is already Done: that is the board-only reconcile write in step 2, not a
+tracker move, and it needs no `mc done`. When the operator set the tracker
 status on purpose, the `[adopt]` question and the work-log line make that move visible, and `mc hold
 ABC-N` stops further moves.
 
