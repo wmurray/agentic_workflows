@@ -250,7 +250,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
 ## Each tick
 
 0. **PAUSE switch — check FIRST, before anything else.** Read `$MC_HOME/PAUSED`
-   (set/cleared by `mc pause [--drain]` / `mc resume`; the cron keeps firing regardless). Three cases:
+   (set/cleared by `mc pause [--drain]` / `mc resume`; the cron keeps firing regardless). The switch is
+   that one file at that exact path, `$MC_HOME/PAUSED`, upper case, no dot prefix, no other name: check it
+   and nothing else. Three cases:
    - **Absent** → not paused; proceed to step 1.
    - **Present, NO `mode=drain` line → FULL freeze (bare `mc pause`).** Emit one line
      (`tick @ HH:MM — ⏸ paused (mc resume to unpause)`) and **end the tick immediately** — no poll,
