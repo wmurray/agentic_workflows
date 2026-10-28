@@ -7,7 +7,7 @@ Spawn with agent type `rails-feature-developer`, `run_in_background: true`. Fill
 Implement ticket **{TICKET}** in the **{REPO}** repo at `{REPO_PATH}` (Rails + RSpec; Packwerk where the repo uses it). Read `{REPO_PATH}/AGENTS.md` first for conventions{TEST_CONVENTIONS — the repo's spec-style rules from the overlay, in parentheses; omit if none}.
 
 ## Comment rules (read before you write code)
-Read `{COMMENT_RULES}` now; it is the whole comment policy. In short: write a comment only for non-obvious context, prefixed `Why:` `Invariant:` `Gotcha:` `Ref:` or `Perf:`; never restate the code; prefer a rename or an extracted method over an explanatory comment; one comment per point, directly above the line it explains; no ticket or PR numbers in comments.
+Read `{COMMENT_RULES}` now; it is the whole comment policy. In short: the default is no comment; keep one only for a why the code cannot show; never restate the code; a surprise in our own code gets a rename, an extract or a type, not a comment; a `rubocop:disable` of a correctness rule is a bug; no ticket or PR numbers in comments.
 
 ## Approved plan
 Read the full plan at: `{PLAN_PATH}`

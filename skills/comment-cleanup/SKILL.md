@@ -12,4 +12,4 @@ to the branch's own diff, its own commit, then tests and linter again).
 Output:
 
 - Summarize which comments were removed or rewritten, and why.
-- Confirm every remaining comment in the diff carries one of the allowed prefixes and is specific.
+- Confirm every remaining comment in the diff falls under one of the survivors in RULES.md, and list every new lint suppression with its rule.
