@@ -457,7 +457,9 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
        `release_note`/`result`, touching no tracker field, running no wrapper. Do NOT flag it and do NOT
        wait for `mc done` (a manual-only verb the loop cannot drain; the loop guard refuses it with exit 4).
        Record it as an APPLIED `drift[]` line `"ABC-N board <lane>→done (tracker already Done)"` and name it
-       in the tick line. Only the inverse (board `done`, tracker not Done) is a flag, never a lane move.
+       in the tick line. A `blocked`/held row moves too: the hold governs tracker writes and this is a
+       board-only write mirroring reality. Only the inverse (board `done`, tracker not Done) is a flag,
+       never a lane move.
      - **Never touch a `blocked`/held ticket's status.**
      - Record each as an APPLIED `drift[]` line: `"ABC-N the tracker <old>→<new> (synced to board lane)"`.
    - **OUTWARD — assignee-fix (UNASSIGNED-only):** an **unassigned** ticket in an
