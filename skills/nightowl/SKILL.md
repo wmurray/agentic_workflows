@@ -56,6 +56,13 @@ worktree helpers. Then look, without writing anything:
 - **CI.** Specs that failed and passed on retry in recent runs are flake candidates.
 - **Open questions** the maintainer mentioned today are research candidates.
 
+Then check who owns each ticket-backed candidate. Read its assignee through the tracker
+adapter and search the PR host for open or closed PRs that name the ticket key. Drop a
+`plan`, `repro`, `draft-pr` or `flake` candidate that someone else is assigned to or already
+has a PR for, and list it under the proposal as skipped, with the owner, so the maintainer
+can overrule. `review` and `research` candidates do not need the check. An unassigned ticket
+is fine to propose; say it is unassigned.
+
 ### 2. Propose
 
 Show at most `NIGHTOWL_MAX_TASKS` (default 4) candidates, best first, as a numbered list:
