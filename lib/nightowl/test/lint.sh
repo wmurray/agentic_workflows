@@ -142,9 +142,13 @@ for rule in 'Bash(rtk git push*)' 'Bash(rtk gh pr merge*)' 'Bash(rtk gh pr ready
   says "denies $rule" "^$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')\$" jq -r '.permissions.deny[]' <<<"$S"
 done
 lacks "no rtk twin of a wildcard-led deny" '^Bash\(rtk \*' jq -r '.permissions.deny[]' <<<"$S"
-for rule in 'Bash(head)' 'Bash(sed -n *)' 'Bash(jq *)' 'Bash(rtk read *)' 'Bash(rtk wc *)' 'Bash(rtk ls*)' 'Bash(rtk git log*)'; do
+for rule in 'Bash(head)' 'Bash(sed -n *)' 'Bash(jq *)' 'Bash(rtk read *)' 'Bash(rtk wc *)' 'Bash(rtk ls*)' 'Bash(rtk git log*)' \
+            'Read(~/.claude/plugins/cache/*/*/*/skills/**)'; do
   says "allows $rule" "^$(printf '%s' "$rule" | sed 's/[][()*.]/\\&/g')\$" jq -r '.permissions.allow[]' <<<"$S"
 done
+lacks "plugin skills are never editable" '^Edit\(~/\.claude/plugins' jq -r '.permissions.allow[]' <<<"$S"
+lacks "plugin scripts are not allowed as a class" '^Bash\([^)]*plugins/cache' jq -r '.permissions.allow[]' <<<"$S"
+lacks "no env-prefixed command allowed" '^Bash\([A-Z_]+=' jq -r '.permissions.allow[]' <<<"$S"
 lacks "no allow rule for a push or merge" '(git push|gh pr (merge|ready|create)|merge\.sh)' jq -r '.permissions.allow[]' <<<"$S"
 says "no OS sandbox"               '^false$' jq '.sandbox.enabled' <<<"$S"
 says "unattended mode is dontAsk"  '^dontAsk$' jq -r '.permissions.defaultMode' <<<"$S"
@@ -186,7 +190,12 @@ lacks "research without notes dir" "$FX/notes" printf '%s' "$X"
 says "research may search the web" '^WebSearch$' jq -r '.permissions.allow[]' <<<"$X"
 X="$(NIGHTOWL_NOTES_DIR="$FX/notes" "$NO" settings --date "$D" res1)"
 says "research writes the notes dir" "^Edit\(/$FX/notes/\*\*\)$" jq -r '.permissions.allow[]' <<<"$X"
-lacks "notes dir only for research" "$FX/notes" env NIGHTOWL_NOTES_DIR="$FX/notes" "$NO" settings --date "$D" pr1
+# Why: a plan brief can name a note, and the pane opens it with Read.
+X="$(NIGHTOWL_NOTES_DIR="$FX/notes" "$NO" settings --date "$D" pr1)"
+says "every kind reads the notes dir" "^Read\(/$FX/notes/\*\*\)$" jq -r '.permissions.allow[]' <<<"$X"
+lacks "  … but only research writes it" "^Edit\(/$FX/notes" jq -r '.permissions.allow[]' <<<"$X"
+lacks "  … or works in it"           "$FX/notes" jq -r '.permissions.additionalDirectories[]' <<<"$X"
+lacks "no notes rule without a notes dir" "$FX/notes" "$NO" settings --date "$D" pr1
 X="$(NIGHTOWL_RESEARCH_ALLOW="mcp__docs_server, Bash(docs-cli *)" "$NO" settings --date "$D" res1)"
 says "research gets its extra allows" '^mcp__docs_server$' jq -r '.permissions.allow[]' <<<"$X"
 says "  … every listed rule"          '^Bash\(docs-cli \*\)$' jq -r '.permissions.allow[]' <<<"$X"
@@ -344,6 +353,8 @@ M2="$FX/report/$D2.manifest.json"
 expect "confirm a setup night"          0 "$NO" confirm --date "$D2" "$( (task su1 plan; task su2 plan; task su3 plan) | tasks)"
 expect "launch with a setup hook"       0 env NIGHTOWL_WORKTREE_SETUP='printf "%s|%s|%s\n" "$PWD" "$NO_REPO" "$NO_KIND" > .setup-ran' "$NO" launch --date "$D2" su1
 says "setup ran inside the worktree"    "wt-su1\|$FX/repo\|plan$" cat "$FX/wt-su1/.setup-ran"
+says "  … and the brief says the test DB is ready" 'its own test database' cat "$FX/report/$D2/su1/brief.md"
+lacks "no setup note without a setup hook" 'its own test database' cat "$BF"
 git -C "$FX/repo" worktree add -q --detach "$FX/wt-su2" origin/main
 expect "launch into an existing worktree" 0 env NIGHTOWL_WORKTREE_SETUP='touch .setup-ran' "$NO" launch --date "$D2" su2
 [ ! -e "$FX/wt-su2/.setup-ran" ] && ok "  … skips setup" || bad "setup ran in a worktree nightowl did not create"

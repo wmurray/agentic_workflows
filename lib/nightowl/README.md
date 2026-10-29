@@ -51,8 +51,13 @@ The profile is `settings.template.json`, filled per task by `nightowl.sh setting
   Tracker reads (`jira issue view`, `jira issue list`, `acli jira workitem view`) are
   allowed for every kind. The directories in `NIGHTOWL_LIBRARY_DIRS` (installed library
   sources such as a gem home) are readable and never editable.
-  Research tasks also get web search and fetch, and writes to `NIGHTOWL_NOTES_DIR` when it
-  is set, plus any rules in `NIGHTOWL_RESEARCH_ALLOW` (a docs tool, say).
+  Skill files in the plugin cache (`~/.claude/plugins/cache/*/*/*/skills/**`) are readable,
+  so a pane can open a skill's reference files, which the Skill tool does not load.
+  Every kind may read `NIGHTOWL_NOTES_DIR` when it is set, so a plan can open the note its
+  brief names. Research tasks also get web search and fetch, writes to `NIGHTOWL_NOTES_DIR`,
+  and any rules in `NIGHTOWL_RESEARCH_ALLOW` (a docs tool, say).
+  A plugin script a pane should run (a word counter, say) goes in `NIGHTOWL_ALLOW_EXTRA` by
+  its full path. Plugin scripts are not allowed as a class.
 - **Denied, always:** `op`, `sentry-cli`, `kubectl`, `aws`, ssh, everything in
   `NIGHTOWL_DENY_EXTRA` and `NIGHTOWL_DENY_DEPLOY`, every PR merge path, `gh pr ready`,
   direct `git push` and `gh pr create`, `gh api` writes, tracker status moves, comments and
@@ -67,6 +72,12 @@ The profile is `settings.template.json`, filled per task by `nightowl.sh setting
   kill switch.
 - A pane carries `NIGHTOWL_TASK`. Orchestrator ops exit 5 inside it, and task ops act only
   for that id.
+
+A pane cannot read `.env` files, so it cannot see which test database its worktree uses.
+When `NIGHTOWL_WORKTREE_SETUP` is set, the brief tells the pane that setup already gave the
+worktree its own test database, so it does not try to create one. No rule allows an
+env-prefixed command such as `TEST_ENV_NUMBER=7 bin/rails db:create`: per-worktree databases
+come from setup, before the pane starts.
 
 A pane cannot read the maintainer's leak denylist, so a brief cannot ask it to grep for
 leaks before pushing. `push` does it instead: in a worktree with `.mc-leak-guard` at its
