@@ -227,6 +227,10 @@ while IFS=$'\t' read -r t lane pr blk wk pd rimpl rhandle; do
           elif ($real | any(. == "" or IN("PENDING","IN_PROGRESS","QUEUED","EXPECTED","WAITING","REQUESTED"))) then "pending"
           elif ($frzchecks | any(IN($bad[]))) then "frozen"
           else "green" end')
+      # A merged PR's checks are history: its last run can be red on a check that has since
+      # expired (a flag manifest, a freeze guard), and nothing will re-run it. CI only means
+      # something on an open PR, so a merged row reports `-` and the board's `ci` clears.
+      [ "$merged" != "-" ] && ci="-"
     elif [ "$hosterr" = 1 ]; then
       # get_pr could not answer (auth, network): unknown, which is not the same as absent.
       prcol="$prcol(host-err)"

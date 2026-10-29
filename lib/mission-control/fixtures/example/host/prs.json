@@ -42,6 +42,18 @@
       "reviewRequests": []
     },
     {
+      "number": 216, "title": "Merged with a red check that has since expired",
+      "headRefName": "eng-216-expired-flag", "isDraft": false,
+      "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/216",
+      "state": "MERGED", "reviewDecision": "APPROVED", "mergeable": "UNKNOWN",
+      "mergedAt": "2026-08-24T10:12:00Z",
+      "statusCheckRollup": [
+        {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "feature flag manifest", "status": "COMPLETED", "conclusion": "FAILURE"}
+      ],
+      "reviewRequests": []
+    },
+    {
       "number": 301, "title": "Bump the CSV parser",
       "headRefName": "chore-bump-csv-parser", "isDraft": false,
       "author": {"login": "me"}, "url": "https://example.invalid/example-org/app/pull/301",

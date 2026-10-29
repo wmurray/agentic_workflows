@@ -512,7 +512,8 @@ says "  … but not an unproposed sprint one"     no  '^ +ENG-209 +\[refined\]' 
 # poller says, per row, whether the move is still due, already done (then `mc qa` is
 # board-only), or must never be re-run.
 jq '.tickets += [
-  {"ticket":"ENG-216","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false},
+  {"ticket":"ENG-216","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false,
+   "pr":"https://example.invalid/example-org/app/pull/216"},
   {"ticket":"ENG-217","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false,"tracker_qa_at":"2026-08-25T08:30:00Z"},
   {"ticket":"ENG-218","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false},
   {"ticket":"ENG-219","lane":"alpha-verify","cycle":"sprint","worker":null,"blocked":false,"tracker_qa_at":"2026-08-24T15:00:00Z"},
@@ -528,6 +529,9 @@ says "  … a row that left QA is flagged, never re-moved" yes '^  ENG-219 +trac
 says "  … a blocked row waits"                     yes '^  ENG-220 +waiting \(blocked\)'               poll_pq
 says "  … no other lane is listed"                no  '^  ENG-20[1-7] +(due|in QA|waiting)'           poll_pq
 says "alpha-verify in the QA status is not a regression" no 'REGRESSED.*ENG-21[78]'               poll_pq
+# host/prs.json 216 merged with a FAILURE check: once a PR has merged its checks are history.
+says "a merged PR's red check is not CI"           yes '^ENG-216 +alpha-verify .*app#216 +ready +APPROVED +- +2026-08-24'  poll_pq
+says "  … it never reads as fail"                  no  '^ENG-216 .* fail '                           poll_pq
 says "the default board has no post-merge QA section" no '^post-merge QA move'                      "$_MC_LIB/mc-poll.sh"
 dash_pq() { MC_STATE="$WORK/state.post-merge-qa.json" MC_INTERVAL=99 MC_GATE1_FILE="$WORK/GATE1_AUTO" MC_ADDRESS_FILE="$WORK/KICKBACK_AUTO" MC_CODER_FILE="$WORK/CODER_SPAWN_LIVE" MC_PAUSE_FILE="$WORK/PAUSED" timeout 8 "$_MC_LIB/dash.sh"; }
 says "dash says a moved row is in QA, awaiting the smoke" yes 'ENG-217 +\[alpha-verify\].*in QA \(tracker\) · smoke on alpha, then mc qa ENG-217'  dash_pq

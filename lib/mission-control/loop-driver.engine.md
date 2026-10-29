@@ -247,10 +247,18 @@ Every tick, **re-read `$MC_HOME/state.json` from disk and reason from it.**
 Never rely on memory from a previous tick. The file is canonical; your context is disposable —
 this is what makes the loop killable/restartable with no lost work and bounds context growth.
 
+The file is canonical for the BOARD (lanes, fields, who holds what), not for REASONS. A reason stored
+in a row (`question`, `fields_missing`, `result`, a `ci` note) was true on the tick that wrote it and
+may have stopped being true since. So any reason you print in the tick line or write into a row's
+`question` this tick is recomputed this tick, from this tick's poll and tracker read; a reason carried
+from `state.json` is only ever quoted as "last known: …" and never restated as current.
+
 ## Each tick
 
 0. **PAUSE switch — check FIRST, before anything else.** Read `$MC_HOME/PAUSED`
-   (set/cleared by `mc pause [--drain]` / `mc resume`; the cron keeps firing regardless). Three cases:
+   (set/cleared by `mc pause [--drain]` / `mc resume`; the cron keeps firing regardless). The switch is
+   that one file at that exact path, `$MC_HOME/PAUSED`, upper case, no dot prefix, no other name: check it
+   and nothing else. Three cases:
    - **Absent** → not paused; proceed to step 1.
    - **Present, NO `mode=drain` line → FULL freeze (bare `mc pause`).** Emit one line
      (`tick @ HH:MM — ⏸ paused (mc resume to unpause)`) and **end the tick immediately** — no poll,
@@ -408,7 +416,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      `ready-to-merge` but poller shows `re-review`/`ci=fail` → demote to `in-review` (stale);
      write the polled `ci`/`ci_detail` so the dash renders without polling (`ci_detail` = the failing
      check's short name ONLY, e.g. `feature flag manifest`; no prose, no colons: the dash prints its first
-     18 characters after a `✗:`); refresh the `reconcile`
+     18 characters after a `✗:`). **A merged PR has no CI:** the poller prints `-` in its CI column once
+     MERGED is set, so write `ci: "-"` and clear `ci_detail` on the row, and never carry a `fail` from
+     before the merge; refresh the `reconcile`
      field. Honor the catch-rules below + in step 3 when interpreting (they're your guardrails —
      a misread that advances a lane is the one way this bites, and it's board-only/reversible).
    - **BOARD-INTERNAL — cycle promotion (`background` → `sprint`):** **only if** the board has any
@@ -440,6 +450,16 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      - The **status-sync wrapper** itself **refuses** the two transitions needing extra fields — `qa` (→ the QA status,
        needs the **qa-transition wrapper**) and `done` (→ a terminal status, needs the **done-transition wrapper**), both exit 4. Those stay
        MANUAL: if the wrapper refuses, FLAG it, never hand-roll a raw tracker transition.
+     - **That refusal is about moving the TRACKER. The board moving to `done` is a different write, and
+       you apply it.** When this tick's poll shows a row's tracker status already at a terminal Done status
+       and the board lane is behind it (`product-review`, `qa`, `alpha-verify` or any earlier lane), set the
+       lane to `done` yourself: a `state.json`-only write inside this lock-wrapped phase, keeping
+       `release_note`/`result`, touching no tracker field, running no wrapper. Do NOT flag it and do NOT
+       wait for `mc done` (a manual-only verb the loop cannot drain; the loop guard refuses it with exit 4).
+       Record it as an APPLIED `drift[]` line `"ABC-N board <lane>→done (tracker already Done)"` and name it
+       in the tick line. A `blocked`/held row moves too: the hold governs tracker writes and this is a
+       board-only write mirroring reality. Only the inverse (board `done`, tracker not Done) is a flag,
+       never a lane move.
      - **Never touch a `blocked`/held ticket's status.**
      - Record each as an APPLIED `drift[]` line: `"ABC-N the tracker <old>→<new> (synced to board lane)"`.
    - **OUTWARD — assignee-fix (UNASSIGNED-only):** an **unassigned** ticket in an
@@ -491,7 +511,8 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    - **OUTWARD — still FLAG-only (NOT granted; report as "would fix (manual): …"):** empty
      Release-Note/Testing-Notes/feature-flag field writes while the `fields` guard is ON (with it open,
      Prep-write 6 owns them); story points always; premature-`done`
-     (board `done` but the tracker ≠ Done — judgment); orphan PRs.
+     (board `done` but the tracker ≠ Done — judgment; the reverse, tracker Done with the board behind,
+     is the applied board write in the status-sync guards above, not a flag); orphan PRs.
    - **Never auto-advance a `blocked`/held ticket** — a block needs eyes; reflect reality around it but leave the lane.
    - **Draft-ness comes only from the poller's `DRAFT` column (`isDraft`), never from PR `state`.**
      A draft PR is also `state: OPEN`, so `state` alone says nothing about draft-ness.
@@ -659,7 +680,9 @@ this is what makes the loop killable/restartable with no lost work and bounds co
      as "CI failing" / propose "fix CI."** A `frozen` PR that's otherwise APPROVED + green +
      mergeable is "⛔ ready-to-merge but ❄ release-frozen — clear with QA, then `mc merge`," not a
      broken build; a red freeze guard on a green build is not "CI failing". Only `ci=fail` (a real non-freeze failure)
-     is a build problem worth flagging.
+     is a build problem worth flagging, and only on an OPEN PR: a merged PR's checks are history
+     (its last run can be red on a check that has since expired), the poller prints `-` for them, and
+     "CI red" is never a reason on a row whose PR has merged.
    - gate lanes (`plan-review`/`awaiting-review`/`ready-to-merge`/`kickback`/`alpha-verify`
      — note: `in-review` is deliberately NOT a gate lane, per the rule just above)
      → "⛔ your turn: <reason>" (for `ready-to-merge`: "⛔ your merge — `mc merge ABC-N` or merge on PR host"
@@ -693,7 +716,11 @@ this is what makes the loop killable/restartable with no lost work and bounds co
    loop that parrots `question` reports "diff walk → ready" instead of "⛔ merge"). So when your
    poll disagrees with the board (e.g. APPROVED + CI green + MERGEABLE but lane still `in-review`),
    propose from **what the PR/the tracker actually say** and call out the lag as drift — do not restate
-   the board's own words back to it.
+   the board's own words back to it. **This covers every reason, not only Gate-2 ones.** "CI red",
+   "Feature Flags empty", "fields missing: …" and the like are facts of the tick that found them, so
+   before one goes into the tick line or a `question`, re-check it this tick from the poller's columns,
+   the `--check` output or the tracker read. A reason that no longer holds is dropped or replaced with
+   what holds now; one you did not re-check is quoted as "last known: …", never printed as current.
 4. **Emit ONE terse line** to your pane (e.g. `tick @ HH:MM — reconcile clean · ingested ABC-2008
    → planner spawned · prepped triage ABC-2003 (3 items → 📝) · 1 ⛔ gate · would spawn coder ABC-9002`)
    then run step 5 and **stop until the next tick.** When you took a prep-class write this tick, say so plainly and
@@ -1405,7 +1432,9 @@ review or merges.
 
 **Later ticks run the normal flow on the new row.** An `awaiting-review` row is Gate 2 and waits for
 the operator's `mc ready`. An `in-review` row joins the review sweep. Status-sync moves the tracker
-forward to match the lane (never to `qa`/`done`, never backward). When the operator set the tracker
+forward to match the lane (never to `qa`/`done`, never backward). The board lane does move to `done`
+on its own once the tracker is already Done: that is the board-only reconcile write in step 2, not a
+tracker move, and it needs no `mc done`. When the operator set the tracker
 status on purpose, the `[adopt]` question and the work-log line make that move visible, and `mc hold
 ABC-N` stops further moves.
 
