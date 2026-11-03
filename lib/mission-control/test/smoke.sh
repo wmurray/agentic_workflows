@@ -672,7 +672,9 @@ PACE_HOME="$WORK/pace"; mkdir -p "$PACE_HOME/transcripts"
 echo '{"tickets":[]}' > "$PACE_HOME/state.json"
 _noon=1768392000    # 2026-01-14 12:00 UTC
 _night=1768431600   # 2026-01-14 23:00 UTC
-pace() { TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$1" "$_MC_LIB/mc-pace.sh" record --writes "$2" "${@:3}"; }
+# A transcript dir with nothing in it, so the real session's transcripts never leak into the counts.
+mkdir -p "$PACE_HOME/no-transcripts"
+pace() { TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$1" MC_LOOP_TRANSCRIPT_DIR="${MC_LOOP_TRANSCRIPT_DIR:-$PACE_HOME/no-transcripts}" "$_MC_LIB/mc-pace.sh" record --writes "$2" "${@:3}"; }
 pace_seq() { printf '%s ' "$(pace "$_noon" 3)" "$(pace "$_noon" 0)" "$(pace "$_noon" 0)" "$(pace "$_noon" 0)" "$(pace "$_night" 0)" "$(pace "$_night" 1)"; }
 says "write, idle ×3, night idle, night write → 600 1200 1800 1800 3600 600" yes '^600 1200 1800 1800 3600 600 $' pace_seq
 ticks_n() { wc -l < "$PACE_HOME/ticks.jsonl" | tr -d ' '; }
@@ -699,6 +701,14 @@ cat > "$PACE_HOME/transcripts/s.jsonl" <<'JSONL'
 JSONL
 pace_tr() { MC_LOOP_TRANSCRIPT_DIR="$PACE_HOME/transcripts" pace "$((_noon + 600))" 0 >/dev/null; tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'; }
 says "tokens come from the transcript since the last tick, once per message" yes '^1035 47$' pace_tr
+pace_default() {
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug
+  mkdir -p "$cwd"; slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/$slug"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:15:00Z","message":{"id":"m3","usage":{"input_tokens":50,"output_tokens":5}}}' > "$home/.claude/projects/$slug/t.jsonl"
+  ( cd "$cwd" && HOME="$home" MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 1200))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
+}
+says "  … and default to the session's own transcript dir when unset" yes '^50 5$' pace_default
 pace_ro() { local a b; a=$(shasum "$PACE_HOME/state.json"); pace "$_noon" 0 >/dev/null; b=$(shasum "$PACE_HOME/state.json"); [ "$a" = "$b" ] && echo unchanged; }
 says "mc-pace never writes state.json"        yes '^unchanged$' pace_ro
 
