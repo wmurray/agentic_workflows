@@ -19,12 +19,13 @@
 #   mc-pace.sh reset      the next record schedules 600 whatever the tick did (`mc wake`)
 #   mc-pace.sh show       the last ticks.jsonl line
 #
-# Token counts are optional. Without the flags they come from the newest transcript in
-# MC_LOOP_TRANSCRIPT_DIR (usage summed per message id since the previous tick). Unset, that
-# is the Claude Code transcript directory for the working directory the script runs in
-# ($HOME/.claude/projects/<cwd with every non-alphanumeric as ->), which is the loop
-# session's own directory when the driver calls this as the tick's last step. The counts
-# are null when the directory holds no transcript.
+# Token counts are optional. Without the flags they come from the calling session's own
+# transcript, $HOME/.claude/projects/*/$CLAUDE_CODE_SESSION_ID.jsonl, which Claude Code names
+# in the environment of every command it runs (usage summed per message id since the
+# previous tick). Without that id, or when its file is missing, the newest transcript in
+# MC_LOOP_TRANSCRIPT_DIR is read; unset, that is the transcript directory for the working
+# directory the script runs in ($HOME/.claude/projects/<cwd with every non-alphanumeric
+# as ->). The counts are null when no transcript is found.
 #
 # MC_PACE_NOW (an epoch) stands in for the clock, for tests.
 #
@@ -58,9 +59,17 @@ live_workers() {
 
 # Prints "<in> <out>", or "null null" when no transcript is readable.
 transcript_tokens() {
-  local since="$1" dir="${MC_LOOP_TRANSCRIPT_DIR:-$HOME/.claude/projects/$(printf '%s' "$PWD" | tr -c 'A-Za-z0-9' '-')}" f
-  [ -d "$dir" ] || { echo "null null"; return; }
-  f=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)
+  local since="$1" dir f=""
+  # The session's own transcript first: the driver runs this from the runtime dir, whose
+  # slug matches no project, and a cwd slug can hold other sessions' transcripts too.
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    f=$(ls "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | head -1)
+  fi
+  if [ -z "$f" ]; then
+    dir="${MC_LOOP_TRANSCRIPT_DIR:-$HOME/.claude/projects/$(printf '%s' "$PWD" | tr -c 'A-Za-z0-9' '-')}"
+    [ -d "$dir" ] || { echo "null null"; return; }
+    f=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)
+  fi
   [ -n "$f" ] || { echo "null null"; return; }
   # Gotcha: a transcript repeats one message's usage on every content block it splits into,
   # so usage is summed once per message id.

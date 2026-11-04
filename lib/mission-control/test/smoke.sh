@@ -674,7 +674,7 @@ _noon=1768392000    # 2026-01-14 12:00 UTC
 _night=1768431600   # 2026-01-14 23:00 UTC
 # A transcript dir with nothing in it, so the real session's transcripts never leak into the counts.
 mkdir -p "$PACE_HOME/no-transcripts"
-pace() { TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$1" MC_LOOP_TRANSCRIPT_DIR="${MC_LOOP_TRANSCRIPT_DIR:-$PACE_HOME/no-transcripts}" "$_MC_LIB/mc-pace.sh" record --writes "$2" "${@:3}"; }
+pace() { CLAUDE_CODE_SESSION_ID= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$1" MC_LOOP_TRANSCRIPT_DIR="${MC_LOOP_TRANSCRIPT_DIR:-$PACE_HOME/no-transcripts}" "$_MC_LIB/mc-pace.sh" record --writes "$2" "${@:3}"; }
 pace_seq() { printf '%s ' "$(pace "$_noon" 3)" "$(pace "$_noon" 0)" "$(pace "$_noon" 0)" "$(pace "$_noon" 0)" "$(pace "$_night" 0)" "$(pace "$_night" 1)"; }
 says "write, idle ×3, night idle, night write → 600 1200 1800 1800 3600 600" yes '^600 1200 1800 1800 3600 600 $' pace_seq
 ticks_n() { wc -l < "$PACE_HOME/ticks.jsonl" | tr -d ' '; }
@@ -705,10 +705,25 @@ pace_default() {
   local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug
   mkdir -p "$cwd"; slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/$slug"
   echo '{"type":"assistant","timestamp":"2026-01-14T12:15:00Z","message":{"id":"m3","usage":{"input_tokens":50,"output_tokens":5}}}' > "$home/.claude/projects/$slug/t.jsonl"
-  ( cd "$cwd" && HOME="$home" MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 1200))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID= MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 1200))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
   tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
 }
 says "  … and default to the session's own transcript dir when unset" yes '^50 5$' pace_default
+pace_session() { # the session id wins over the cwd slug, which holds a newer, bigger transcript
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug sid=0000aaaa-1111-2222-3333-444444444444
+  slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/-elsewhere"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:25:00Z","message":{"id":"m4","usage":{"input_tokens":70,"output_tokens":9}}}' > "$home/.claude/projects/-elsewhere/$sid.jsonl"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:25:00Z","message":{"id":"m5","usage":{"input_tokens":900,"output_tokens":90}}}' > "$home/.claude/projects/$slug/newer.jsonl"
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID="$sid" MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 1800))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
+}
+says "  … and read the session's own transcript by id, from any cwd" yes '^70 9$' pace_session
+pace_session_missing() { # an id with no file falls back to the cwd slug
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop"
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID=no-such-session MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 2400))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
+}
+says "  … and fall back to the cwd slug when the id has no file" yes '^0 0$' pace_session_missing
 pace_ro() { local a b; a=$(shasum "$PACE_HOME/state.json"); pace "$_noon" 0 >/dev/null; b=$(shasum "$PACE_HOME/state.json"); [ "$a" = "$b" ] && echo unchanged; }
 says "mc-pace never writes state.json"        yes '^unchanged$' pace_ro
 
