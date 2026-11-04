@@ -709,21 +709,43 @@ pace_default() {
   tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
 }
 says "  … and default to the session's own transcript dir when unset" yes '^50 5$' pace_default
+_sid=0000aaaa-1111-2222-3333-444444444444
 pace_session() { # the session id wins over the cwd slug, which holds a newer, bigger transcript
-  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug sid=0000aaaa-1111-2222-3333-444444444444
-  slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/-elsewhere"
-  echo '{"type":"assistant","timestamp":"2026-01-14T12:25:00Z","message":{"id":"m4","usage":{"input_tokens":70,"output_tokens":9}}}' > "$home/.claude/projects/-elsewhere/$sid.jsonl"
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug
+  slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/-elsewhere" "$home/.claude/projects/$slug"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:25:00Z","message":{"id":"m4","usage":{"input_tokens":70,"output_tokens":9}}}' > "$home/.claude/projects/-elsewhere/$_sid.jsonl"
   echo '{"type":"assistant","timestamp":"2026-01-14T12:25:00Z","message":{"id":"m5","usage":{"input_tokens":900,"output_tokens":90}}}' > "$home/.claude/projects/$slug/newer.jsonl"
-  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID="$sid" MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 1800))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID="$_sid" MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 1800))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
   tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
 }
 says "  … and read the session's own transcript by id, from any cwd" yes '^70 9$' pace_session
-pace_session_missing() { # an id with no file falls back to the cwd slug
-  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop"
-  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID=no-such-session MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 2400))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+pace_subagents() { # workers the session spawned are counted with it
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" d="$PACE_HOME/home/.claude/projects/-elsewhere/$_sid/subagents"
+  mkdir -p "$d"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:35:00Z","message":{"id":"m6","usage":{"input_tokens":5,"output_tokens":1}}}' >> "$home/.claude/projects/-elsewhere/$_sid.jsonl"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:36:00Z","message":{"id":"a1","usage":{"input_tokens":400,"output_tokens":40}}}' > "$d/agent-one.jsonl"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:37:00Z","message":{"id":"a2","usage":{"input_tokens":100,"output_tokens":10}}}' > "$d/agent-two.jsonl"
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID="$_sid" MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 2400))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
   tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
 }
-says "  … and fall back to the cwd slug when the id has no file" yes '^0 0$' pace_session_missing
+says "  … plus the subagents it spawned"                   yes '^505 51$' pace_subagents
+pace_explicit_dir() { # an explicit MC_LOOP_TRANSCRIPT_DIR beats the id
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug
+  slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/$slug"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:45:00Z","message":{"id":"m7","usage":{"input_tokens":30,"output_tokens":3}}}' >> "$home/.claude/projects/$slug/newer.jsonl"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:45:00Z","message":{"id":"m8","usage":{"input_tokens":800,"output_tokens":80}}}' >> "$home/.claude/projects/-elsewhere/$_sid.jsonl"
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID="$_sid" MC_LOOP_TRANSCRIPT_DIR="$home/.claude/projects/$slug" TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 3000))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
+}
+says "  … unless MC_LOOP_TRANSCRIPT_DIR is set explicitly"  yes '^30 3$' pace_explicit_dir
+pace_session_missing() { # an id with no file falls back to the cwd slug
+  local home="$PACE_HOME/home" cwd="$PACE_HOME/home/loop" slug
+  slug=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-'); mkdir -p "$home/.claude/projects/$slug"
+  echo '{"type":"assistant","timestamp":"2026-01-14T12:55:00Z","message":{"id":"m9","usage":{"input_tokens":60,"output_tokens":6}}}' >> "$home/.claude/projects/$slug/newer.jsonl"
+  ( cd "$cwd" && HOME="$home" CLAUDE_CODE_SESSION_ID=no-such-session MC_LOOP_TRANSCRIPT_DIR= TZ=UTC MC_HOME="$PACE_HOME" MC_STATE="$PACE_HOME/state.json" MC_PACE_NOW="$((_noon + 3600))" "$_MC_LIB/mc-pace.sh" record --writes 0 >/dev/null )
+  tail -1 "$PACE_HOME/ticks.jsonl" | jq -r '"\(.in_tokens) \(.out_tokens)"'
+}
+says "  … and fall back to the cwd slug when the id has no file" yes '^60 6$' pace_session_missing
 pace_ro() { local a b; a=$(shasum "$PACE_HOME/state.json"); pace "$_noon" 0 >/dev/null; b=$(shasum "$PACE_HOME/state.json"); [ "$a" = "$b" ] && echo unchanged; }
 says "mc-pace never writes state.json"        yes '^unchanged$' pace_ro
 

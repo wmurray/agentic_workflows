@@ -19,13 +19,15 @@
 #   mc-pace.sh reset      the next record schedules 600 whatever the tick did (`mc wake`)
 #   mc-pace.sh show       the last ticks.jsonl line
 #
-# Token counts are optional. Without the flags they come from the calling session's own
-# transcript, $HOME/.claude/projects/*/$CLAUDE_CODE_SESSION_ID.jsonl, which Claude Code names
-# in the environment of every command it runs (usage summed per message id since the
-# previous tick). Without that id, or when its file is missing, the newest transcript in
-# MC_LOOP_TRANSCRIPT_DIR is read; unset, that is the transcript directory for the working
-# directory the script runs in ($HOME/.claude/projects/<cwd with every non-alphanumeric
-# as ->). The counts are null when no transcript is found.
+# Token counts are optional. Without the flags they come from a transcript, usage summed
+# per message id since the previous tick. An explicit MC_LOOP_TRANSCRIPT_DIR is read first
+# (its newest .jsonl). Otherwise the calling session's own transcript is read,
+# $HOME/.claude/projects/*/$CLAUDE_CODE_SESSION_ID.jsonl, which Claude Code names in the
+# environment of every command it runs, together with the transcripts of the subagents
+# that session spawned (<slug>/<id>/subagents/*.jsonl). Without an id, or when its file is
+# missing, the newest transcript in the transcript directory for the working directory the
+# script runs in ($HOME/.claude/projects/<cwd with every non-alphanumeric as ->). The
+# counts are null when no transcript is found.
 #
 # MC_PACE_NOW (an epoch) stands in for the clock, for tests.
 #
@@ -59,18 +61,27 @@ live_workers() {
 
 # Prints "<in> <out>", or "null null" when no transcript is readable.
 transcript_tokens() {
-  local since="$1" dir f=""
-  # The session's own transcript first: the driver runs this from the runtime dir, whose
-  # slug matches no project, and a cwd slug can hold other sessions' transcripts too.
-  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
-    f=$(ls "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | head -1)
+  local since="$1" dir f="" files=()
+  if [ -n "${MC_LOOP_TRANSCRIPT_DIR:-}" ]; then
+    f=$(ls -t "$MC_LOOP_TRANSCRIPT_DIR"/*.jsonl 2>/dev/null | head -1)
+  elif [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    # The session's own transcript: the driver runs this from the runtime dir, whose slug
+    # matches no project, and a cwd slug can hold other sessions' transcripts too.
+    f=$(ls -t "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | head -1)
   fi
-  if [ -z "$f" ]; then
-    dir="${MC_LOOP_TRANSCRIPT_DIR:-$HOME/.claude/projects/$(printf '%s' "$PWD" | tr -c 'A-Za-z0-9' '-')}"
+  if [ -n "$f" ] && [ -z "${MC_LOOP_TRANSCRIPT_DIR:-}" ]; then
+    # Workers the tick spawned through the Agent tool log beside the session file.
+    files=("$f")
+    for a in "${f%.jsonl}"/subagents/agent-*.jsonl; do [ -f "$a" ] && files+=("$a"); done
+  elif [ -n "$f" ]; then
+    files=("$f")
+  else
+    dir="$HOME/.claude/projects/$(printf '%s' "$PWD" | tr -c 'A-Za-z0-9' '-')"
     [ -d "$dir" ] || { echo "null null"; return; }
     f=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)
+    [ -n "$f" ] || { echo "null null"; return; }
+    files=("$f")
   fi
-  [ -n "$f" ] || { echo "null null"; return; }
   # Gotcha: a transcript repeats one message's usage on every content block it splits into,
   # so usage is summed once per message id.
   jq -rs --arg since "$since" '
@@ -79,7 +90,7 @@ transcript_tokens() {
     | [ (map(.message.usage | (.input_tokens // 0) + (.cache_creation_input_tokens // 0)
                               + (.cache_read_input_tokens // 0)) | add // 0),
         (map(.message.usage.output_tokens // 0) | add // 0) ]
-    | "\(.[0]) \(.[1])"' "$f" 2>/dev/null || echo "null null"
+    | "\(.[0]) \(.[1])"' "${files[@]}" 2>/dev/null || echo "null null"
 }
 
 cmd="${1:-}"; shift || true
