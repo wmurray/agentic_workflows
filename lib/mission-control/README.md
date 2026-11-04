@@ -113,8 +113,9 @@ idle ticks, 60 for an idle tick overnight (`MC_LOOP_NIGHT_START`/`MC_LOOP_NIGHT_
 delay: start one with `mc prompt dynamic`, which copies the start command with no interval.
 A fixed cron keeps its period and still logs. `mc wake` makes the next tick schedule a 10
 minute wake. Tokens come from the flags when given, else from the newest transcript in
-`MC_LOOP_TRANSCRIPT_DIR`, else null. The runtime dir needs a symlink to `mc-pace.sh` like the
-other scripts.
+`MC_LOOP_TRANSCRIPT_DIR`, which defaults to the Claude Code transcript directory of the
+working directory the tick runs in (the loop session's own transcripts), else null. The
+runtime dir needs a symlink to `mc-pace.sh` like the other scripts.
 
 A wrapper can also name a group: `mc-guard.sh check <name> <group>` passes when either the
 name or the group is in the marker. The field wrappers (release note, feature flags,
