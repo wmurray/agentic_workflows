@@ -66,6 +66,7 @@ Run under `/loop`: a fixed ~10 min cron (`3-59/10`), or a dynamic `/loop` that p
 - Worker templates: `$MC_SKILL_DIR/templates/` — `bug-investigator.md` · `planner.md` · `coder-rails.md` · `coder-typescript.md` · `reviewer.md` · `field-check.md`
 - Board state: `$MC_HOME/state.json` · Inbox: `$MC_HOME/mc-inbox` · this driver: `$MC_HOME/loop-driver.md`
 - Scripts: `$MC_HOME/` (`mc-poll.sh` `mc-inbound.sh` `mc-adopt.sh` `mc-promote.sh` `mc-orphans.sh` `mc-archive.sh` `mc-lock.sh` `mc-health.sh` `mc-review-check.sh` `mc-review-sweep.sh` `mc-gitop.sh` `mc-pace.sh`) · Pipeline wrappers: `$MC_PIPELINE/`
+- v2 shadow dispatcher: `$MC_V2_BIN/mc-dispatch`, where `MC_V2_BIN` is `$HOME/Projects/mission-control/bin` (tick step 4b)
 - **Manual-only wrappers refuse you mechanically.** The overlay's merge / qa-transition / done-transition and the field wrappers (and any wrapper it marks manual-only) call `mc-guard.sh check` and exit 4 while you hold the writer lock, unless the operator opened that wrapper or its group (`merge`, `fields`). An exit 4 from one of them is not an error to work around: it means you called something outside your grants. Flag it and move on. (`mc guard off` is the operator's testing override, never yours.)
 - **Destructive git under the loop → always via `mc-gitop.sh`, never raw.** When you (or a coder/worktree step) clean up a branch or reset a worktree, use `mc-gitop.sh` — `branch-del <branch>` / `reset-hard <ref>` / `restore-path <path>...` / `checkout-path <ref> -- <path>...`. Raw `git branch -D` / `git reset --hard` / `git restore <path>` / `git checkout … -- <path>` trip the ask-only destructive-safety guard, which has no human to answer under the unattended loop and HANGS the tick (observed: `git branch -D <branch-prefix>-ABC-2006` froze a live tick). The wrapper runs the identical op in the cwd; it is deliberately named so its own invocation matches none of the guard's patterns.
 
@@ -732,6 +733,14 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
    to one of the Bash calls you already make this tick and use its output verbatim. (The harness
    also prints the true fire time on its own "Running scheduled task (…)" line above your output —
    if you ever can't run `date`, drop the `@ HH:MM` entirely and rely on that, rather than guess.)
+4b. **Shadow dispatch (v2, observe only): run `$MC_V2_BIN/mc-dispatch tick --shadow` once per tick, right before step 5.**
+   It reads the v2 work set (empty until the operator adds a key with `mc-workset add`), the tracker and
+   the host, and appends v2 telemetry records under `$MC_HOME/telemetry/`. It starts nothing and changes
+   no board, tracker or PR state; a `would start` line is a prediction, not a request. Append its last
+   line (`tick: rows=… events=… shadow`) to the tick line, and quote any `would start`, `HELD` or
+   `unhandled` line it prints verbatim. Never act on its output, never run it with any other flag, and
+   never run it twice in a tick. A nonzero exit or a missing script is two words on the tick line
+   (`shadow: exit 2` / `shadow: absent`), not a reason to stop the tick or to retry.
 5. **Pace: run `$MC_HOME/mc-pace.sh record --writes <n>` as the tick's last call, every tick.**
    `<n>` is the number of writes this tick made: board writes, outward writes, spawns and inbox
    drains. A tick that only proposed is `0`. Pass `--in-tokens`/`--out-tokens` only when the
