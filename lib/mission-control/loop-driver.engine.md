@@ -603,7 +603,7 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
      `approve ABC-N: <note>` carries the operator's **answers to the plan's open questions**; Trigger A
      writes them into the plan doc before the coder spawns.
    - inbox has `qa ABC-N` → **the operator's alpha smoke passed.** Only valid from `alpha-verify`; the
-     loop executes the operator's word, never originates it. Two paths, split on `tracker_qa_at`:
+     loop executes the operator's word, never originates it. Three paths, split on row state:
      - **Board-only (the row has `tracker_qa_at`; the poller line reads `in QA (tracker)`).** The tracker
        moved to QA at merge, so this is a `state.json` write and needs no guard. Under the lock: lane
        `alpha-verify` → `qa`, clear `question`, `mc-inbox-drain.sh "qa ABC-N"`, worklog `--source loop
