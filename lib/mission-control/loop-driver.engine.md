@@ -625,8 +625,16 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
           "qa ABC-N"`, worklog `--source loop --ticket ABC-N "alpha-verify → qa on queued mc qa"`.
        4. Exit 3 → leave the line, `question: "[qa] refused: fields missing: <list>"`, set `fields_missing`, flag.
           Any other non-zero → leave the line, flag with the wrapper's message.
-     Release the lock. A `qa` line on a row outside `alpha-verify` → leave it and flag.
-   - inbox has `merge ABC-N` → **the guard decides whether you execute or propose.** Run
+     Release the lock. A `qa` line on a row already at `qa` or a later lane that carries `tracker_qa_at`
+     → **drain it as a no-op**: the move already happened (a session ran the transition directly, or the
+     verb was queued after the fact), so the line is stale, not early. Lock-wrapped: `mc-inbox-drain.sh
+     "qa ABC-N"`, worklog `--source loop --ticket ABC-N "drained queued mc qa: row already in qa"`. No
+     lane change, no wrapper, no flag. A `qa` line on a row that has not reached `alpha-verify` → leave
+     it and flag, as before: that one is early, and the smoke has not happened.
+   - inbox has `merge ABC-N` → **first, a stale line is drained, not flagged.** If the row is already
+     merged (`merged_at` set, lane `alpha-verify` or later) the verb has nothing left to do: lock-wrapped,
+     `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop --ticket ABC-N "drained queued mc merge: PR
+     already merged"`, no wrapper, no flag. Otherwise **the guard decides whether you execute or propose.** Run
      `$MC_HOME/mc-guard.sh check merge` (BARE). **Exit 4** (guard ON for merge, the default) → propose as
      before: "would execute your authorized merge after the APPROVED+green+mergeable+not-draft check" and
      leave the line for the manual session. **Exit 0** (the operator opened merge to you with
