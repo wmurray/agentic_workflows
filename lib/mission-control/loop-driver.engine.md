@@ -122,8 +122,9 @@ The SIX internal writes you hold today:
    `blocked: false`, clears `blocked_on` + the block `question`, no lane change). Every OTHER inbox
    verb (`approve`/`merge`/`qa`/`plan`/`changes`) triggers an OUTWARD action or an agent spawn
    — you still **read-but-leave** those in the queue and propose. `ready` is the exception: see
-   **Inbox verb `ready`** below. Otherwise this is the only case where you may write the inbox file,
-   and only to remove a `note`/`hold`/`unblock` line you just applied.
+   **Inbox verb `ready`** below. Otherwise this is the only unconditional case where you may write the
+   inbox file, and only to remove a `note`/`hold`/`unblock` line you just applied; the gated drains
+   (`approve`, `ready`, `merge`, `qa`, and the stale `qa`/`merge` no-ops) each name their own condition.
 
 5b. **Inbox verb `ready` → Gate 2 (or a review hand-back) executed on the operator's word.** `mc ready <KEY>`
    is the operator's explicit decision, so draining it is carrying out a human choice, not making
@@ -602,7 +603,7 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
      `approve ABC-N: <note>` carries the operator's **answers to the plan's open questions**; Trigger A
      writes them into the plan doc before the coder spawns.
    - inbox has `qa ABC-N` → **the operator's alpha smoke passed.** Only valid from `alpha-verify`; the
-     loop executes the operator's word, never originates it. Two paths, split on `tracker_qa_at`:
+     loop executes the operator's word, never originates it. Three paths, split on row state:
      - **Board-only (the row has `tracker_qa_at`; the poller line reads `in QA (tracker)`).** The tracker
        moved to QA at merge, so this is a `state.json` write and needs no guard. Under the lock: lane
        `alpha-verify` → `qa`, clear `question`, `mc-inbox-drain.sh "qa ABC-N"`, worklog `--source loop
@@ -625,8 +626,22 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
           "qa ABC-N"`, worklog `--source loop --ticket ABC-N "alpha-verify → qa on queued mc qa"`.
        4. Exit 3 → leave the line, `question: "[qa] refused: fields missing: <list>"`, set `fields_missing`, flag.
           Any other non-zero → leave the line, flag with the wrapper's message.
-     Release the lock. A `qa` line on a row outside `alpha-verify` → leave it and flag.
-   - inbox has `merge ABC-N` → **the guard decides whether you execute or propose.** Run
+     - **Stale (the row is already past the smoke: lane `qa`, `product-review` or `done`).** The move
+       already happened, whether a session ran the transition directly, the tracker moved and reconcile
+       followed it, or the verb was queued after the fact. The line is stale, not early: **drain it as a
+       no-op**, lock-wrapped, `mc-inbox-drain.sh "qa ABC-N"`, worklog `--source loop --ticket ABC-N
+       "drained queued mc qa: row already past alpha-verify (<lane>)"`. No lane change, no wrapper, no
+       flag. The lane is the test; `tracker_qa_at` is not required (reconcile sets `done` from the
+       tracker without it).
+     Release the lock. A `qa` line on a row that has not reached `alpha-verify` (any lane before it) →
+     leave it and flag: that one is early, and the smoke has not happened.
+   - inbox has `merge ABC-N` → **first, a stale line is drained, not flagged.** If the row is already
+     past the merge, lane `alpha-verify`, `qa`, `product-review` or `done`, the verb has nothing left to
+     do: lock-wrapped, `mc-inbox-drain.sh "merge ABC-N"`, worklog `--source loop --ticket ABC-N "drained
+     queued mc merge: PR already merged (<lane>)"`, no wrapper, no flag. The lane is the test: only the
+     loop's own merge path sets `merged_at`, so a PR the operator merged on the host reaches
+     `alpha-verify` through reconcile without it. `merged_at` or the poller's merged state corroborate;
+     a pre-merge lane never qualifies. Otherwise **the guard decides whether you execute or propose.** Run
      `$MC_HOME/mc-guard.sh check merge` (BARE). **Exit 4** (guard ON for merge, the default) → propose as
      before: "would execute your authorized merge after the APPROVED+green+mergeable+not-draft check" and
      leave the line for the manual session. **Exit 0** (the operator opened merge to you with
@@ -651,7 +666,8 @@ from `state.json` is only ever quoted as "last known: …" and never restated as
      clear `blocked_on` + the block `question`, no lane change — the ticket resumes its lane's normal flow,
      so an unblocked `cycle:background` `refined` row becomes opportunistic-planning-eligible again on a
      later tick), then **remove that line from the inbox** — all lock-wrapped (see "The writes you may make
-     → Prep-write 3"). These are the ONLY inbox verbs you drain; leave the rest. If the target ticket isn't
+     → Prep-write 3"). These are the only unconditional drains; `approve`, `ready`, `merge` and `qa` drain
+     only under their own rules above, and the stale `qa`/`merge` no-ops under theirs. Leave anything else. If the target ticket isn't
      on the board, leave the line and flag it (don't guess).
    - `in-review` (PR already readied + reviewers requested, `reviewDecision REVIEW_REQUIRED`) →
      **WAITING ON OTHERS — not your turn. Track only, NEVER flag ⛔.** `REVIEW_REQUIRED` means the
@@ -923,8 +939,9 @@ session.**
 ### Prep-write 3 — Board-only inbox drain (`note` / `hold` / `unblock`)
 
 Apply the inbox verbs whose entire effect is a board annotation, and remove them from the queue.
-Misfire cost: a wrong one-line note on a ticket the operator re-reads and corrects. This is the ONLY case
-where you write the inbox file — and only to remove a `note`/`hold`/`unblock` line you just applied.
+Misfire cost: a wrong one-line note on a ticket the operator re-reads and corrects. This is the only
+unconditional case where you write the inbox file — and only to remove a `note`/`hold`/`unblock` line you
+just applied; every other drain is gated by its own rule in step 5.
 
 **Trigger:** the inbox contains a `note ABC-N: <text>`, `hold ABC-N: <reason>`, or `unblock ABC-N` line for
 a ticket on the board. (Any other verb — `approve`/`ready`/`merge`/`qa`/`plan`/`changes` — is NOT this
@@ -1375,7 +1392,8 @@ against `TaskList`; that marker is exactly what goes stale when a finish signal 
 and queues `mc ready`; the loop then runs the request-review wrapper (draft → ready, default reviewer team,
 tracker → Code Review) per step 5b. The same verb on a `kickback` row hands a reviewed PR back: it
 re-requests the prior reviewers and returns the lane to `in-review`, tracker untouched. It never readies a PR on its own judgment. Merge is `mc merge` only: drain it while the guard
-shows `off` for merge, propose it otherwise; never on your own initiative.
+shows `off` for merge, propose it otherwise; never on your own initiative. A queued `mc merge` on a row
+already past the merge is stale, not an authorization, and is drained as a no-op.
 
 **The wall (memorize):** you may write **`state.json` (lanes / `ci` / `reconcile`) and internal
 plan/triage docs** — via the two prep segments (**`refined` → `plan-review`** ingest; **`in-review`
@@ -1391,13 +1409,16 @@ bounded review → draft PR, parking at Gate 2, plus draining the `approve` line
 `mc-guard.sh check fields` passes**, the **Final field check** (Prep-write 6: field wrappers on a merged
 `alpha-verify` row, post-release comments, never points, never a sub-task), the QA move at merge once
 every field is set, and the fallback `mc qa` drain on a row the tracker has not moved. A queued `mc qa`
-on a row already moved is a board-only lane change. **Adopt** (Prep-write 7, on unless `ADOPT_OFF`
+on a row already moved is a board-only lane change; a queued `mc qa` or `mc merge` on a row already past
+that step (`qa`/`product-review`/`done` for `qa`; `alpha-verify` and later for `merge`) is a **stale no-op
+drain**: the line is removed with a worklog line and nothing else moves. **Adopt** (Prep-write 7, on unless `ADOPT_OFF`
 exists) adds a board row for the operator's off-board open PR at `awaiting-review` or `in-review`.
 That is the whole grant, PLUS the **`ready` drain** (step 5b: the request-review wrapper on an operator-queued `mc ready`,
 then lane `in-review` + status-sync from `awaiting-review`, or lane `in-review` with no tracker move from `kickback`). The instant a write would touch the **OUTWARD** world beyond those —
 an unqueued `gh pr ready`/request-review, comment/resolve, a tracker **field** write outside Prep-write 6, a story-points write, a sub-task,
 reassigning a **colleague**-held ticket, a `done` transition, a `qa` transition outside the QA move at merge or a queued `mc qa`, a **merge** the operator did not queue (or one queued while the guard holds merge manual-only),
-or the inbox for anything but a `note`/`hold` drain (or an armed `approve`) —
+or the inbox for anything but a `note`/`hold` drain, an armed `approve`, a `ready`, a guard-open `merge`,
+a `qa` from `alpha-verify`, or a stale `qa`/`merge` no-op —
 STOP. That's a contract breach; flag it instead.
 
 ### Prep-write 7: Adopt an off-board open PR (on by default; `ADOPT_OFF` marker, `mc adopt on|off|status`)
