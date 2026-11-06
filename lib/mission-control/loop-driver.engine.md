@@ -1,5 +1,10 @@
 # Mission Control — `/loop` driver (Step 3: board-internal + outward reconcile + flag-gated coder-spawn)
 
+> **Read this file in full before the tick.** It is about 1,600 lines; a `cat` spills to a
+> results file and a partial read misses the tick procedure, which runs through "Each tick"
+> step 5 near line 760. Read it with the Read tool in chunks until the end. A tick that never
+> reached the pacer (`mc-pace.sh record`) or the shadow dispatch (step 4b) read too little.
+
 > **This is the ENGINE doctrine — provider-agnostic and public.** Everything org-specific
 > (real ticket keys, repo names, status vocabulary, wrapper commands, freeze window, vault
 > paths) lives in a **profile overlay** that is never committed. Read the overlay FIRST,
