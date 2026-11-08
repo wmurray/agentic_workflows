@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Count the prose words in a PR body: everything outside fenced code, tables, headings,
-# HTML comments, the closing Ticket / No ticket line and a generated-by footer. An inline
-# code span counts as one word; a link counts its text, not its URL.
+# HTML comments and the closing Ticket / No ticket line. Inline code spans count as one
+# word; a link counts its text, not its URL.
 #
 #   prose-words.sh <file|->               print the count
 #   prose-words.sh <file|-> --check <n>   print it; exit 1 when over n
@@ -16,7 +16,6 @@ n=$(cat -- "$src" | awk '
   /^[ \t]*\|/ { next }
   /^#+[ \t]/ { next }
   /^(Ticket|No ticket):/ { next }
-  /^🤖 Generated with/ { next }
   { print }' |
   sed -E 's/`[^`]*`/CODE/g; s/!?\[([^]]*)\]\([^)]*\)/\1/g; s/https?:\/\/[^ )]+//g; s/^[ \t]*([-*+]|[0-9]+\.)[ \t]+//' |
   tr -s '[:space:]' '\n' | grep -cE '[[:alnum:]]')

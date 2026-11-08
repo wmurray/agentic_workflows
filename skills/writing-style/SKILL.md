@@ -74,8 +74,8 @@ Ask who reads the text before writing a word.
 Text posted from the operator's account in a conversation (a review comment, a reply to a
 reviewer, a ticket comment, a chat message) opens with one line naming the agent and the
 model, for example `> 🤖 From <operator>'s agent (<model>)`. A PR body, a commit message
-and a ticket field carry no marker line; the commit's `Co-Authored-By` trailer is the
-attribution, and a PR body may end with the harness's generated-by footer.
+and a ticket field carry no marker and no generated-by footer; the commit's
+`Co-Authored-By` trailer is the attribution.
 
 ## Caps by surface
 

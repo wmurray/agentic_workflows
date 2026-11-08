@@ -50,19 +50,18 @@ Ticket: <KEY>
 - Add a heading only for something a reviewer must act on that fits none of the above (a
   migration step, a stacked-PR base). Otherwise no other headings, and no empty sections.
 
-## What a PR body leaves out
+## What a PR body never carries
 
-- No `🤖` marker line at the top; that marker belongs to comments and replies. A
-  generated-by footer at the very end is fine where the operator's harness adds one,
-  unless the repo or team says otherwise. It is not counted toward the cap.
+- No `🤖` line, no "Generated with" footer, no harness signature. The commit's
+  `Co-Authored-By` trailer is the attribution.
 - No restated diff, no file-by-file list, no commit list.
 - No em dashes.
 
 ## The cap
 
 At most **250 prose words**, or **325** when the diff changes more than 175 lines. Prose is
-everything outside code fences, tables, headings, the ticket line and a generated-by
-footer. Count it before posting:
+everything outside code fences, tables, headings and the ticket line. Count it before
+posting:
 
 ```bash
 scripts/prose-words.sh body.md                 # prints the count
