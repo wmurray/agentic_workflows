@@ -45,6 +45,12 @@ expect "assign: lane guard"        4 "$T/assign.sh" ABC-1 --lane qa
 expect "assign: refined refused"    4 "$T/assign.sh" ABC-1 --lane refined
 expect "post-release-note: no key"  2 "$T/post-release-note.sh"
 expect "post-release-note: no note" 2 "$T/post-release-note.sh" ABC-1
+expect "jira-rest: no args"         2 "$T/jira-rest.sh"
+expect "jira-rest: bad method"      2 "$T/jira-rest.sh" PATCH /rest/api/3/issue/ABC-1
+expect "jira-rest: absolute url"    2 "$T/jira-rest.sh" GET https://example.invalid/rest/api/3/myself
+expect "jira-rest: delete refused"  2 "$T/jira-rest.sh" DELETE /rest/api/3/issue/ABC-1
+expect "jira-rest: bad json body"   2 sh -c "echo '{nope' | '$T/jira-rest.sh' POST /rest/api/3/issue/ABC-1/comment --body -"
+expect "jira-rest: missing body file" 2 "$T/jira-rest.sh" PUT /rest/api/3/issue/ABC-1 --body /nonexistent.json
 
 echo "dependabot-merge against a stub gh (no network)"
 # The stub serves canned JSON from $FX and logs every call to $FX/calls. Without --paginate the
