@@ -44,6 +44,7 @@ if [ -n "$body_src" ]; then
     [ -r "$body_src" ] || { echo "jira-rest: cannot read body file '$body_src'" >&2; exit 2; }
     body=$(cat "$body_src")
   fi
+  command -v python3 >/dev/null || { echo "jira-rest: python3 is needed to check the body" >&2; exit 2; }
   printf '%s' "$body" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null \
     || { echo "jira-rest: body is not valid JSON" >&2; exit 2; }
 fi
@@ -51,12 +52,12 @@ fi
 
 code=$(jt_rest "$method" "$path" "$body")
 jt_resp; echo
+# every write attempt is on the work log, with the ticket when the path names one
+if [ "$method" != GET ]; then
+  key=$(jt_find_key "$path")
+  jt_worklog ${key:+--ticket "$key"} "jira-rest $method $path -> HTTP ${code:-none}"
+fi
 case "$code" in
-  2??)
-    if [ "$method" != GET ]; then
-      key=$(printf '%s' "$path" | tr '/' '\n' | while read -r seg; do jt_is_key "$seg" && { jt_key "$seg"; break; }; done)
-      jt_worklog ${key:+--ticket "$key"} "jira-rest $method $path -> $code"
-    fi
-    jt_cleanup; exit 0 ;;
-  *) echo "jira-rest: $method $path -> HTTP $code" >&2; jt_cleanup; exit 1 ;;
+  2??) jt_cleanup; exit 0 ;;
+  *) echo "jira-rest: $method $path -> HTTP ${code:-none}" >&2; jt_cleanup; exit 1 ;;
 esac
