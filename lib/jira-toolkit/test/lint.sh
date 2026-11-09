@@ -45,6 +45,43 @@ expect "assign: lane guard"        4 "$T/assign.sh" ABC-1 --lane qa
 expect "assign: refined refused"    4 "$T/assign.sh" ABC-1 --lane refined
 expect "post-release-note: no key"  2 "$T/post-release-note.sh"
 expect "post-release-note: no note" 2 "$T/post-release-note.sh" ABC-1
+expect "jira-rest: no args"         2 "$T/jira-rest.sh"
+expect "jira-rest: bad method"      2 "$T/jira-rest.sh" PATCH /rest/api/3/issue/ABC-1
+expect "jira-rest: absolute url"    2 "$T/jira-rest.sh" GET https://example.invalid/rest/api/3/myself
+expect "jira-rest: delete refused"  2 "$T/jira-rest.sh" DELETE /rest/api/3/issue/ABC-1
+expect "jira-rest: bad json body"   2 sh -c "echo '{nope' | '$T/jira-rest.sh' POST /rest/api/3/issue/ABC-1/comment --body -"
+expect "jira-rest: missing body file" 2 "$T/jira-rest.sh" PUT /rest/api/3/issue/ABC-1 --body /nonexistent.json
+expect "jira-rest: dangling --body"   2 "$T/jira-rest.sh" PUT /rest/api/3/issue/ABC-1 --body
+expect "jira-rest: third positional"  2 "$T/jira-rest.sh" GET /rest/api/3/myself extra
+
+echo "jira-rest against a stub curl (no network)"
+# The stub records the URL and method, serves a canned status, and writes the body curl would.
+JR="$(mktemp -d "${TMPDIR:-/tmp}/jt-lint-jr.XXXXXX")"; mkdir "$JR/bin" "$JR/mc"
+cat > "$JR/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""; url=""; method=GET
+while [ $# -gt 0 ]; do case "$1" in -o) shift; out="$1" ;; -X) shift; method="$1" ;; -*) ;; *) url="$1" ;; esac; shift; done
+printf '%s %s\n' "$method" "$url" >> "$FX/calls"
+printf '{"ok":true}' > "$out"; printf '%s' "$(cat "$FX/status")"
+STUB
+chmod +x "$JR/bin/curl"
+printf '#!/usr/bin/env bash\nshift; printf "%%s\\n" "$*" >> "$MC_HOME/worklog.calls"\n' > "$JR/mc/worklog.sh"; chmod +x "$JR/mc/worklog.sh"
+stub_token=lint-placeholder   # set through a variable so the leak guard does not read it as a literal
+jr() { (PATH="$JR/bin:$PATH" FX="$JR" MC_HOME="$JR/mc" MC_WORKLOG=on JIRA_API_TOKEN=$stub_token "$T/jira-rest.sh" "$@"); }
+echo 204 > "$JR/status"
+expect "jira-rest: 2xx exits 0"       0 jr put /rest/api/3/issue/ABC-1 --body /dev/stdin <<<'{"fields":{}}'
+says   "jira-rest: URL is base + path" '^PUT https://your-org\.atlassian\.net/rest/api/3/issue/ABC-1$' cat "$JR/calls"
+says   "jira-rest: work log names the ticket" '^--ticket ABC-1 jira-rest PUT /rest/api/3/issue/ABC-1 -> HTTP 204$' cat "$JR/mc/worklog.calls"
+echo 404 > "$JR/status"
+expect "jira-rest: non-2xx exits 1"   1 jr POST '/rest/api/3/issue/ABC-1/comment?x=1' --body /dev/stdin <<<'{"body":"hi"}'
+says   "jira-rest: failed write is logged too" 'jira-rest POST /rest/api/3/issue/ABC-1/comment\?x=1 -> HTTP 404$' cat "$JR/mc/worklog.calls"
+expect "jira-rest: --allow-delete unlocks DELETE" 1 jr DELETE /rest/api/3/issue/ABC-1 --allow-delete
+says   "jira-rest: DELETE went out as DELETE" '^DELETE https://your-org\.atlassian\.net/rest/api/3/issue/ABC-1$' tail -1 "$JR/calls"
+echo 200 > "$JR/status"
+n_before=$(wc -l < "$JR/mc/worklog.calls")
+expect "jira-rest: GET exits 0"       0 jr GET /rest/api/3/myself
+[ "$(wc -l < "$JR/mc/worklog.calls")" = "$n_before" ] && ok "jira-rest: GET leaves no work-log line" || bad "jira-rest: GET wrote a work-log line"
+rm -rf "$JR"
 
 echo "dependabot-merge against a stub gh (no network)"
 # The stub serves canned JSON from $FX and logs every call to $FX/calls. Without --paginate the

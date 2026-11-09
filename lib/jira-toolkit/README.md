@@ -29,6 +29,8 @@ testing-notes.sh       write the testing-notes field (populate-when-empty; --for
 feature-flags.sh       write / verify the feature-flags labels field
 post-release-note.sh   comment a post-release task on the ticket (marked, never duplicated, never a sub-task)
 sprint-add.sh          add a ticket to the active sprint
+jira-rest.sh           one GET/POST/PUT to a /rest/ path with the toolkit's credentials, for writes
+                       with no wrapper of their own (DELETE only with --allow-delete); replaces raw curl
 request-review.sh      draft → ready + request the reviewer team; on a reviewed PR, re-request its reviewers
 merge.sh               guarded PR merge: approved, approval current, CI green, not frozen, no veto label;
                        with mission-control, only a queued `mc merge` (or a terminal) authorizes it
@@ -36,8 +38,8 @@ dependabot-merge.sh    approve + merge Dependabot PRs only, manifest/lockfile-on
 test/lint.sh           syntax + arg-handling + config-validation checks, no network
 ```
 
-Every wrapper takes `--check` (read-only dry run) except `dependabot-merge.sh`, and every
-one is a no-op when already in the target state.
+Every wrapper takes `--check` (read-only dry run) except `dependabot-merge.sh` and
+`jira-rest.sh`, and every one is a no-op when already in the target state.
 
 ## Setup
 
