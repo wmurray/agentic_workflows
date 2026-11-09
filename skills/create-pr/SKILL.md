@@ -57,7 +57,7 @@ When asked to write a PR message, output **Markdown** with this structure:
   Some trackers attach a PR to every ticket key in its branch, title or body.
 
 > **Adapting this:** The ticket format defaults to `[PREFIX-NUMBER]`. Change the prefix
-> to match your issue tracker (`IMP-` for Linear, `ENG-` or your Jira project key, etc.).
+> to match your issue tracker (`ENG-` for a Linear team or your Jira project key, etc.).
 
 ## Summary
 
