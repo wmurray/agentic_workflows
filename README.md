@@ -50,6 +50,8 @@ lib/             Shell helpers (workspace context, PR radar)
 | `/strict-refactor-pass`  | Pure rename/extract/simplify refactor — no behaviour changes.                                                                                                                                                          |
 | `/audit-debug-artifacts` | Scans changed files for leftover debug statements (`console.log`, `binding.pry`, `debugger`, etc.).                                                                                                                    |
 | `/comment-cleanup`       | Removes unnecessary comments left by agents in changed code. Its rules live in `skills/comment-cleanup/RULES.md`, which the coder templates, nightowl push briefs and `/reply-comments` also run as a pre-push pass. |
+| `writing-style`          | The voice for prose people read (PR bodies, commits, review comments, replies, ticket text): result first, the reader's words, the AI-writing tells to avoid, the agent marker and per-surface word caps. Point `WRITING_STYLE_SKILL` or mission-control's `MC_WRITING_SKILL` at it. |
+| `pr-body`                | The PR body layout: Summary, Evidence, Merge Risk Report (door and blast radius) and a ticket line, under a 250-word prose cap counted by `scripts/prose-words.sh`. Point `PR_DESCRIPTION_SKILL` or `MC_PR_BODY_SKILL` at it. |
 
 ### Git / PR lifecycle
 
