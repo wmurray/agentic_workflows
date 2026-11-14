@@ -143,6 +143,12 @@ good; pr_fixture bob "$HEAD" "me"
 expect "review-post: allowlist match is case-insensitive and trims spaces" 0 rp o/r 7 "$FX/p.json" --dry-run
 good; pr_fixture alice "$HEAD" "carol"
 expect "review-post: self not a requested reviewer" 13 rp o/r 7 "$FX/p.json"
+good; pr_fixture Me "$HEAD" ""
+expect "review-post: own PR needs no allowlist or review request" 0 rp o/r 7 "$FX/p.json" --dry-run
+good; pr_fixture me "$HEAD" ""; reviews_fixture "me:$HEAD"
+expect "review-post: own PR already reviewed this head" 16 rp o/r 7 "$FX/p.json"
+good; pr_fixture me "fff0000fff0000fff0000fff0000fff0000fff00" ""
+expect "review-post: own PR head moved since the payload" 17 rp o/r 7 "$FX/p.json"
 good; payload "$FX/p.json" '.event = "APPROVE"'
 expect "review-post: APPROVE in payload"     14 rp o/r 7 "$FX/p.json"
 good; payload "$FX/p.json" '.event = "REQUEST_CHANGES"'

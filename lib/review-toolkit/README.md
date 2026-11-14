@@ -57,7 +57,9 @@ It refuses when the kill switch is present, the event is anything but COMMENT, a
 comment does not open with a category label, the repo or the PR author is not allowlisted,
 the head moved since the payload was computed, neither `AUTO_POST_SELF` nor a team in
 `AUTO_POST_TEAMS` is a currently requested reviewer, or `AUTO_POST_SELF` already reviewed
-the current head. `--verdict` is written to the work log and never posted.
+the current head. On the maintainer's own PR (author is `AUTO_POST_SELF`) the author
+allowlist and the review-request check are skipped; every other guard still applies.
+`--verdict` is written to the work log and never posted.
 
 A category label is one of `AUTO_POST_LABELS`: by default the original four (`must-fix`,
 `should-fix`, `nit`, `question`) plus the [Conventional Comments](https://conventionalcomments.org)
