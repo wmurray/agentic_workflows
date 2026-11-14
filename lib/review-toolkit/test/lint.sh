@@ -149,6 +149,8 @@ good; pr_fixture me "$HEAD" ""; reviews_fixture "me:$HEAD"
 expect "review-post: own PR already reviewed this head" 16 rp o/r 7 "$FX/p.json"
 good; pr_fixture me "fff0000fff0000fff0000fff0000fff0000fff00" ""
 expect "review-post: own PR head moved since the payload" 17 rp o/r 7 "$FX/p.json"
+good; pr_fixture "" "$HEAD" ""
+expect "review-post: an empty author is never own" 12 env AUTO_POST_SELF= "$T/review-post.sh" o/r 7 "$FX/p.json"
 good; payload "$FX/p.json" '.event = "APPROVE"'
 expect "review-post: APPROVE in payload"     14 rp o/r 7 "$FX/p.json"
 good; payload "$FX/p.json" '.event = "REQUEST_CHANGES"'

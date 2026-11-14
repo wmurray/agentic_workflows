@@ -101,7 +101,7 @@ head=$(printf '%s' "$pr_json" | jq -r '.head.sha // ""')
 
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 own=""
-[ "$(lower "$author")" = "$(lower "$self")" ] && own=1
+[ -n "$author" ] && [ "$(lower "$author")" = "$(lower "$self")" ] && own=1
 
 [ -n "$own" ] || rt_in_list "$author" "$AUTO_POST_AUTHORS" || rt_refuse "$RT_E_AUTHOR" "$repo#$pr author '$author' is not in AUTO_POST_AUTHORS"
 case "$head" in
