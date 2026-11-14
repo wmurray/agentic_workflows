@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# review-post.sh: post an agent-written review on someone else's PR under the maintainer's
+# review-post.sh: post an agent-written review on a PR under the maintainer's
 # account, without the maintainer reading it first. Opt-in: every guard lives here, in code,
 # and the allowlists default to empty, so an unconfigured install refuses everything.
 #
@@ -17,6 +17,8 @@
 # category label, repo allowlisted, PR author allowlisted, head has not moved, the
 # maintainer is a currently requested reviewer (in person, or through a team slug listed in
 # AUTO_POST_TEAMS), the maintainer has no review on this head.
+# On the maintainer's own PR the author allowlist and the review-request check are skipped:
+# GitHub never requests a review from a PR's author.
 #
 # A category label is the first thing in a comment body after any leading blockquote and
 # blank lines (an automated-review header). It is one of AUTO_POST_LABELS (any case),
@@ -97,13 +99,17 @@ pr_json=$(gh api "repos/$repo/pulls/$pr" 2>/dev/null) || { echo "$RT_NAME: could
 author=$(printf '%s' "$pr_json" | jq -r '.user.login // ""')
 head=$(printf '%s' "$pr_json" | jq -r '.head.sha // ""')
 
-rt_in_list "$author" "$AUTO_POST_AUTHORS" || rt_refuse "$RT_E_AUTHOR" "$repo#$pr author '$author' is not in AUTO_POST_AUTHORS"
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+own=""
+[ -n "$author" ] && [ "$(lower "$author")" = "$(lower "$self")" ] && own=1
+
+[ -n "$own" ] || rt_in_list "$author" "$AUTO_POST_AUTHORS" || rt_refuse "$RT_E_AUTHOR" "$repo#$pr author '$author' is not in AUTO_POST_AUTHORS"
 case "$head" in
   "$sha"*) ;;
   *) rt_refuse "$RT_E_HEAD_MOVED" "head moved: payload was computed against $sha, $repo#$pr head is now $head" ;;
 esac
 # Team membership is asserted by config: AUTO_POST_TEAMS lists the maintainer's own teams.
-requested=""
+requested="$own"
 printf '%s' "$pr_json" | jq -e --arg me "$self" 'any(.requested_reviewers[]?; (.login | ascii_downcase) == ($me | ascii_downcase))' >/dev/null && requested=1
 if [ -z "$requested" ]; then
   while IFS= read -r team; do
