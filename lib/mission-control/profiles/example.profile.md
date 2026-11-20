@@ -176,7 +176,7 @@ and decline is appended to `${MC_AUTO_POST_REPORT:-$MC_HOME/auto-post-report.md}
 spot-check. The wrapper's own config (`review.env`) holds the allowlists; while its kill switch
 exists the loop drops back to drafts. Leave the fill empty and judgment items wait for you.
 
-**Reply header.** The wrapper refuses a reply that lacks its `AUTO_POST_HEADER` text. The exact
+**Reply header.** The wrapper refuses a reply that lacks its `AUTO_POST_HEADER` text (or its `AUTO_POST_REPLY_HEADER` text, when set). The exact
 header line is your voice, so it lives in your `{STYLE_GUIDE}`; state it there, e.g. a first line
 that carries the `AUTO_POST_HEADER` text and says the reply was written by an agent. The engine
 puts ONE empty line between that line and the body, so a `> ` header stays a one-line quote.
