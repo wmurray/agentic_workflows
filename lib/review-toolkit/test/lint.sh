@@ -26,7 +26,7 @@ mkdir "$FX/bin" "$FX/compare" "$FX/link" "$FX/worklog"
 # Isolate from any real config, kill switch and work log. Environment values win over the
 # env file, so the fixture allowlists below are what the wrappers see.
 export REVIEW_TOOLKIT_ENV="$T/example.env" FX MC_WORKLOG_DIR="$FX/worklog"
-export AUTO_POST_KILL_SWITCH="$FX/auto-post.off" AUTO_POST_SELF="me" AUTO_POST_HEADER="Automated review"
+export AUTO_POST_KILL_SWITCH="$FX/auto-post.off" AUTO_POST_SELF="me" AUTO_POST_HEADER="Automated review" AUTO_POST_REPLY_HEADER="Written by"
 export AUTO_POST_AUTHORS="alice, Bob" AUTO_POST_REPOS="o/r" AUTO_POST_MAX_REPLIES=2 AUTO_POST_TEAMS=""
 unset MC_WORKLOG AUTO_POST_LABELS
 
@@ -299,6 +299,9 @@ expect "review-reply: body without the header" 21 rr o/r 7 100 "$FX/body.md"
 rgood; jq --arg hdr "$AUTO_POST_HEADER" '. + [{id:102, in_reply_to_id:100, user:{login:"me", type:"User"}, body:($hdr + "\nagain"), pull_request_url:"https://api.github.example/repos/o/r/pulls/7"}]' \
   "$FX/comments.json" > "$FX/c2.json" && mv "$FX/c2.json" "$FX/comments.json"
 expect "review-reply: reply cap reached escalates" 30 rr o/r 7 100 "$FX/body.md"
+rgood; jq '. + [{id:105, in_reply_to_id:100, user:{login:"me", type:"User"}, body:"> Written by my agent\n\nagain", pull_request_url:"https://api.github.example/repos/o/r/pulls/7"}]' \
+  "$FX/comments.json" > "$FX/c2.json" && mv "$FX/c2.json" "$FX/comments.json"
+expect "review-reply: replies with the reply header count toward the cap" 30 rr o/r 7 100 "$FX/body.md"
 says   "review-reply: escalation says so"     'escalate to a human' rr o/r 7 103 "$FX/body.md"
 no_write "review-reply: refusals write nothing"
 
@@ -308,6 +311,8 @@ expect "review-reply: human root whose body carries a header is allowed" 0 rr o/
 rgood; jq --arg hdr "$AUTO_POST_HEADER" '. + [{id:104, in_reply_to_id:100, user:{login:"me", type:"User"}, body:"manual reply", pull_request_url:"https://api.github.example/repos/o/r/pulls/7"}]' \
   "$FX/comments.json" > "$FX/c2.json" && mv "$FX/c2.json" "$FX/comments.json"
 expect "review-reply: my replies without the header do not count" 0 rr o/r 7 100 "$FX/body.md" --dry-run
+rgood; printf '> Written by my agent\n\nFixed in 1a2b3c4.\n' > "$FX/body.md"
+expect "review-reply: the reply header is accepted" 0 rr o/r 7 103 "$FX/body.md" --dry-run
 rgood
 says "review-reply: dry run prints the API call" 'POST repos/o/r/pulls/7/comments/100/replies' rr o/r 7 103 "$FX/body.md" --dry-run
 no_write "review-reply: dry run writes nothing"

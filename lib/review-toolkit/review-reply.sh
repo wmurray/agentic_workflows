@@ -14,7 +14,8 @@
 #                 there, so the reply is a new PR comment: the body as given, then a last
 #                 line "In reply to <login>: <comment URL>". That line is also what the
 #                 reply cap counts.
-#   body-file     the reply text (`-` reads stdin). Must contain AUTO_POST_HEADER.
+#   body-file     the reply text (`-` reads stdin). Must contain AUTO_POST_HEADER or
+#                 AUTO_POST_REPLY_HEADER.
 #   --category    a short lower-case tag for the work log (fix, decline, answer, ...).
 #   --dry-run     run every check, then print the API call instead of making it.
 #
@@ -33,7 +34,7 @@
 #       10 kill switch present · 11 repo not in AUTO_POST_REPOS · 12 PR author is not AUTO_POST_SELF
 #       18 comment is not a review comment (with --issue-comment: an issue comment) on this PR
 #       19 a cited SHA is not on the head branch
-#       20 thread root (or issue comment) author is a bot · 21 body lacks AUTO_POST_HEADER
+#       20 thread root (or issue comment) author is a bot · 21 body lacks both headers
 #       22 a `>` line in the body runs straight into the next line
 #       30 reply cap reached: escalate to a human
 set -uo pipefail
@@ -66,7 +67,8 @@ fi
 [ -n "$body" ] || rt_usage "reply body is empty"
 
 rt_kill_switch
-printf '%s' "$body" | grep -qF -- "$AUTO_POST_HEADER" || rt_refuse "$RT_E_NO_HEADER" "reply body does not contain the header '$AUTO_POST_HEADER'"
+{ printf '%s' "$body" | grep -qF -- "$AUTO_POST_HEADER" || printf '%s' "$body" | grep -qF -- "$AUTO_POST_REPLY_HEADER"; } \
+  || rt_refuse "$RT_E_NO_HEADER" "reply body contains neither header '$AUTO_POST_HEADER' nor '$AUTO_POST_REPLY_HEADER'"
 printf '%s' "$body" | jq -Rse "$RT_LAZY_QUOTE_JQ"' lazy_quote' >/dev/null \
   && rt_refuse "$RT_E_LAZY_QUOTE" "a quoted line in the body runs straight into the next line, so it renders as part of the quote; $RT_LAZY_QUOTE_FIX"
 rt_check_repo "$repo"
@@ -119,14 +121,14 @@ if [ -n "$issue" ]; then
   mine=$(gh api --paginate "repos/$repo/issues/$pr/comments" \
            --jq "[.[] | select((.user.login | ascii_downcase) == (\"$self\" | ascii_downcase))] | .[].body | @json" 2>/dev/null) \
     || { echo "$RT_NAME: could not list PR comments on $repo#$pr" >&2; exit "$RT_E_CALL"; }
-  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg ref "issuecomment-$cid" \
-            'map(select(contains($h) and test($ref + "([^0-9]|$)"))) | length' 2>/dev/null || echo 0)
+  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg r "$AUTO_POST_REPLY_HEADER" --arg ref "issuecomment-$cid" \
+            'map(select((contains($h) or contains($r)) and test($ref + "([^0-9]|$)"))) | length' 2>/dev/null || echo 0)
   where="replies to PR comment $cid"
 else
   mine=$(gh api --paginate "repos/$repo/pulls/$pr/comments" \
            --jq "[.[] | select((.id == $root_id or .in_reply_to_id == $root_id) and (.user.login | ascii_downcase) == (\"$self\" | ascii_downcase))] | .[].body | @json" 2>/dev/null) \
     || { echo "$RT_NAME: could not list review comments on $repo#$pr" >&2; exit "$RT_E_CALL"; }
-  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" 'map(select(contains($h))) | length' 2>/dev/null || echo 0)
+  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg r "$AUTO_POST_REPLY_HEADER" 'map(select(contains($h) or contains($r))) | length' 2>/dev/null || echo 0)
   where="replies in thread $root_id"
 fi
 if [ "${count:-0}" -ge "$AUTO_POST_MAX_REPLIES" ]; then
