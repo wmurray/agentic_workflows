@@ -26,7 +26,7 @@ mkdir "$FX/bin" "$FX/compare" "$FX/link" "$FX/worklog"
 # Isolate from any real config, kill switch and work log. Environment values win over the
 # env file, so the fixture allowlists below are what the wrappers see.
 export REVIEW_TOOLKIT_ENV="$T/example.env" FX MC_WORKLOG_DIR="$FX/worklog"
-export AUTO_POST_KILL_SWITCH="$FX/auto-post.off" AUTO_POST_SELF="me" AUTO_POST_HEADER="Automated review" AUTO_POST_REPLY_HEADER="Written by"
+export AUTO_POST_KILL_SWITCH="$FX/auto-post.off" AUTO_POST_SELF="me" AUTO_POST_HEADER="Automated review" AUTO_POST_REPLY_HEADER="Written by my agent"
 export AUTO_POST_AUTHORS="alice, Bob" AUTO_POST_REPOS="o/r" AUTO_POST_MAX_REPLIES=2 AUTO_POST_TEAMS=""
 unset MC_WORKLOG AUTO_POST_LABELS
 
@@ -313,6 +313,8 @@ rgood; jq --arg hdr "$AUTO_POST_HEADER" '. + [{id:104, in_reply_to_id:100, user:
 expect "review-reply: my replies without the header do not count" 0 rr o/r 7 100 "$FX/body.md" --dry-run
 rgood; printf '> Written by my agent\n\nFixed in 1a2b3c4.\n' > "$FX/body.md"
 expect "review-reply: the reply header is accepted" 0 rr o/r 7 103 "$FX/body.md" --dry-run
+rgood; printf '> Written by my agent\n\nFixed in 1a2b3c4.\n' > "$FX/body.md"
+AUTO_POST_REPLY_HEADER="" expect "review-reply: an unset reply header accepts only AUTO_POST_HEADER" 21 rr o/r 7 103 "$FX/body.md"
 rgood
 says "review-reply: dry run prints the API call" 'POST repos/o/r/pulls/7/comments/100/replies' rr o/r 7 103 "$FX/body.md" --dry-run
 no_write "review-reply: dry run writes nothing"
@@ -368,6 +370,10 @@ igood; jq --arg hdr "$AUTO_POST_HEADER" '. + [{id:612, user:{login:"me", type:"U
   body:($hdr + "\n\nagain\n\nIn reply to alice: https://github.example/o/r/pull/7#issuecomment-600")}]' \
   "$FX/issue_comments.json" > "$FX/ic2.json" && mv "$FX/ic2.json" "$FX/issue_comments.json"
 expect "issue-reply: reply cap reached escalates" 30 ri 600 "$FX/body.md"
+igood; jq '. + [{id:614, user:{login:"me", type:"User"}, issue_url:"https://api.github.example/repos/o/r/issues/7",
+  body:"> Written by my agent\n\nagain\n\nIn reply to alice: https://github.example/o/r/pull/7#issuecomment-600"}]' \
+  "$FX/issue_comments.json" > "$FX/ic2.json" && mv "$FX/ic2.json" "$FX/issue_comments.json"
+expect "issue-reply: a reply-header reply counts toward the cap" 30 ri 600 "$FX/body.md"
 no_write "issue-reply: refusals write nothing"
 igood; jq '. + [{id:613, user:{login:"me", type:"User"}, issue_url:"https://api.github.example/repos/o/r/issues/7",
   body:"manual: see https://github.example/o/r/pull/7#issuecomment-600"}]' \

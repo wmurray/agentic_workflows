@@ -39,8 +39,10 @@ AUTO_POST_TEAMS="${AUTO_POST_TEAMS:-}"        # team slugs whose review request 
 # Inline comment labels: the original four plus Conventional Comments (conventionalcomments.org).
 AUTO_POST_LABELS="${AUTO_POST_LABELS:-must-fix,should-fix,nit,question,issue,suggestion,nitpick,thought,todo,praise,chore,note}"
 AUTO_POST_HEADER="${AUTO_POST_HEADER:-Automated review}"
-# review-reply.sh also accepts this header: an author's reply on their own PR is a comment, not a review.
-AUTO_POST_REPLY_HEADER="${AUTO_POST_REPLY_HEADER:-Written by}"
+# Optional second header review-reply.sh accepts, since a reply on your own PR is a comment,
+# not a review. Empty (the default) means only AUTO_POST_HEADER. Set the full prefix
+# (e.g. "Written by Jane's agent") so the text itself says the reply is automated.
+AUTO_POST_REPLY_HEADER="${AUTO_POST_REPLY_HEADER:-}"
 AUTO_POST_KILL_SWITCH="${AUTO_POST_KILL_SWITCH:-$HOME/.claude/mission-control/auto-post.off}"
 AUTO_POST_MAX_REPLIES="${AUTO_POST_MAX_REPLIES:-2}"
 RT_WORKLOG="${AUTO_POST_WORKLOG:-$RT_DIR/../mission-control/worklog.sh}"

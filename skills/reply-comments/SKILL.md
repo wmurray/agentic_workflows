@@ -119,7 +119,7 @@ none of them; it fixes only what each category must contain:
 - **decline** (`--category decline`): that you will not make the change, and the reason.
 
 A published body **opens with the header line** the wrapper requires: a line that carries the
-wrapper's `AUTO_POST_HEADER` text, in the exact form your style guide gives, then ONE empty line,
+wrapper's `AUTO_POST_HEADER` text (or `AUTO_POST_REPLY_HEADER`, when set), in the exact form your style guide gives, then ONE empty line,
 then the body (`\n\n` between them in JSON). Without the empty line Markdown pulls the body's
 first line into the header's blockquote, and the wrapper refuses it (exit 22). A body without it
 is refused (exit 21). Cite no commit except the fix's own SHA: the wrapper treats any 7 to 40

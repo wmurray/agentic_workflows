@@ -84,8 +84,7 @@ review-reply.sh <owner/repo> <pr> --issue-comment <id> <body-file|-> [--category
 ```
 
 It refuses when the kill switch is present, the body carries neither `AUTO_POST_HEADER` nor
-`AUTO_POST_REPLY_HEADER`, the repo is
-not allowlisted, the PR is not by `AUTO_POST_SELF`, the comment is not a review comment on
+`AUTO_POST_REPLY_HEADER` (when set), the repo is not allowlisted, the PR is not by `AUTO_POST_SELF`, the comment is not a review comment on
 that PR, the thread was started by a bot account, a commit SHA cited in the body is not on
 the PR head branch, or `AUTO_POST_SELF` already has `AUTO_POST_MAX_REPLIES` header-carrying
 replies in the thread. That last case exits 30 so a caller can hand the thread to a person.
@@ -110,7 +109,7 @@ comment text. A person whose comment carries an automated header is still a pers
 | `AUTO_POST_TEAMS` | empty | Comma list of team slugs whose review request counts as one for `AUTO_POST_SELF`. |
 | `AUTO_POST_LABELS` | the 4 original + 9 Conventional Comments labels | Comma list of accepted inline comment labels (plain words). |
 | `AUTO_POST_HEADER` | `Automated review` | Text every review comment must contain. A reply may carry it or `AUTO_POST_REPLY_HEADER`; the reply cap counts both. |
-| `AUTO_POST_REPLY_HEADER` | `Written by` | The other header a reply may carry, since an author's reply on their own PR is a comment, not a review. |
+| `AUTO_POST_REPLY_HEADER` | empty | Optional second header a reply may carry, since a reply on your own PR is a comment, not a review. Use the full prefix, e.g. `Written by Jane's agent`, so it discloses automation by itself. |
 | `AUTO_POST_KILL_SWITCH` | `~/.claude/mission-control/auto-post.off` | While this file exists, both wrappers refuse. |
 | `AUTO_POST_MAX_REPLIES` | `2` | Header-carrying replies per thread before escalating. |
 | `AUTO_POST_WORKLOG` | `../mission-control/worklog.sh` | The work log helper. Each post writes one line. |

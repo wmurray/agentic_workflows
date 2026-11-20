@@ -67,8 +67,10 @@ fi
 [ -n "$body" ] || rt_usage "reply body is empty"
 
 rt_kill_switch
-{ printf '%s' "$body" | grep -qF -- "$AUTO_POST_HEADER" || printf '%s' "$body" | grep -qF -- "$AUTO_POST_REPLY_HEADER"; } \
-  || rt_refuse "$RT_E_NO_HEADER" "reply body contains neither header '$AUTO_POST_HEADER' nor '$AUTO_POST_REPLY_HEADER'"
+# r_hdr stands in for an unset AUTO_POST_REPLY_HEADER so it never matches as an empty string.
+r_hdr="${AUTO_POST_REPLY_HEADER:-$AUTO_POST_HEADER}"
+{ printf '%s' "$body" | grep -qF -- "$AUTO_POST_HEADER" || printf '%s' "$body" | grep -qF -- "$r_hdr"; } \
+  || rt_refuse "$RT_E_NO_HEADER" "reply body does not contain the header '$AUTO_POST_HEADER'${AUTO_POST_REPLY_HEADER:+ or '$AUTO_POST_REPLY_HEADER'}"
 printf '%s' "$body" | jq -Rse "$RT_LAZY_QUOTE_JQ"' lazy_quote' >/dev/null \
   && rt_refuse "$RT_E_LAZY_QUOTE" "a quoted line in the body runs straight into the next line, so it renders as part of the quote; $RT_LAZY_QUOTE_FIX"
 rt_check_repo "$repo"
@@ -121,14 +123,14 @@ if [ -n "$issue" ]; then
   mine=$(gh api --paginate "repos/$repo/issues/$pr/comments" \
            --jq "[.[] | select((.user.login | ascii_downcase) == (\"$self\" | ascii_downcase))] | .[].body | @json" 2>/dev/null) \
     || { echo "$RT_NAME: could not list PR comments on $repo#$pr" >&2; exit "$RT_E_CALL"; }
-  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg r "$AUTO_POST_REPLY_HEADER" --arg ref "issuecomment-$cid" \
+  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg r "$r_hdr" --arg ref "issuecomment-$cid" \
             'map(select((contains($h) or contains($r)) and test($ref + "([^0-9]|$)"))) | length' 2>/dev/null || echo 0)
   where="replies to PR comment $cid"
 else
   mine=$(gh api --paginate "repos/$repo/pulls/$pr/comments" \
            --jq "[.[] | select((.id == $root_id or .in_reply_to_id == $root_id) and (.user.login | ascii_downcase) == (\"$self\" | ascii_downcase))] | .[].body | @json" 2>/dev/null) \
     || { echo "$RT_NAME: could not list review comments on $repo#$pr" >&2; exit "$RT_E_CALL"; }
-  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg r "$AUTO_POST_REPLY_HEADER" 'map(select(contains($h) or contains($r))) | length' 2>/dev/null || echo 0)
+  count=$(printf '%s\n' "$mine" | jq -s --arg h "$AUTO_POST_HEADER" --arg r "$r_hdr" 'map(select(contains($h) or contains($r))) | length' 2>/dev/null || echo 0)
   where="replies in thread $root_id"
 fi
 if [ "${count:-0}" -ge "$AUTO_POST_MAX_REPLIES" ]; then
