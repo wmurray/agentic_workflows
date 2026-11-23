@@ -19,12 +19,26 @@ To stop it, end it in its pane: `ScheduleWakeup` with `stop: true` for a dynamic
 ## Each tick
 
 Every tick ends with step 8, including a tick that stops early. Count `writes` as you go: each
-`state.json` write, archive commit and inbox drain is one.
+lane or field fix in step 4, the archive commit, each promote flip and each inbox drain is one.
+The `health` and `reconcile` fields are rewritten every pass and do not count.
 
-0. **Stand down if the main loop is live.** Read `$MC_HOME/.loop-heartbeat`. This loop writes it as
-   `<epoch> dash`; the main loop writes a bare epoch. If the file has no `dash` tag, its epoch is
-   under 1500 s old, and `$MC_HOME/PAUSED` is absent, emit `dash @ HH:MM — ⛔ main loop live, standing
-   down` and go to step 8 with `writes 0`.
+0. **Stand down if the main loop is live.** This loop writes `.loop-heartbeat` as `<epoch> dash`;
+   the main loop writes a bare epoch. Run:
+
+   ```bash
+   hb=$(cat $MC_HOME/.loop-heartbeat 2>/dev/null); nw=$(cat $MC_HOME/.loop-next-wake 2>/dev/null | tr -dc '0-9'); \
+   echo "hb=[$hb] next_wake=[$nw] now=$(date +%s)"; cat $MC_HOME/PAUSED 2>/dev/null
+   ```
+
+   The main loop is live when all three hold:
+   - the heartbeat has no `dash` tag;
+   - now is before `heartbeat + 1500` or before `next_wake + 900` (a dynamic main loop idles up to
+     an hour; while the heartbeat is untagged, `.loop-next-wake` is the main loop's);
+   - `PAUSED` is absent, or it has a `mode=drain` line (a drain-paused main loop still runs; a fully
+     paused one does not).
+
+   If it is live, emit `dash @ HH:MM — ⛔ main loop live, standing down` and go to step 8 as a
+   stand-down tick with `writes 0`.
 
 1. **Profile overlay.** Read `$MC_HOME/profile.loop-driver.md`, the sections **Ticket keys** and
    **Status vocabulary** only. You need the terminal-done status and the QA status. If the overlay is
@@ -47,7 +61,8 @@ Every tick ends with step 8, including a tick that stops early. Count `writes` a
 
 4. **Take the lock, then reconcile.** `$MC_HOME/mc-lock.sh check dash`. If it exits 1, a manual
    session holds the lock: run only `$MC_HOME/mc-archive.sh --check`, report what you would change in
-   steps 4–6, write nothing, and go to step 7. Otherwise `acquire dash` and hold it through step 6.
+   steps 4–6, write nothing, and go to step 7. Otherwise `acquire dash`; if that exits 1 (another
+   writer took it in between), treat it the same as the check failing. Hold the lock through step 6.
 
    Re-read `state.json`, then apply the fixes below as one atomic write (`jq` to a tmp file, then `mv`;
    merge fields onto the existing row, never rebuild it). Also write `health` = `{tracker, host,
@@ -104,11 +119,16 @@ Every tick ends with step 8, including a tick that stops early. Count `writes` a
 7. **Report.** One line:
    `dash @ HH:MM — <applied fixes, or "board clean"> · <flags> · <archive/promote/inbox if any>`.
 
-8. **Pace, every tick, as the last call.** Run
-   `MC_TICKS_LOG=$MC_HOME/ticks.dash.jsonl $MC_HOME/mc-pace.sh record --writes <n>`, bare. It writes
-   `.loop-next-wake`, which keeps the dash from flagging LOOP SILENT during a long idle wait. Under a
-   dynamic `/loop`, call `ScheduleWakeup` with the delay it prints and the start command above as
-   `prompt`. Under a fixed-interval `/loop`, ignore the delay.
+8. **Pace, every tick, as the last call.** Run it bare, with this loop's own log and idle streak so
+   the main loop's pacing is never touched:
+
+   `MC_TICKS_LOG=$MC_HOME/ticks.dash.jsonl MC_PACE_FILE=$MC_HOME/.dash-pace $MC_HOME/mc-pace.sh record --writes <n>`
+
+   On a tick that ran (not a stand-down), this also writes `.loop-next-wake`, which keeps the dash
+   from flagging LOOP SILENT during a long idle wait. On a stand-down tick, add
+   `MC_NEXT_WAKE_FILE=$MC_HOME/.dash-next-wake` so the main loop's planned wake stays its own.
+   Under a dynamic `/loop`, call `ScheduleWakeup` with the delay it prints and the start command
+   above as `prompt`. Under a fixed-interval `/loop`, ignore the delay.
 
 ## Never
 
