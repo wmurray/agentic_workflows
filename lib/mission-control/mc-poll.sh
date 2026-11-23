@@ -57,8 +57,8 @@ rows=$(jq -r '.tickets[]
       (.worker // "-"),
       (if .phase_done==true then "1" else "0" end),
       (.cycle // "-"),
-      (.runner.impl // "-"),
-      (.runner.handle // "-"),
+      (if (.runner|type)=="object" then .runner.impl // "-" else "-" end),
+      (if (.runner|type)=="object" then .runner.handle // "-" else "-" end),
       (if .plan_proposed==true then "1" else "0" end),
       (if (.tracker_qa_at // "") != "" then "1" else "0" end) ]
   | @tsv' "$STATE")
