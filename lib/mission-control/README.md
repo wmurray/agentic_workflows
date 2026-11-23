@@ -18,6 +18,7 @@ worklog.sh           append-only per-day work log (JSONL); fed by mc, the drain 
                      field writers — org values in its own gitignored jira.env
 dash.sh              the renderer (a pure function of state.json)
 loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
+dash-driver.engine.md  a dashboard-only driver: reconciles the board, no intake, no outward writes
 HISTORY.md           how the loop's write grants were earned, moved out of the driver so a tick never reads it
 adapters/
   CONTRACT.md        the two adapter contracts, and the decisions behind them
@@ -203,6 +204,7 @@ lib/mission-control/loop-driver.engine.md   the loop's doctrine   — public, or
 skills/mission-control/SKILL.md             the manual playbook   — public, org-free
 ~/.claude/mission-control/
   loop-driver.md          -> symlink to loop-driver.engine.md
+  dash-driver.md          -> symlink to dash-driver.engine.md
   profile.md                                the org half — never committed
   profile.loop-driver.md  -> symlink to profile.md
 ~/.claude/skills/mission-control/

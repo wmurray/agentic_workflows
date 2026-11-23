@@ -121,12 +121,18 @@ mc() {
   fi
   if [[ "$1" == "prompt" || "$1" == "loop-prompt" || "$1" == "loop" ]]; then
     local driver="${MC_LOOP_DRIVER:-$HOME/.claude/mission-control/loop-driver.md}"
+    local marker='\[mc-loop\] Mission-control loop tick'
+    if [[ "$2" == "dash" ]]; then
+      driver="${MC_DASH_DRIVER:-$HOME/.claude/mission-control/dash-driver.md}"
+      marker='\[mc-dash\] Mission-control dashboard tick'
+      shift
+    fi
     local interval="${2:-10m}"
     local p cmd
-    p=$(grep -m1 '\[mc-loop\] Mission-control loop tick' "$driver" 2>/dev/null \
+    p=$(grep -m1 "$marker" "$driver" 2>/dev/null \
         | sed -E 's/^[[:space:]]*`?//; s/`?[[:space:]]*$//')
     if [[ -z "$p" ]]; then
-      printf 'mc: could not find the [mc-loop] prompt in %s\n' "$driver" >&2
+      printf 'mc: could not find the loop prompt in %s\n' "$driver" >&2
       return 1
     fi
     # Why: `dynamic` drops the interval, so /loop self-paces through the driver's tick step 5.
@@ -293,6 +299,7 @@ LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
     dash | board            launch the dashboard in this pane (full-screen; Ctrl-C to quit)
     prompt | loop [10m]     print + copy the canonical `/loop` START command (paste into the loop agent)
                             `dynamic` = no interval: the loop backs off 10/20/30 min when idle, 60 overnight
+    prompt dash [10m]       the same for the dashboard-only loop (reconciles the board; no intake, no outward writes)
     wake                    make the dynamic loop's next tick schedule a 10 min wake (the current wake stands)
     ls | queue | show       show what's queued
     pause [--drain]|resume  ⏸/▶️ the loop; immediate, not queued. bare = full freeze (no-op tick);
