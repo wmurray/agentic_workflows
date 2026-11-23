@@ -159,6 +159,18 @@ mc() {
     return 0
   fi
 
+  # The board as a local web page. Foreground: the server runs until Ctrl-C. Its actions call
+  # this same function, so a click queues the line typing the verb would.
+  if [[ "$1" == "web" ]]; then
+    local webscript="${MC_WEB_SCRIPT:-$HOME/.claude/mission-control/mc-web.py}"
+    [[ -x "$webscript" ]] || { printf 'mc: no mc-web.py at %s\n' "$webscript" >&2; return 1; }
+    if [[ "$2" != "--no-open" ]] && command -v open >/dev/null 2>&1; then
+      ( ( sleep 1; open "http://127.0.0.1:${MC_WEB_PORT:-7317}/" ) & )
+    fi
+    "$webscript"
+    return $?
+  fi
+
   # Read-only: probe credential/reachability health (GitHub + the tracker) on demand. Same
   # check the loop runs each tick; prints the health JSON. Local action, no queue.
   if [[ "$1" == "health" || "$1" == "creds" ]]; then
@@ -297,6 +309,8 @@ CONTROL VERBS (queued → orchestrator acts)
 
 LOCAL VERBS (act immediately, NOT queued — read-only or loop control)
     dash | board            launch the dashboard in this pane (full-screen; Ctrl-C to quit)
+    web [--no-open]         serve the board as a web page on 127.0.0.1:7317 (MC_WEB_PORT); its
+                            action menus queue the same lines these verbs do. Ctrl-C to stop.
     prompt | loop [10m]     print + copy the canonical `/loop` START command (paste into the loop agent)
                             `dynamic` = no interval: the loop backs off 10/20/30 min when idle, 60 overnight
     prompt dash [10m]       the same for the dashboard-only loop (reconciles the board; no intake, no outward writes)

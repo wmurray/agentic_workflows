@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mission Control</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e4e3de;
+  --red: #c4372b; --red-bg: #fbe9e7; --amber: #9a6400; --amber-bg: #fdf3dc;
+  --green: #2f7d3b; --green-bg: #e5f3e7; --blue: #2a5bd7; --blue-bg: #e8eefc;
+  --violet: #6d3fc0; --violet-bg: #f0eafb; --chip: #efeeea;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9b9a93; --line: #34332f;
+    --red: #f07a6e; --red-bg: #3a1f1c; --amber: #e6b450; --amber-bg: #352a14;
+    --green: #74c483; --green-bg: #1b3020; --blue: #86a8f5; --blue-bg: #1c2540;
+    --violet: #b496ee; --violet-bg: #2a2140; --chip: #2b2a27;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9b9a93; --line: #34332f;
+  --red: #f07a6e; --red-bg: #3a1f1c; --amber: #e6b450; --amber-bg: #352a14;
+  --green: #74c483; --green-bg: #1b3020; --blue: #86a8f5; --blue-bg: #1c2540;
+  --violet: #b496ee; --violet-bg: #2a2140; --chip: #2b2a27;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+header h1 { font-size: 15px; letter-spacing: .06em; margin: 0; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.badge.on { background: var(--green-bg); color: var(--green); }
+.badge.warn { background: var(--amber-bg); color: var(--amber); }
+.badge.bad { background: var(--red-bg); color: var(--red); }
+.tabs { margin-left: auto; display: flex; gap: 4px; }
+.tabs button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+.banner { border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.banner.bad { background: var(--red-bg); color: var(--red); }
+.banner.warn { background: var(--amber-bg); color: var(--amber); }
+.banner.info { background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+.banner ul { margin: 4px 0 0; padding-left: 18px; }
+.banner code, td code { font-family: var(--mono); font-size: 12px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+section > h2 { font-size: 13px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; }
+section > h2 .sub { font-weight: normal; color: var(--muted); }
+h2.needs { color: var(--red); } h2.await { color: var(--amber); } h2.ooc { color: var(--violet); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.key { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+td.mark { width: 28px; text-align: center; padding-right: 0; }
+td.why { color: var(--muted); max-width: 520px; }
+td.desc { min-width: 200px; }
+td.act { width: 1%; white-space: nowrap; text-align: right; }
+.lane { font-size: 12px; padding: 1px 8px; border-radius: 4px; background: var(--chip); white-space: nowrap; }
+.lane.you { background: var(--red-bg); color: var(--red); }
+.lane.done { color: var(--muted); }
+.ci { font-size: 12px; white-space: nowrap; }
+.ci.fail { color: var(--red); } .ci.pending { color: var(--amber); } .ci.frozen { color: var(--blue); }
+button.act { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+button.act:hover { border-color: var(--muted); }
+.empty { padding: 12px; color: var(--muted); }
+.parked { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+.queued { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+.queued code { font-family: var(--mono); font-size: 12px; background: var(--chip); padding: 2px 8px; border-radius: 4px; }
+.lanes { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 280px); gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-height: 120px; }
+.col h3 { font-size: 12px; margin: 0; padding: 8px 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+.col h3.you { color: var(--red); }
+.card { margin: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--bg); }
+.card:hover { border-color: var(--muted); }
+.card .top { display: flex; justify-content: space-between; gap: 6px; font-family: var(--mono); font-size: 12px; }
+.card .desc { font-size: 13px; margin-top: 4px; }
+.card .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); width: min(560px, calc(100vw - 32px)); padding: 0; }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+.dlg { padding: 16px; }
+.dlg h3 { margin: 0 0 2px; font-size: 15px; }
+.dlg .ctx { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.verbs { display: grid; gap: 6px; }
+.verb { text-align: left; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 8px 10px; cursor: pointer; font: inherit; }
+.verb:hover, .verb[aria-pressed="true"] { border-color: var(--ink); }
+.verb b { display: block; font-size: 13px; }
+.verb span { font-size: 12px; color: var(--muted); }
+.verb .tag { float: right; font-size: 11px; color: var(--amber); }
+.compose { margin-top: 12px; display: none; }
+.compose.show { display: block; }
+.compose input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; }
+.preview { margin-top: 8px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.drain-note { margin-top: 6px; font-size: 12px; color: var(--amber); }
+.row-end { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.row-end button { border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.row-end button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.row-end button:disabled { opacity: .4; cursor: default; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; max-width: calc(100vw - 32px); display: none; }
+#toast.err { background: var(--red); color: #fff; }
+@media (max-width: 700px) { td.why { min-width: 220px; } .tabs { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>MISSION CONTROL</h1>
+  <div class="badges" id="badges"></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-view="table" aria-selected="true">Table</button>
+    <button role="tab" data-view="lanes" aria-selected="false">Lanes</button>
+  </div>
+</header>
+<main>
+  <div id="banners"></div>
+  <div id="view"></div>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" class="dlg" id="dlgform">
+    <h3 id="dlg-title"></h3>
+    <div class="ctx" id="dlg-ctx"></div>
+    <div class="verbs" id="dlg-verbs"></div>
+    <div class="compose" id="dlg-compose">
+      <input id="dlg-note" maxlength="500" autocomplete="off" placeholder="One line">
+    </div>
+    <div class="preview" id="dlg-preview"></div>
+    <div class="drain-note" id="dlg-drain"></div>
+    <div class="row-end">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button type="button" class="primary" id="dlg-submit" disabled>Queue</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+const TOKEN = "__MC_TOKEN__";
+const POLL_MS = 3000;
+
+const YOUR_LANES = new Set(["plan-review", "awaiting-review", "ready-to-merge", "kickback", "alpha-verify", "needs-me"]);
+const RANK = { "needs-me": 0, "ready-to-merge": 1, "alpha-verify": 2, "kickback": 3, "awaiting-review": 4,
+  "plan-review": 5, "in-review": 6, "qa": 7, "product-review": 8, "implement": 9, "refined": 10, "done": 12 };
+const LANE_ORDER = ["refined", "plan-review", "implement", "awaiting-review", "in-review", "kickback",
+  "ready-to-merge", "alpha-verify", "qa", "product-review", "needs-me", "done"];
+
+// What `mc help` says each verb does. `drain` marks the verbs the dashboard-only loop applies.
+const VERBS = {
+  approve: { label: "Approve plan", help: "Gate 1: approve the plan, then implement and spawn the coder", outward: true },
+  ready:   { label: "Mark ready", help: "Gate 2: take the draft PR out of draft; on a kickback, re-request reviewers", outward: true },
+  merge:   { label: "Merge", help: "Authorize the merge; runs only when approved, green and mergeable", outward: true },
+  qa:      { label: "Alpha passed, hand to QA", help: "Lane qa; writes held field drafts and moves the tracker if it has not moved", outward: true },
+  changes: { label: "Send back with a note", help: "Work the PR's review comments: lane kickback and triage", outward: true, note: "What needs changing" },
+  plan:    { label: "Plan it", help: "Pull this refined ticket into planning", outward: true },
+  hold:    { label: "Hold", help: "Park it (blocked) with a reason; no lane change", note: "Reason", drain: true },
+  unblock: { label: "Unblock", help: "Lift the hold and clear the block note", drain: true },
+  note:    { label: "Note", help: "Replace the row's one-line note; no lane change", note: "Note", drain: true },
+};
+const LANE_VERBS = {
+  "plan-review": ["approve"],
+  "awaiting-review": ["ready"],
+  "kickback": ["ready", "changes"],
+  "in-review": ["changes"],
+  "ready-to-merge": ["merge", "changes"],
+  "alpha-verify": ["qa"],
+  "refined": ["plan"],
+};
+
+let data = null;
+let view = new URLSearchParams(location.search).get("view") || localGet("mc-view") || "table";
+let current = null;
+let lastSig = "";
+
+// Why: the dialog's verbs come from the row's lane when it opened; a moved row would offer stale ones.
+function checkDialog() {
+  const dlg = document.getElementById("dlg");
+  if (!dlg.open || !current) return;
+  const t = ((data.state || {}).tickets || []).find(x => x.ticket === current.ticket);
+  if (!t || t.lane !== current.lane || !!t.blocked !== current.blocked) {
+    dlg.close("cancel");
+    toast(current.ticket + " changed while the menu was open. Reopen it.", true);
+  }
+}
+
+function localGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function localSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const isNeeds = t => t.blocked === true || YOUR_LANES.has(t.lane) ||
+  (t.lane === "refined" && t.plan_proposed === true && t.worker == null);
+const isAwait = t => t.blocked === true && (t.blocked_on ?? "me") !== "me";
+const isWorking = t => t.worker != null && t.worker !== "" && !t.phase_done;
+const isParked = t => t.lane === "refined" && !t.blocked && t.worker == null && t.cycle !== "background" && t.cycle !== "sprint";
+
+function reason(t) {
+  if (t.blocked) return t.question || "blocked";
+  switch (t.lane) {
+    case "plan-review": return "Approve the plan (Gate 1)";
+    case "awaiting-review": return "Walk the diff, then mark ready (Gate 2)";
+    case "ready-to-merge": return "Approved and green: merge is yours";
+    case "kickback": return t.triage_doc ? "Triage ready: " + t.triage_doc.split("/").pop() : (t.question || "Kicked back: triage and address");
+    case "alpha-verify": return t.question || (t.tracker_qa_at ? "In QA in the tracker: smoke on alpha, then hand to QA" : "Merged: smoke-test on alpha before the QA handoff");
+    case "needs-me": return t.question || "Needs you";
+    case "refined": return "Sprint ticket with no plan yet";
+  }
+  return t.question || "";
+}
+
+function verbsFor(t) {
+  const list = (LANE_VERBS[t.lane] || []).slice();
+  list.push("note", t.blocked ? "unblock" : "hold");
+  return list;
+}
+
+function sortRows(rows) {
+  return rows.slice().sort((a, b) =>
+    (a.blocked ? 0 : 1) - (b.blocked ? 0 : 1) ||
+    (RANK[a.lane] ?? 11) - (RANK[b.lane] ?? 11) ||
+    a.ticket.localeCompare(b.ticket));
+}
+
+function marker(t) {
+  if (t.blocked) return '<span title="blocked">🚫</span>';
+  if (YOUR_LANES.has(t.lane)) return '<span title="your turn">⛔</span>';
+  if (isWorking(t)) return '<span title="worker running">●</span>';
+  return "";
+}
+
+function ciCell(t) {
+  if (t.ci === "fail") return `<span class="ci fail">✗ ${esc(t.ci_detail || "fail")}</span>`;
+  if (t.ci === "pending") return '<span class="ci pending">◴ pending</span>';
+  if (t.ci === "frozen") return '<span class="ci frozen">❄ frozen</span>';
+  if (t.ci === "pass" || t.ci === "green") return '<span class="ci">✓</span>';
+  return "";
+}
+
+function keyCell(t) {
+  const k = esc(t.ticket);
+  return data.browse_url ? `<a href="${esc(data.browse_url + t.ticket)}" target="_blank" rel="noreferrer">${k}</a>` : k;
+}
+
+function prCell(t) {
+  if (!t.pr || !/^https?:\/\//.test(String(t.pr))) return "";
+  const n = String(t.pr).split("/").pop();
+  return `<a href="${esc(t.pr)}" target="_blank" rel="noreferrer">#${esc(n)}</a>`;
+}
+
+function laneChip(t) {
+  const lane = t.lane || "no lane";
+  const cls = YOUR_LANES.has(lane) ? "you" : lane === "done" ? "done" : "";
+  return `<span class="lane ${cls}">${esc(lane === "refined" && t.cycle === "background" ? "selected" : lane)}</span>`;
+}
+
+function table(rows, opts) {
+  if (!rows.length) return '<div class="empty">Nothing here.</div>';
+  const body = rows.map(t => `<tr>
+      <td class="mark">${marker(t)}</td>
+      <td class="key">${keyCell(t)}</td>
+      <td>${laneChip(t)}</td>
+      <td>${prCell(t)}</td>
+      <td>${ciCell(t)}</td>
+      <td class="desc">${esc(t.desc || t.title || "")}</td>
+      <td class="why">${esc(opts.why(t))}</td>
+      <td class="act"><button class="act" data-ticket="${esc(t.ticket)}">Actions</button></td>
+    </tr>`).join("");
+  return `<div class="scroll"><table>
+    <thead><tr><th></th><th>Ticket</th><th>Lane</th><th>PR</th><th>CI</th><th>Description</th><th>${opts.whyHead}</th><th></th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+function section(cls, title, sub, inner) {
+  return `<section><h2 class="${cls}">${esc(title)} <span class="sub">${esc(sub)}</span></h2>${inner}</section>`;
+}
+
+function renderBadges() {
+  const f = data.flags, l = data.loop;
+  const b = [];
+  b.push(`<span class="badge ${f.coder ? "on" : ""}">Coder ${f.coder ? "on" : "off"}</span>`);
+  b.push(`<span class="badge ${f.gate1 ? "on" : ""}">Gate 1 ${f.gate1 ? "auto" : "manual"}</span>`);
+  b.push(`<span class="badge ${f.address ? "on" : ""}">Address ${f.address ? "on" : "off"}</span>`);
+  if (f.adopt_off) b.push('<span class="badge">Adopt off</span>');
+  if (f.paused) b.push(`<span class="badge warn">${f.drain ? "Paused (drain)" : "Paused"}</span>`);
+  if (l.heartbeat) {
+    const age = Math.max(0, data.now - l.heartbeat);
+    const silent = !f.paused && age > l.stale_secs;
+    const who = l.kind === "dash" ? "Dashboard loop" : "Main loop";
+    b.push(`<span class="badge ${silent ? "bad" : ""}">${who} · ${fmtAge(age)} ago</span>`);
+  } else {
+    b.push('<span class="badge warn">No loop heartbeat</span>');
+  }
+  document.getElementById("badges").innerHTML = b.join("");
+}
+
+function fmtAge(s) {
+  if (s < 90) return s + "s";
+  if (s < 5400) return Math.round(s / 60) + "m";
+  return Math.round(s / 3600) + "h";
+}
+
+function renderBanners() {
+  const s = data.state, out = [];
+  const h = s.health || {};
+  const tr = h.tracker || h.jira || "ok", host = h.host || h.github || "ok";
+  if (tr === "auth" || host === "auth") {
+    out.push(`<div class="banner bad"><b>Credentials:</b> ${tr === "auth" ? "tracker" : ""}${tr === "auth" && host === "auth" ? " and " : ""}${host === "auth" ? "host" : ""} auth failed. The loop is blind until you refresh it.${h.detail ? "<br>" + esc(h.detail) : ""}</div>`);
+  } else if (tr === "unreachable" || host === "unreachable") {
+    out.push('<div class="banner warn">A provider is unreachable. The loop is retrying.</div>');
+  }
+  const l = data.loop;
+  if (l.heartbeat && !data.flags.paused && data.now - l.heartbeat > l.stale_secs) {
+    out.push(`<div class="banner warn"><b>Loop silent</b> for ${fmtAge(data.now - l.heartbeat)}. Check the loop pane.</div>`);
+  }
+  const drift = (s.reconcile && s.reconcile.drift) || [];
+  if (drift.length) {
+    out.push(`<div class="banner warn"><b>Reconcile drift (${drift.length})</b><ul>${drift.map(d => "<li>" + esc(d) + "</li>").join("")}</ul></div>`);
+  }
+  if (data.inbox.length) {
+    out.push(`<section><h2>Queued <span class="sub">${data.inbox.length} line${data.inbox.length > 1 ? "s" : ""} waiting for a tick</span></h2>
+      <div class="queued">${data.inbox.map(q => "<code>" + esc(q) + "</code>").join("")}</div></section>`);
+  }
+  document.getElementById("banners").innerHTML = out.join("");
+}
+
+function renderTable() {
+  const all = data.state.tickets || [];
+  const needs = sortRows(all.filter(t => isNeeds(t) && !isAwait(t)));
+  const waiting = sortRows(all.filter(isAwait));
+  const sprint = sortRows(all.filter(t => t.cycle !== "background" && !isParked(t)));
+  const ooc = sortRows(all.filter(t => t.cycle === "background"));
+  const parked = all.filter(isParked).map(t => t.ticket);
+  let html = "";
+  if (needs.length) html += section("needs", "Needs you", `(${needs.length})`, table(needs, { why: reason, whyHead: "Next" }));
+  if (waiting.length) html += section("await", "Awaiting others", `(${waiting.length})`, table(waiting, { why: t => (t.blocked_on || "someone") + ": " + (t.question || "held"), whyHead: "Waiting on" }));
+  html += section("", "Sprint", `(${sprint.length})`, table(sprint, { why: t => t.question || t.result || "", whyHead: "Note" }));
+  if (ooc.length) html += section("ooc", "Out of cycle", `(${ooc.length}) not in the sprint`, table(ooc, { why: t => t.question || t.result || "", whyHead: "Note" }));
+  if (parked.length) html += `<section><div class="parked">Parked backlog (${parked.length}): ${parked.map(k => `<button class="act" data-ticket="${esc(k)}">${esc(k)}</button>`).join(" ")}</div></section>`;
+  return html;
+}
+
+function renderLanes() {
+  const rows = (data.state.tickets || []).filter(t => !isParked(t));
+  // Why: an empty lane is noise, except a gate lane, where "nothing waiting on you" is the news.
+  const lanes = LANE_ORDER.filter(l => YOUR_LANES.has(l) || rows.some(t => t.lane === l));
+  rows.forEach(t => { if (!lanes.includes(t.lane)) lanes.push(t.lane); });
+  return '<div class="lanes">' + lanes.map(lane => {
+    const cards = sortRows(rows.filter(t => t.lane === lane));
+    return `<div class="col"><h3 class="${YOUR_LANES.has(lane) ? "you" : ""}"><span>${esc(lane)}</span><span>${cards.length}</span></h3>
+      ${cards.map(t => `<div class="card" data-ticket="${esc(t.ticket)}" tabindex="0">
+        <div class="top"><span>${marker(t)} ${esc(t.ticket)}</span><span>${t.cycle === "background" ? '<span title="out of cycle">⌾</span>' : ""}</span></div>
+        <div class="desc">${esc(t.desc || t.title || "")}</div>
+        ${t.pr || t.ci ? `<div class="meta">${prCell(t)} ${ciCell(t)}</div>` : ""}
+        ${t.question ? `<div class="meta">${esc(t.question)}</div>` : ""}
+      </div>`).join("")}</div>`;
+  }).join("") + "</div>";
+}
+
+function render() {
+  if (!data || !data.state) {
+    document.getElementById("view").innerHTML = '<div class="banner warn">No readable state.json.</div>';
+    return;
+  }
+  renderBadges();
+  renderBanners();
+  // Why: a full redraw resets horizontal scroll, so carry it across.
+  const scrolls = [...document.querySelectorAll("#view .lanes, #view .scroll")].map(el => el.scrollLeft);
+  document.getElementById("view").innerHTML = view === "lanes" ? renderLanes() : renderTable();
+  document.querySelectorAll("#view .lanes, #view .scroll").forEach((el, i) => { el.scrollLeft = scrolls[i] || 0; });
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/board", { headers: { "X-MC-Token": TOKEN }, cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const text = await r.text();
+    const json = JSON.parse(text);
+    // Why: skip identical polls so focus and scroll stay put; `now` changes every second.
+    const sig = JSON.stringify(Object.assign({}, json, { now: Math.floor(json.now / 30) }));
+    data = json;
+    checkDialog();
+    if (sig === lastSig) return;
+    lastSig = sig;
+    render();
+  } catch (e) {
+    document.getElementById("banners").innerHTML = `<div class="banner bad">Can't reach mc-web (${esc(e.message)}). Is the server still running?</div>`;
+  }
+}
+
+function openActions(key) {
+  if (!data || !data.state) return;
+  const t = (data.state.tickets || []).find(x => x.ticket === key);
+  if (!t) return;
+  current = { ticket: key, verb: null, lane: t.lane, blocked: !!t.blocked };
+  document.getElementById("dlg-title").textContent = key + (t.desc ? " · " + t.desc : "");
+  document.getElementById("dlg-ctx").textContent = "Lane " + (t.lane || "none") + (t.blocked ? " · blocked" : "") + (t.question ? " · " + t.question : "");
+  document.getElementById("dlg-verbs").innerHTML = verbsFor(t).map(v => `
+    <button type="button" class="verb" data-verb="${v}" aria-pressed="false">
+      ${VERBS[v].outward ? '<span class="tag">outward</span>' : ""}<b>${esc(VERBS[v].label)}</b><span>${esc(VERBS[v].help)}</span>
+    </button>`).join("");
+  document.getElementById("dlg-note").value = "";
+  document.getElementById("dlg-compose").classList.remove("show");
+  document.getElementById("dlg-submit").disabled = true;
+  document.getElementById("dlg-preview").textContent = "";
+  document.getElementById("dlg-drain").textContent = "";
+  document.getElementById("dlg").showModal();
+}
+
+function pickVerb(v) {
+  current.verb = v;
+  document.querySelectorAll("#dlg-verbs .verb").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.verb === v)));
+  const compose = document.getElementById("dlg-compose");
+  const note = document.getElementById("dlg-note");
+  compose.classList.toggle("show", !!VERBS[v].note);
+  note.placeholder = VERBS[v].note || "";
+  if (VERBS[v].note) note.focus();
+  const drain = document.getElementById("dlg-drain");
+  drain.textContent = (!VERBS[v].drain && data.loop.kind === "dash")
+    ? "Only the dashboard loop is running, and it applies note, hold and unblock only. This waits for the main loop or a manual session."
+    : "";
+  updatePreview();
+}
+
+function updatePreview() {
+  if (!current || !current.verb) return;
+  const v = current.verb, note = document.getElementById("dlg-note").value.trim();
+  document.getElementById("dlg-preview").textContent = "Queues: " + v + " " + current.ticket + (note ? ": " + note : "");
+  document.getElementById("dlg-submit").disabled = !!VERBS[v].note && !note;
+}
+
+async function submit() {
+  const v = current.verb, note = VERBS[v].note ? document.getElementById("dlg-note").value.trim() : "";
+  try {
+    const r = await fetch("/api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-MC-Token": TOKEN },
+      body: JSON.stringify({ verb: v, ticket: current.ticket, note }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || j.output || "HTTP " + r.status);
+    toast(j.output || "Queued " + j.line);
+    poll();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+let toastTimer = null;
+function toast(msg, err) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = err ? "err" : "";
+  el.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = "none"; }, err ? 8000 : 4000);
+}
+
+document.addEventListener("click", e => {
+  const tab = e.target.closest(".tabs button");
+  if (tab) { view = tab.dataset.view; localSet("mc-view", view); render(); return; }
+  if (e.target.closest("a")) return;
+  const open = e.target.closest("button.act, .card");
+  if (open && open.closest("dialog")) return;
+  if (open && data) { openActions(open.dataset.ticket); return; }
+  const verb = e.target.closest("#dlg-verbs .verb");
+  if (verb) pickVerb(verb.dataset.verb);
+});
+document.addEventListener("keydown", e => {
+  const card = e.target.closest && e.target.closest(".card");
+  if (card && e.key === "Enter") openActions(card.dataset.ticket);
+});
+document.getElementById("dlg-note").addEventListener("input", updatePreview);
+document.getElementById("dlg-note").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  if (!document.getElementById("dlg-submit").disabled) queueAndClose();
+});
+document.getElementById("dlg-submit").addEventListener("click", queueAndClose);
+// Why: only the Queue button and Enter submit. Escape and Cancel just close.
+function queueAndClose() {
+  if (!current || !current.verb) return;
+  document.getElementById("dlg").close("cancel");
+  submit();
+}
+
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

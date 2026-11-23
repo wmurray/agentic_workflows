@@ -17,6 +17,8 @@ worklog.sh           append-only per-day work log (JSONL); fed by mc, the drain 
 ../jira-toolkit/     the pipeline wrappers ($MC_PIPELINE): merge, status moves, QA/Done transitions,
                      field writers — org values in its own gitignored jira.env
 dash.sh              the renderer (a pure function of state.json)
+mc-web.py, .html     `mc web`: the board as a page on 127.0.0.1; its action menus queue through `mc`.
+                     Install: symlink mc-web.py into ~/.claude/mission-control (the .html is read beside the real file)
 loop-driver.engine.md  the autonomous driver's doctrine — org-free (see "Doctrine" below)
 dash-driver.engine.md  a dashboard-only driver: reconciles the board, no intake, no outward writes
 HISTORY.md           how the loop's write grants were earned, moved out of the driver so a tick never reads it
