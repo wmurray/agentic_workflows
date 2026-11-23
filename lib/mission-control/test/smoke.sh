@@ -764,6 +764,8 @@ mc_dyn() { MC_LOOP_DRIVER="$DRIVER" bash -c 'pbcopy() { cat >/dev/null; }; . "$0
 says "mc prompt dynamic drops the interval"  yes '^/loop \[mc-loop\] Mission-control loop tick' mc_dyn
 mc_fixed() { MC_LOOP_DRIVER="$DRIVER" bash -c 'pbcopy() { cat >/dev/null; }; . "$0"; mc prompt' "$_MC_LIB/mc" 2>&1 | head -1; }
 says "mc prompt keeps 10m by default"        yes '^/loop 10m \[mc-loop\]' mc_fixed
+mc_dashp() { MC_DASH_DRIVER="$_MC_LIB/dash-driver.engine.md" bash -c 'pbcopy() { cat >/dev/null; }; . "$0"; mc prompt dash' "$_MC_LIB/mc" 2>&1 | head -1; }
+says "mc prompt dash uses the dashboard driver" yes '^/loop 10m \[mc-dash\] Mission-control dashboard tick' mc_dashp
 mc_wake() { MC_PACE_SCRIPT="$_MC_LIB/mc-pace.sh" MC_HOME="$PACE_HOME" bash -c '. "$0"; mc wake' "$_MC_LIB/mc"; cat "$PACE_HOME/.loop-pace"; }
 says "mc wake resets the pace"               yes '^reset$' mc_wake
 tick_flat() { tick_steps | tr '\n' ' '; }
