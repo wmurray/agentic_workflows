@@ -14,7 +14,10 @@ It runs instead of the main loop, never beside it. Step 0 stands down when the m
 `[mc-dash] Mission-control dashboard tick. Read $MC_HOME/dash-driver.md and execute ONE tick exactly as specified. Emit one terse line, then stop.`
 
 To stop it, end it in its pane: `ScheduleWakeup` with `stop: true` for a dynamic loop, or
-`CronDelete` the `[mc-dash]` job. The `PAUSED` file belongs to the main loop and does not apply here.
+`CronDelete` the `[mc-dash]` job. The `PAUSED` file belongs to the main loop and does not apply here:
+this loop keeps reconciling through a full pause. While `PAUSED` exists, `dash.sh` hides its LOOP
+SILENT alarm, so a dash loop that dies during a pause goes unflagged. `mc wake` resets only the main
+loop's pace and does not shorten this loop's next wake.
 
 ## Each tick
 
