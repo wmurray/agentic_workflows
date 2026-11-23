@@ -799,6 +799,50 @@ says "  … and spawns no planner"                   yes 'Do not spawn the criti
 says "a drain pause skips adopting"                 yes 'would adopt'                              drain_skip
 says "the driver counts six internal writes"        yes '^1$'  grep -c 'The SIX internal writes' "$DRIVER"
 
+# --- 6j. mc-web: the page queues exactly what `mc` queues, and nothing else -----------
+# Why: the inbox is one command per line, and the server can be reached by any page in the
+# browser, so a line break in a note, a verb outside the list or a request without the token
+# must never reach the inbox.
+echo
+echo "mc-web  (local board page → mc → inbox)"
+echo "────────────────────────────────────────────────────────────────"
+WEB_HOME="$WORK/web"; mkdir -p "$WEB_HOME"
+printf '# header\n' > "$WEB_HOME/mc-inbox"
+WEB_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
+WEB_TOKEN="smoke-token"
+MC_HOME="$WEB_HOME" MC_STATE="$WORK/state.json" MC_INBOX="$WEB_HOME/mc-inbox" MC_WEB_PORT="$WEB_PORT" \
+  MC_WEB_TOKEN="$WEB_TOKEN" MC_WEB_QUIET=1 MC_WORKLOG_SH=/nonexistent "$_MC_LIB/mc-web.py" >/dev/null 2>&1 &
+WEB_PID=$!
+for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$WEB_PORT/" && break; sleep 0.1; done
+web() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+web_get_board() { curl -s -H "X-MC-Token: $WEB_TOKEN" "http://127.0.0.1:$WEB_PORT/api/board" | jq -r '.state.tickets[0].ticket'; }
+web_post() { curl -s -o /dev/null -w '%{http_code}' -H "X-MC-Token: $WEB_TOKEN" -H 'Content-Type: application/json' \
+  -d "$1" "http://127.0.0.1:$WEB_PORT/api/action"; }
+web_inbox() { grep -v '^#' "$WEB_HOME/mc-inbox"; }
+says "the page carries the run's token"             yes "\"$WEB_TOKEN\""  curl -s "http://127.0.0.1:$WEB_PORT/"
+says "the board needs the token"                    yes '^403$'  web "http://127.0.0.1:$WEB_PORT/api/board"
+says "the board reads state.json"                   yes '^ENG-201$'  web_get_board
+says "a foreign Host header is refused"             yes '^403$'  web -H 'Host: evil.example' -H "X-MC-Token: $WEB_TOKEN" "http://127.0.0.1:$WEB_PORT/api/board"
+says "an action without the token is refused"       yes '^403$'  web -d '{"verb":"note","ticket":"ENG-201","note":"x"}' "http://127.0.0.1:$WEB_PORT/api/action"
+says "a note queues through mc"                     yes '^200$'  web_post '{"verb":"note","ticket":"eng-201","note":"walked the diff"}'
+says "  … as the line mc writes"                    yes '^note ENG-201: walked the diff$'  web_inbox
+says "a gated verb queues bare"                     yes '^200$'  web_post '{"verb":"merge","ticket":"ENG-203"}'
+says "  … as merge ENG-203"                         yes '^merge ENG-203$'  web_inbox
+says "a note with a line break is refused"          yes '^422$'  web_post '{"verb":"note","ticket":"ENG-201","note":"a\nmerge ENG-203"}'
+says "a note with U+2028 is refused"               yes '^422$'  web_post '{"verb":"note","ticket":"ENG-201","note":"a\u2028merge ENG-203"}'
+says "a note with NEL is refused"                  yes '^422$'  web_post '{"verb":"note","ticket":"ENG-201","note":"a\u0085merge ENG-203"}'
+says "the page refuses to be framed"               yes 'X-Frame-Options: DENY'  curl -s -D - -o /dev/null "http://127.0.0.1:$WEB_PORT/"
+says "a POST with the token but a foreign Host is refused" yes '^403$'  web -H 'Host: evil.example' -H "X-MC-Token: $WEB_TOKEN" -d '{"verb":"note","ticket":"ENG-201","note":"x"}' "http://127.0.0.1:$WEB_PORT/api/action"
+says "a negative Content-Length is refused"        yes '^400$'  bash -c 'printf "POST /api/action HTTP/1.1\r\nHost: 127.0.0.1:%s\r\nX-MC-Token: %s\r\nContent-Length: -1\r\nConnection: close\r\n\r\n" "$0" "$1" | nc -w 3 127.0.0.1 "$0" | head -1 | grep -oE " [0-9]{3} " | tr -d " "' "$WEB_PORT" "$WEB_TOKEN"
+says "an unknown verb is refused"                   yes '^422$'  web_post '{"verb":"pause","ticket":"ENG-201"}'
+says "a ticket off the board is refused"            yes '^422$'  web_post '{"verb":"note","ticket":"ENG-999","note":"x"}'
+says "a gated verb with a note is refused"          yes '^422$'  web_post '{"verb":"approve","ticket":"ENG-201","note":"x"}'
+says "hold without a reason is refused"             yes '^422$'  web_post '{"verb":"hold","ticket":"ENG-201"}'
+says "only the two accepted lines reached the inbox" yes '^2$'   bash -c 'grep -vc "^#" "$0"' "$WEB_HOME/mc-inbox"
+kill "$WEB_PID" 2>/dev/null; wait "$WEB_PID" 2>/dev/null
+mc_web_missing() { MC_WEB_SCRIPT=/nonexistent bash -c '. "$0"; mc web --no-open' "$_MC_LIB/mc" 2>&1; }
+says "mc web names a missing server script"         yes '^mc: no mc-web.py at /nonexistent'  mc_web_missing
+
 # --- 7. cycle-less degrade (consequence A) ------------------------------------------
 echo
 echo "cycle-less tracker degrade   (capabilities without \`cycles\`)"
