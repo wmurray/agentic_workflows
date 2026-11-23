@@ -78,7 +78,10 @@ impls=$(printf '%s\n' "${MC_RUNNER_PLANNER:-}" "${MC_RUNNER_PLANNER_SPRINT:-}" "
                        "${MC_RUNNER_CODER:-}" "${MC_RUNNER_REVIEWER:-}" "${MC_RUNNER_INVESTIGATOR:-}" \
         | awk 'NF && $0!="inprocess" && !seen[$0]++')
 if [ -n "$impls" ]; then
-  handles=$(jq -r '.tickets[] | select(.runner != null) | .runner.handle // empty | split("|")[0]' "$STATE" 2>/dev/null || true)
+  handles=$(jq -r '.tickets[] | .runner
+    | if type=="object" then (.handle // empty | split("|")[0])
+      elif type=="string" then ((capture("^[^:]+:(?<n>[^ ]+)") | .n)? // empty)
+      else empty end' "$STATE" 2>/dev/null || true)
   orph=""
   for impl in $impls; do
     [ -x "$MC_ADAPTERS/runner/$impl.sh" ] || continue

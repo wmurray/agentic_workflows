@@ -191,6 +191,7 @@ HSTUB="$WORK/herdr-stub"; mkdir -p "$HSTUB"
 cat > "$HSTUB/herdr" <<'STUB'
 #!/usr/bin/env bash
 [ "$1 $2" = "workspace list" ] && printf '%s' '{"result":{"workspaces":[{"workspace_id":"ws7","label":"sprint"},{"workspace_id":"ws9","label":"out of cycle"}]}}'
+[ "$1 $2" = "agent list" ] && printf '%s' '{"result":{"agents":[{"workspace_id":"ws7","name":"coder-eng-222","agent_status":"idle","tab_id":"t1"},{"workspace_id":"ws7","name":"stray-eng-999","agent_status":"idle","tab_id":"t2"}]}}'
 exit 0
 STUB
 chmod +x "$HSTUB/herdr"
@@ -262,6 +263,14 @@ says "a PR outside the list window is not a host-miss" no  'app#20[1-3]\(host-mi
 says "  … it is joined through get_pr"                 yes '^ENG-202 .*app#202 +ready +CHANGES_REQUESTED +fail'  poll_hw
 says "  … a PR the host lacks is still a host-miss"    yes '^ENG-221 .*app#299\(host-miss\)'      poll_hw
 says "  … a get_pr failure is host-err, not host-miss" yes '^ENG-202 .*app#202\(host-err\)'       env MC_FIXTURE_GET_PR_FAIL=1 bash -c 'MC_STATE="$0" MC_FIXTURE_LIST_LIMIT=2 "$1"' "$WORK/state.host-window.json" "$_MC_LIB/mc-poll.sh"
+# A hand-launched session records `runner` as a free-text note, not the {impl,handle} object.
+jq '.tickets += [{"ticket":"ENG-222","lane":"in-review","cycle":"sprint","worker":null,"blocked":false,
+  "runner":"herdr:coder-eng-222 (hand-launched)"}]' "$WORK/state.json" > "$WORK/state.string-runner.json"
+says "mc-poll survives a free-text runner"   yes '^ENG-222 ' env MC_STATE="$WORK/state.string-runner.json" "$_MC_LIB/mc-poll.sh"
+says "  … and prints no jq error"            no  'jq: error' env MC_STATE="$WORK/state.string-runner.json" "$_MC_LIB/mc-poll.sh"
+orph_str() { env PATH="$HSTUB:$PATH" MC_STATE="$WORK/state.string-runner.json" MC_RUNNER_CODER=herdr MC_HERDR_WS_SPRINT=sprint "$_MC_LIB/mc-orphans.sh"; }
+says "mc-orphans matches a free-text runner to its session" no  'coder-eng-222' orph_str
+says "  … and still reports an untracked session"           yes 'stray-eng-999' orph_str
 says "mc-orphans sweeps runner sessions" yes  'orphan runner sessions'    env MC_RUNNER_CODER=herdr MC_HERDR_WS_SPRINT= "$_MC_LIB/mc-orphans.sh"
 says "mc-health emits the host key" yes  '"host":'                  "$_MC_LIB/mc-health.sh"
 says "mc-health names no provider"    no  '(?i)github|"github"'        "$_MC_LIB/mc-health.sh"
