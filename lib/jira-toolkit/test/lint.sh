@@ -137,6 +137,13 @@ says "dependabot-merge: falls back from a disallowed GH_MERGE_METHOD" 'using reb
 if grep -q '^pr review' "$DM/calls" && grep -q '^pr merge 7 --rebase' "$DM/calls"; then ok "dependabot-merge: approves, then merges with the allowed method"
 else bad "dependabot-merge: happy path calls — $(tr '\n' ';' < "$DM/calls")"; fi
 
+dm_fixture true false false $'Gemfile.lock\ndummy/Gemfile.lock'
+says "dependabot-merge: a lockfile in a subfolder is allowed" 'MERGED \(squash\)' dm 7
+
+dm_fixture true false false $'dummy/Gemfile.lock\ndummy/app.rb'
+says "dependabot-merge: a source file in a subfolder is refused" 'touches non-manifest files: dummy/app.rb' dm 7
+no_approve "dependabot-merge: no approve after a refused subfolder file"
+
 rm -f "${DM:?}/bin/gh" "${DM:?}/calls" "${DM:?}/pr.json" "${DM:?}/repo.json" "${DM:?}/files.json" "${DM:?}/page.json"
 rmdir "${DM:?}/bin" "${DM:?}"
 
